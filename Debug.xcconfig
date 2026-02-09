@@ -1,0 +1,17 @@
+// Debug.xcconfig
+// Xcode preview support for executable targets
+
+// Enable debug dylib for previews (required for Xcode 17+)
+ENABLE_DEBUG_DYLIB = YES
+
+// Additional debug settings
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+
+// FoundationDB C library paths (for CFoundationDB systemLibrary)
+HEADER_SEARCH_PATHS = $(inherited) /usr/local/include
+LIBRARY_SEARCH_PATHS = $(inherited) /usr/local/lib
+OTHER_LDFLAGS = $(inherited) -lfdb_c -Xlinker -rpath -Xlinker /usr/local/lib
+
+// Swift module search paths
+SWIFT_INCLUDE_PATHS = $(inherited) $(BUILD_DIR)/$(CONFIGURATION)
