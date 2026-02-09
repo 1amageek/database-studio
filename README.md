@@ -1,79 +1,79 @@
 # Database Studio
 
-FoundationDB の データブラウザ & グラフビジュアライザ。macOS ネイティブアプリ。
+A native macOS data browser and graph visualizer for FoundationDB.
 
-[database-framework](https://github.com/1amageek/database-framework) の `SchemaRegistry` を通じて、`@Persistable` 型のデータを GUI で閲覧・操作できる。
+Browse and manage `@Persistable` data through the `SchemaRegistry` provided by [database-framework](https://github.com/1amageek/database-framework).
 
-## 機能
+## Features
 
-### データブラウザ
+### Data Browser
 
-- **接続管理** — クラスタファイル指定で FoundationDB に接続
-- **エンティティツリー** — `Schema.Entity` をディレクトリ階層で表示
-- **アイテムテーブル** — 選択エンティティのレコードをページング付きテーブル表示
-- **CRUD** — アイテムの作成・編集・削除
-- **クエリビルダー** — GUI で述語を構築してフィルタリング
-- **インポート / エクスポート** — CSV・JSON 対応
-- **スキーマ可視化** — フィールド定義・インデックス・ディレクトリ構造の確認
-- **パフォーマンスメトリクス** — 操作時間の記録・スロークエリログ
+- **Connection Management** — Connect to FoundationDB via cluster file
+- **Entity Tree** — Display `Schema.Entity` in a directory hierarchy
+- **Item Table** — Paginated table view for records of the selected entity
+- **CRUD** — Create, edit, and delete items
+- **Query Builder** — Build predicates with a GUI for filtering
+- **Import / Export** — CSV and JSON support
+- **Schema Visualization** — Inspect field definitions, indexes, and directory structure
+- **Performance Metrics** — Operation timing and slow query log
 
-### グラフビジュアライザ
+### Graph Visualizer
 
-RDF トリプル・OWL オントロジー・GraphIndex データをフォースレイアウトで可視化する。
+Visualize RDF triples, OWL ontologies, and GraphIndex data with a force-directed layout.
 
-- **Force-Directed Layout** — Barnes-Hut O(N log N) 反発力 + Spring 引力
-- **LOD レンダリング** — ズームレベルに応じた 4 段階の描画詳細度
-- **ビューポートカリング** — 画面外のノード・エッジを描画スキップ
-- **N-hop 近傍フィルタ** — 選択ノードから N ホップ以内のノードのみ表示
-- **エッジラベルフィルタ** — 表示するリレーション種別を選択
-- **ノード検索** — ラベルによるノード検索・ハイライト
-- **ビジュアルマッピング** — ノードサイズ・カラーを PageRank・コミュニティ等にマッピング
-- **SPARQL コンソール** — クエリパネル（FoundationDB 接続時に実行可能）
-- **ミニマップ** — グラフ全体のオーバーレイ表示
-- **Inspector** — 選択ノードの IRI・メタデータ・接続エッジ・メトリクスを表示
+- **Force-Directed Layout** — Barnes-Hut O(N log N) repulsion + spring attraction
+- **LOD Rendering** — 4 levels of detail based on zoom scale
+- **Viewport Culling** — Skip rendering off-screen nodes and edges
+- **N-hop Neighborhood Filter** — Show only nodes within N hops of the selected node
+- **Edge Label Filter** — Toggle which relationship types to display
+- **Node Search** — Search and highlight nodes by label
+- **Visual Mapping** — Map node size/color to PageRank, community, degree, etc.
+- **SPARQL Console** — Query panel (executable when connected to FoundationDB)
+- **Minimap** — Overview overlay of the entire graph
+- **Inspector** — View IRI, metadata, connected edges, and metrics for the selected node
 
-## 要件
+## Requirements
 
 - macOS 15+
 - Swift 6
-- FoundationDB（ローカルにインストール済み）
+- FoundationDB (installed locally)
 
-## ビルド
+## Build
 
 ```bash
 swift build
 ```
 
-Xcode で開く場合:
+To open in Xcode:
 
 ```bash
 open Studio.xcworkspace
 ```
 
-## 依存関係
+## Dependencies
 
-| パッケージ | 用途 |
-|-----------|------|
+| Package | Role |
+|---------|------|
 | [database-framework](https://github.com/1amageek/database-framework) | DatabaseEngine, SchemaRegistry, CatalogDataAccess |
 | [database-kit](https://github.com/1amageek/database-kit) | Persistable, Schema.Entity, Graph (OWL/RDF) |
 
-## アーキテクチャ
+## Architecture
 
 ```
 DatabaseStudioUI (SwiftUI)
-├── Views/          ← UI コンポーネント
-├── ViewModels/     ← @Observable 状態管理
-├── Services/       ← StudioDataService, MetricsService
-└── Query/          ← クエリビルダー・履歴
+├── Views/          UI components
+├── ViewModels/     @Observable state management
+├── Services/       StudioDataService, MetricsService
+└── Query/          Query builder and history
 
          ↓ async/await
 
 database-framework
-├── SchemaRegistry  ← Schema.Entity の永続化・読み取り
-├── CatalogDataAccess ← 動的データアクセス（@Persistable 型不要）
-└── DatabaseEngine  ← FDBContainer, FDBContext
+├── SchemaRegistry    Persist and load Schema.Entity
+├── CatalogDataAccess Dynamic data access (no @Persistable types needed)
+└── DatabaseEngine    FDBContainer, FDBContext
 ```
 
-## ライセンス
+## License
 
 MIT
