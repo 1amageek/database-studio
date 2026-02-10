@@ -1,5 +1,6 @@
 import Foundation
 import Core
+import Graph
 
 extension GraphDocument {
 
@@ -15,6 +16,7 @@ extension GraphDocument {
 
         var nodeMap: [String: GraphNode] = [:]
         var edges: [GraphEdge] = []
+        var literalMetadata: [String: [String: String]] = [:]
 
         for item in items {
             guard let fromValue = item.fields[fromField] as? String,
@@ -31,6 +33,23 @@ extension GraphDocument {
                 )
             }
 
+            // エッジラベル
+            let edgeLabel: String
+            if edgeField.isEmpty {
+                edgeLabel = graphIndex.name
+            } else {
+                edgeLabel = item.fields[edgeField] as? String ?? ""
+            }
+
+            let predicateLocal = localName(edgeLabel)
+
+            // リテラル判定: `"` で始まる値は metadata に格納（ノード化しない）
+            if toValue.hasPrefix("\"") {
+                let literal = Self.parseRDFLiteral(toValue)
+                literalMetadata[fromValue, default: [:]][predicateLocal] = literal.lexicalForm
+                continue
+            }
+
             // to ノード
             if nodeMap[toValue] == nil {
                 nodeMap[toValue] = GraphNode(
@@ -38,14 +57,6 @@ extension GraphDocument {
                     label: localName(toValue),
                     kind: .individual
                 )
-            }
-
-            // エッジ
-            let edgeLabel: String
-            if edgeField.isEmpty {
-                edgeLabel = graphIndex.name
-            } else {
-                edgeLabel = item.fields[edgeField] as? String ?? ""
             }
 
             // rdf:type の場合、to ノードを owlClass に昇格
@@ -62,8 +73,16 @@ extension GraphDocument {
                 id: item.id,
                 sourceID: fromValue,
                 targetID: toValue,
-                label: localName(edgeLabel)
+                label: predicateLocal
             ))
+        }
+
+        // リテラル metadata をノードに反映
+        for (nodeID, meta) in literalMetadata {
+            if var node = nodeMap[nodeID] {
+                node.metadata.merge(meta) { _, new in new }
+                nodeMap[nodeID] = node
+            }
         }
 
         self.nodes = Array(nodeMap.values)

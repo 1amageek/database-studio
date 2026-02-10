@@ -15,48 +15,27 @@ struct GraphSidebarView: View {
                 }
             }
         )) {
-            // エッジフィルター
-            Section {
-                ForEach(state.allEdgeLabels, id: \.self) { label in
-                    let count = state.edgeCount(for: label)
-                    Toggle(isOn: Binding(
-                        get: { state.activeEdgeLabels.contains(label) },
-                        set: { isOn in
-                            if isOn {
-                                state.activeEdgeLabels.insert(label)
-                            } else {
-                                state.activeEdgeLabels.remove(label)
-                            }
-                            state.zoomToFit()
-                        }
-                    )) {
-                        HStack {
-                            Text(label)
-                                .lineLimit(1)
-                            Spacer()
-                            Text("\(count)")
+            // 選択中のノードフィルタ表示
+            if let selectedNode = state.selectedNode {
+                Section {
+                    HStack {
+                        let style = GraphNodeStyle.style(for: selectedNode.kind)
+                        let icon = state.nodeIconMap[selectedNode.id] ?? style.iconName
+                        Image(systemName: icon)
+                            .foregroundStyle(style.color)
+                        Text(selectedNode.label)
+                            .lineLimit(1)
+                        Spacer()
+                        Button {
+                            state.selectNode(nil)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
-                                .font(.caption)
-                                .monospacedDigit()
                         }
+                        .buttonStyle(.plain)
                     }
-                    .toggleStyle(.checkbox)
-                }
-            } header: {
-                HStack {
-                    Text("Relationships")
-                    Spacer()
-                    Button("All") {
-                        state.activeEdgeLabels = Set(state.allEdgeLabels)
-                        state.zoomToFit()
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    Button("None") {
-                        state.activeEdgeLabels = []
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                } header: {
+                    Text("Focused Node")
                 }
             }
 
@@ -65,18 +44,21 @@ struct GraphSidebarView: View {
 
             // ノード種別ごとのセクション
             ForEach(filteredNodesByKind, id: \.kind) { kind, nodes in
-                Section("\(kind.displayName) (\(nodes.count))") {
+                Section {
                     ForEach(nodes) { node in
                         let style = GraphNodeStyle.style(for: node.kind)
+                        let icon = state.nodeIconMap[node.id] ?? style.iconName
                         Label {
                             Text(node.label)
                                 .lineLimit(1)
                         } icon: {
-                            Image(systemName: style.iconName)
+                            Image(systemName: icon)
                                 .foregroundStyle(style.color)
                         }
                         .tag(node.id)
                     }
+                } header: {
+                    Text("\(kind.displayName) (\(nodes.count))")
                 }
             }
         }
@@ -92,7 +74,10 @@ struct GraphSidebarView: View {
         }
         let query = state.searchText.lowercased()
         return state.visibleNodesByKind.compactMap { kind, nodes in
-            let filtered = nodes.filter { $0.label.lowercased().contains(query) }
+            let filtered = nodes.filter { node in
+                if node.label.lowercased().contains(query) { return true }
+                return node.metadata.values.contains { $0.lowercased().contains(query) }
+            }
             guard !filtered.isEmpty else { return nil }
             return (kind, filtered)
         }

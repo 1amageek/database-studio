@@ -5,9 +5,13 @@ public struct GraphView: View {
     @State private var state: GraphViewState
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
+    private let initialFocusNodeID: String?
+    private let initialFocusHops: Int?
 
-    public init(document: GraphDocument) {
+    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil) {
         _state = State(initialValue: GraphViewState(document: document))
+        self.initialFocusNodeID = focusNodeID
+        self.initialFocusHops = focusHops
     }
 
     public var body: some View {
@@ -21,9 +25,10 @@ public struct GraphView: View {
                         .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
                 }
         }
+        .navigationSubtitle(toolbarSubtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                toolbarItems
+                toolbarActions
             }
         }
         .onChange(of: state.selectedNodeID) { _, newValue in
@@ -39,6 +44,14 @@ public struct GraphView: View {
         .onChange(of: GraphWindowState.shared.document?.edges.count) { _, _ in
             if let newDoc = GraphWindowState.shared.document {
                 state.updateDocument(newDoc)
+            }
+        }
+        .task {
+            if let id = initialFocusNodeID {
+                if let hops = initialFocusHops {
+                    state.focusHops = hops
+                }
+                state.focusOnNode(id)
             }
         }
     }
@@ -133,7 +146,12 @@ public struct GraphView: View {
                 node: node,
                 incomingEdges: state.allIncomingEdges(for: node.id),
                 outgoingEdges: state.allOutgoingEdges(for: node.id),
-                allNodes: state.document.nodes
+                allNodes: state.document.nodes,
+                documentEdges: state.document.edges,
+                relatedEvents: state.relatedEvents(for: node.id),
+                onSelectNode: { nodeID in
+                    state.focusOnNode(nodeID)
+                }
             )
         } else {
             ContentUnavailableView(
@@ -144,15 +162,68 @@ public struct GraphView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Toolbar Subtitle
+
+    private var toolbarSubtitle: String {
+        let classCount = state.visibleNodes.filter { $0.kind == .owlClass }.count
+        let individualCount = state.visibleNodes.filter { $0.kind == .individual }.count
+        let edgeCount = state.visibleEdges.count
+
+        var parts = [
+            "\(classCount) classes",
+            "\(individualCount) individuals",
+            "\(edgeCount) edges"
+        ]
+
+        if let typeFilter = state.individualTypeFilter,
+           let label = state.availableIndividualTypes.first(where: { $0.id == typeFilter })?.label {
+            parts.append("Type: \(label)")
+        }
+
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: - Type Filter Menu
 
     @ViewBuilder
-    private var toolbarItems: some View {
-        Text("\(state.visibleNodes.count) nodes, \(state.visibleEdges.count) edges")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+    private var typeFilterMenu: some View {
+        let types = state.availableIndividualTypes
+        if !types.isEmpty {
+            Menu {
+                Button {
+                    state.individualTypeFilter = nil
+                } label: {
+                    if state.individualTypeFilter == nil {
+                        Label("All Types", systemImage: "checkmark")
+                    } else {
+                        Text("All Types")
+                    }
+                }
+                Divider()
+                ForEach(types, id: \.id) { type in
+                    Button {
+                        state.individualTypeFilter = type.id
+                    } label: {
+                        if state.individualTypeFilter == type.id {
+                            Label(type.label, systemImage: "checkmark")
+                        } else {
+                            Text(type.label)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: state.individualTypeFilter != nil
+                      ? "line.3.horizontal.decrease.circle.fill"
+                      : "line.3.horizontal.decrease.circle")
+            }
+            .help("Filter by Type")
+        }
+    }
 
+    // MARK: - Toolbar Actions
+
+    @ViewBuilder
+    private var toolbarActions: some View {
         Button {
             Task {
                 if let refresh = GraphWindowState.shared.refreshAction,
@@ -174,7 +245,8 @@ public struct GraphView: View {
         .help("Zoom to Fit")
         .keyboardShortcut("0", modifiers: .command)
 
-        // Appearance
+        typeFilterMenu
+
         Menu {
             Section("Node Size") {
                 ForEach(GraphVisualMapping.SizeMode.allCases, id: \.self) { mode in
@@ -209,7 +281,6 @@ public struct GraphView: View {
         }
         .help("Appearance")
 
-        // Query Panel Toggle
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 state.showQueryPanel.toggle()
@@ -220,7 +291,6 @@ public struct GraphView: View {
         .help("SPARQL Console")
         .keyboardShortcut("c", modifiers: [.command, .shift])
 
-        // Inspector Toggle
         Button {
             showInspector.toggle()
         } label: {

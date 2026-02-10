@@ -1,4 +1,5 @@
 import Foundation
+import Graph
 
 extension GraphDocument {
 
@@ -53,12 +54,10 @@ extension GraphDocument {
                 continue
             }
 
-            // リテラル判定: `"` で始まる値は metadata に格納
+            // リテラル判定: `"` で始まる値は OWLLiteral としてパースし metadata に格納
             if triple.object.hasPrefix("\"") {
-                let value = triple.object
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                    .components(separatedBy: "\"^^").first ?? triple.object
-                literalMetadata[triple.subject, default: [:]][predicateLocal] = value
+                let literal = Self.parseRDFLiteral(triple.object)
+                literalMetadata[triple.subject, default: [:]][predicateLocal] = literal.lexicalForm
                 continue
             }
 
@@ -91,5 +90,30 @@ extension GraphDocument {
 
         self.nodes = Array(nodeMap.values)
         self.edges = edges
+    }
+
+    /// RDF リテラル文字列を `OWLLiteral` にパースする
+    static func parseRDFLiteral(_ raw: String) -> OWLLiteral {
+        guard raw.hasPrefix("\"") else {
+            return .string(raw)
+        }
+        if let caretRange = raw.range(of: "\"^^", options: .backwards) {
+            let text = String(raw[raw.index(after: raw.startIndex)..<caretRange.lowerBound])
+            var datatype = String(raw[caretRange.upperBound...])
+            while datatype.hasPrefix("<") && datatype.hasSuffix(">") {
+                datatype = String(datatype.dropFirst().dropLast())
+            }
+            return OWLLiteral(lexicalForm: text, datatype: datatype)
+        }
+        if let atRange = raw.range(of: "\"@", options: .backwards) {
+            let text = String(raw[raw.index(after: raw.startIndex)..<atRange.lowerBound])
+            let lang = String(raw[atRange.upperBound...])
+            return .langString(text, language: lang)
+        }
+        if raw.hasSuffix("\"") {
+            let text = String(raw.dropFirst().dropLast())
+            return .string(text)
+        }
+        return .string(raw)
     }
 }

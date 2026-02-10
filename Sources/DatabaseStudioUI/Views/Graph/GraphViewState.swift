@@ -29,7 +29,7 @@ final class GraphViewState {
     // MARK: - N-hop 近傍フィルタ
 
     /// 選択ノードから何ホップの近傍を表示するか（0 = 全ノード表示）
-    var focusHops: Int = 2 {
+    var focusHops: Int = 1 {
         didSet { invalidateVisibleCache() }
     }
 
@@ -107,7 +107,10 @@ final class GraphViewState {
             cachedSearchMatchedNodeIDs = []
             return []
         }
-        let result = Set(cachedVisibleNodes.filter { $0.label.lowercased().contains(query) }.map(\.id))
+        let result = Set(visibleNodes.filter { node in
+            if node.label.lowercased().contains(query) { return true }
+            return node.metadata.values.contains { $0.lowercased().contains(query) }
+        }.map(\.id))
         cachedSearchMatchedNodeIDs = result
         return result
     }
@@ -117,6 +120,11 @@ final class GraphViewState {
     }
 
     // MARK: - フィルター
+
+    /// Individuals のタイプフィルタ（nil = 全表示）
+    var individualTypeFilter: String? = nil {
+        didSet { invalidateVisibleCache() }
+    }
 
     var activeEdgeLabels: Set<String> {
         didSet { invalidateVisibleCache() }
@@ -147,14 +155,31 @@ final class GraphViewState {
     // MARK: - キャッシュ済みフィルター結果
 
     private var cachedVisibleEdges: [GraphEdge]?
-    private var cachedVisibleNodes: [GraphNode]!
+    private var cachedVisibleNodes: [GraphNode]?
     private var cachedVisibleNodeIDs: Set<String>?
     private var cachedNodeMap: [String: GraphNode] = [:]
 
-    /// フィルター適用後のエッジ（近傍フィルタ含む）
+    /// タイプフィルタに一致するノード ID の集合
+    private var typeFilteredNodeIDs: Set<String>? {
+        guard let typeFilter = individualTypeFilter else { return nil }
+        // フィルタ対象タイプに属する individual
+        let matchedIndividuals = nodeTypeMap
+            .filter { $0.value.contains(typeFilter) }
+            .map(\.key)
+        var ids = Set(matchedIndividuals)
+        // タイプノード自身も含める
+        ids.insert(typeFilter)
+        return ids
+    }
+
+    /// フィルター適用後のエッジ（タイプフィルタ + 近傍フィルタ含む）
     var visibleEdges: [GraphEdge] {
         if let cached = cachedVisibleEdges { return cached }
         var result = document.edges.filter { activeEdgeLabels.contains($0.label) }
+        // タイプフィルタ: 少なくとも片方がフィルタ対象ノードであるエッジのみ
+        if let allowedIDs = typeFilteredNodeIDs {
+            result = result.filter { allowedIDs.contains($0.sourceID) || allowedIDs.contains($0.targetID) }
+        }
         // N-hop 近傍フィルタ: 選択ノードがある場合は近傍内のエッジのみ
         if let neighborhood = neighborhoodNodeIDs {
             result = result.filter { neighborhood.contains($0.sourceID) && neighborhood.contains($0.targetID) }
@@ -187,6 +212,8 @@ final class GraphViewState {
     private func invalidateCache() {
         cachedAllEdgeLabels = nil
         cachedEdgeCounts = nil
+        cachedNodeTypeMap = nil
+        cachedNodeIconMap = nil
         cachedNodeMap = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0) })
         invalidateVisibleCache()
     }
@@ -249,7 +276,6 @@ final class GraphViewState {
         self.document = document
         self.activeEdgeLabels = Set(document.edges.map(\.label))
         self.cachedNodeMap = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0) })
-        self.cachedVisibleNodes = []
     }
 
     // MARK: - ドキュメント更新
@@ -272,6 +298,7 @@ final class GraphViewState {
 
         layout.addNodes(addedNodeIDs)
         layout.removeNodes(removedNodeIDs)
+        layout.classNodeIDs = Set(newDocument.nodes.filter { $0.kind == .owlClass }.map(\.id))
 
         // シミュレーション再開
         if viewportSize.width > 0 {
@@ -281,20 +308,38 @@ final class GraphViewState {
 
     // MARK: - シミュレーション制御
 
+    /// alpha に応じたフレームあたり tick 数（初期は多く、収束近くは少なく）
+    private func ticksPerFrame(alpha: Double) -> Int {
+        if alpha > 0.5 { return 6 }
+        if alpha > 0.2 { return 4 }
+        if alpha > 0.05 { return 2 }
+        return 1
+    }
+
     func startSimulation(size: CGSize) {
         viewportSize = size
         let nodeIDs = document.nodes.map(\.id)
+        layout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
         layout.initialize(nodeIDs: nodeIDs, size: size)
         layout.restart()
 
         // シミュレーション中に参照するデータをキャプチャ（毎 tick の再生成を回避）
         let simEdges = document.edges
 
+        // 描画前にウォームアップ：大部分の収束を非表示で完了
+        layout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: size)
+        layoutVersion &+= 1
+
         stopSimulation()
         simulationTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let running = self.layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
+                let batchSize = self.ticksPerFrame(alpha: self.layout.alpha)
+                var running = true
+                for _ in 0..<batchSize {
+                    running = self.layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
+                    if !running { break }
+                }
                 self.layoutVersion &+= 1
                 if !running {
                     if !self.hasInitialFit {
@@ -323,7 +368,12 @@ final class GraphViewState {
         simulationTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let running = self.layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
+                let batchSize = self.ticksPerFrame(alpha: self.layout.alpha)
+                var running = true
+                for _ in 0..<batchSize {
+                    running = self.layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
+                    if !running { break }
+                }
                 self.layoutVersion &+= 1
                 if !running { return }
                 do {
@@ -373,6 +423,56 @@ final class GraphViewState {
 
     // MARK: - ノード種別グルーピング
 
+    /// rdf:type を表すエッジラベルの判定
+    private static let typeEdgeLabels: Set<String> = ["rdf:type", "type"]
+
+    /// Individual ノード ID → rdf:type ターゲット ID のマッピング
+    private var cachedNodeTypeMap: [String: Set<String>]?
+    var nodeTypeMap: [String: Set<String>] {
+        if let cached = cachedNodeTypeMap { return cached }
+        var map: [String: Set<String>] = [:]
+        for edge in document.edges where Self.typeEdgeLabels.contains(edge.label) {
+            map[edge.sourceID, default: []].insert(edge.targetID)
+        }
+        cachedNodeTypeMap = map
+        return map
+    }
+
+    /// ノード ID → プリミティブクラスに基づくアイコン名（キャッシュ済み）
+    private var cachedNodeIconMap: [String: String]?
+    var nodeIconMap: [String: String] {
+        if let cached = cachedNodeIconMap { return cached }
+        var map: [String: String] = [:]
+        for (nodeID, typeIDs) in nodeTypeMap {
+            for typeID in typeIDs {
+                let classLabel = cachedNodeMap[typeID]?.label ?? localName(typeID)
+                if let icon = GraphNodeStyle.iconName(forClassLabel: classLabel) {
+                    map[nodeID] = icon
+                    break
+                }
+            }
+        }
+        // owlClass 自身にもアイコンを設定
+        for node in document.nodes where node.kind == .owlClass {
+            if let icon = GraphNodeStyle.iconName(forClassLabel: node.label) {
+                map[node.id] = icon
+            }
+        }
+        cachedNodeIconMap = map
+        return map
+    }
+
+    /// ドキュメント内の全 Individual が持つタイプ一覧（ソート済み、フィルタ前）
+    var availableIndividualTypes: [(id: String, label: String)] {
+        var typeIDs: Set<String> = []
+        for (_, types) in nodeTypeMap {
+            typeIDs.formUnion(types)
+        }
+        return typeIDs
+            .map { id in (id: id, label: cachedNodeMap[id]?.label ?? localName(id)) }
+            .sorted { $0.label < $1.label }
+    }
+
     /// 表示中ノードを種別ごとにグループ化（空グループは除外）
     var visibleNodesByKind: [(kind: GraphNodeKind, nodes: [GraphNode])] {
         let grouped = Dictionary(grouping: visibleNodes, by: \.kind)
@@ -389,14 +489,10 @@ final class GraphViewState {
         selectedNodeID = id
     }
 
-    /// サイドバーからノードを選択し、キャンバス上で中央にフォーカスする
+    /// サイドバーからノードを選択し、キャンバス上で全ノードが収まるようにフィットする
     func focusOnNode(_ nodeID: String) {
         selectedNodeID = nodeID
-        guard let pos = layout.positions[nodeID] else { return }
-        cameraOffset = CGSize(
-            width: viewportSize.width / 2 - CGFloat(pos.x) * cameraScale,
-            height: viewportSize.height / 2 - CGFloat(pos.y) * cameraScale
-        )
+        zoomToFit()
     }
 
     func position(for nodeID: String) -> CGPoint {
@@ -421,5 +517,95 @@ final class GraphViewState {
 
     func allOutgoingEdges(for nodeID: String) -> [GraphEdge] {
         document.edges.filter { activeEdgeLabels.contains($0.label) && $0.sourceID == nodeID }
+    }
+
+    // MARK: - イベント検出
+
+    /// Date 関連のメタデータキー
+    private static let dateMetadataKeys: Set<String> = [
+        "occurredOnDate", "occurredAtTime", "startDate", "endDate"
+    ]
+
+    /// ノードがイベントかどうか判定
+    func isEventNode(_ nodeID: String) -> Bool {
+        // rdf:type でイベントクラスに属するか
+        if let types = nodeTypeMap[nodeID] {
+            for typeID in types {
+                let name = cachedNodeMap[typeID]?.label ?? localName(typeID)
+                if name.contains("Event") { return true }
+            }
+        }
+        // メタデータに日付キーがあるか
+        if let node = cachedNodeMap[nodeID] {
+            if !Self.dateMetadataKeys.isDisjoint(with: node.metadata.keys) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// 選択ノードに関連するイベントノードを日付順で取得
+    func relatedEvents(for nodeID: String) -> [(node: GraphNode, date: Date?, role: String)] {
+        var entries: [(node: GraphNode, date: Date?, role: String)] = []
+        var seen: Set<String> = []
+
+        // Incoming: event → selectedNode (例: event hasParticipant selectedNode)
+        for edge in allIncomingEdges(for: nodeID) {
+            let sourceID = edge.sourceID
+            guard !seen.contains(sourceID), isEventNode(sourceID),
+                  let eventNode = cachedNodeMap[sourceID] else { continue }
+            seen.insert(sourceID)
+            entries.append((node: eventNode, date: Self.parseEventDate(from: eventNode.metadata), role: edge.label))
+        }
+
+        // Outgoing: selectedNode → event (例: selectedNode partOf event)
+        for edge in allOutgoingEdges(for: nodeID) {
+            let targetID = edge.targetID
+            guard !seen.contains(targetID), isEventNode(targetID),
+                  let eventNode = cachedNodeMap[targetID] else { continue }
+            seen.insert(targetID)
+            entries.append((node: eventNode, date: Self.parseEventDate(from: eventNode.metadata), role: edge.label))
+        }
+
+        // 日付あり昇順 → 日付なしラベル順
+        return entries.sorted { lhs, rhs in
+            switch (lhs.date, rhs.date) {
+            case (.some(let l), .some(let r)): return l < r
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return lhs.node.label < rhs.node.label
+            }
+        }
+    }
+
+    /// メタデータから日付を抽出（occurredOnDate > startDate > endDate の優先順）
+    private static func parseEventDate(from metadata: [String: String]) -> Date? {
+        for key in ["occurredOnDate", "startDate", "endDate"] {
+            if let value = metadata[key], let date = parseXSDDate(value) {
+                return date
+            }
+        }
+        return nil
+    }
+
+    /// xsd 日付文字列を Date に変換（YYYY-MM-DD, YYYY-MM, YYYY）
+    private static func parseXSDDate(_ string: String) -> Date? {
+        let trimmed = string.trimmingCharacters(in: .whitespaces)
+        let patterns: [(format: String, regex: String)] = [
+            ("yyyy-MM-dd", "^\\d{4}-\\d{2}-\\d{2}$"),
+            ("yyyy-MM", "^\\d{4}-\\d{2}$"),
+            ("yyyy", "^\\d{4}$"),
+        ]
+        for (format, pattern) in patterns {
+            guard trimmed.range(of: pattern, options: .regularExpression) != nil else { continue }
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+        }
+        return nil
     }
 }

@@ -15,6 +15,11 @@ struct Database_StudioApp: App {
         }
         .defaultSize(width: 1100, height: 700)
 
+        Window("Event Graph", id: "event-graph") {
+            EventGraphWindowView()
+        }
+        .defaultSize(width: 1100, height: 700)
+
         Window("Map View", id: "map-view") {
             MapWindowView()
         }

@@ -29,11 +29,17 @@ final class ForceDirectedLayout {
     var repulsionStrength: Double = 800
     var centerStrength: Double = 0.02
 
+    /// class ノード同士の追加反発力倍率
+    var classRepulsionMultiplier: Double = 4.0
+
+    /// class ノード ID（外部から設定）
+    var classNodeIDs: Set<String> = []
+
     private(set) var alpha: Double = 1.0
-    var alphaDecay: Double = 0.98
+    var alphaDecay: Double = 0.95
     var alphaMin: Double = 0.01
     var velocityDecay: Double = 0.55
-    var maxIterations: Int = 500
+    var maxIterations: Int = 300
 
     // MARK: - 状態
 
@@ -62,16 +68,26 @@ final class ForceDirectedLayout {
         alpha = 1.0
         let centerX = size.width / 2
         let centerY = size.height / 2
-        let radius = min(size.width, size.height) * 0.3
+        // ノード数に応じて初期配置半径を拡大（密集を防ぐ）
+        let baseRadius = min(size.width, size.height) * 0.3
+        let radius = baseRadius * sqrt(Double(max(nodeIDs.count, 1)) / 20.0)
 
         for (i, id) in nodeIDs.enumerated() {
             let angle = (Double(i) / Double(max(nodeIDs.count, 1))) * 2 * .pi
-            let jitterX = Double.random(in: -20...20)
-            let jitterY = Double.random(in: -20...20)
+            let jitterX = Double.random(in: -30...30)
+            let jitterY = Double.random(in: -30...30)
             positions[id] = NodePosition(
                 x: centerX + cos(angle) * radius + jitterX,
                 y: centerY + sin(angle) * radius + jitterY
             )
+        }
+    }
+
+    /// 描画前に高速にシミュレーションを進めるウォームアップ
+    func warmup(nodeIDs: [String], edges: [GraphEdge], size: CGSize, iterations: Int = 80) {
+        for _ in 0..<iterations {
+            let running = tick(nodeIDs: nodeIDs, edges: edges, size: size)
+            if !running { break }
         }
     }
 
@@ -127,11 +143,50 @@ final class ForceDirectedLayout {
             }
         }
 
+        // Class 同士の追加反発力 O(C²)（C = class ノード数、通常 N より大幅に小さい）
+        if !classNodeIDs.isEmpty {
+            var classIndices: [Int] = []
+            classIndices.reserveCapacity(classNodeIDs.count)
+            for i in 0..<n where classNodeIDs.contains(nodeIDs[i]) {
+                classIndices.append(i)
+            }
+            let extraStrength = repulsionStrength * (classRepulsionMultiplier - 1.0)
+            for a in 0..<classIndices.count {
+                let ai = classIndices[a]
+                for b in (a + 1)..<classIndices.count {
+                    let bi = classIndices[b]
+                    var dx = bodyXs[bi] - bodyXs[ai]
+                    var dy = bodyYs[bi] - bodyYs[ai]
+                    var distSq = dx * dx + dy * dy
+                    if distSq < 1 {
+                        dx = Double.random(in: -1...1)
+                        dy = Double.random(in: -1...1)
+                        distSq = dx * dx + dy * dy
+                    }
+                    let dist = sqrt(distSq)
+                    let force = extraStrength * alpha / dist
+                    let fx = force * dx / dist
+                    let fy = force * dy / dist
+                    forcesX[ai] -= fx
+                    forcesY[ai] -= fy
+                    forcesX[bi] += fx
+                    forcesY[bi] += fy
+                }
+            }
+        }
+
         // Spring 引力（エッジ接続ノード間）
         var idToIndex: [String: Int] = [:]
         idToIndex.reserveCapacity(n)
         for i in 0..<n {
             idToIndex[nodeIDs[i]] = i
+        }
+
+        // ノード次数を計算（高次数ノードの接続先を遠くに配置するため）
+        var degree = [Int](repeating: 0, count: n)
+        for edge in edges {
+            if let si = idToIndex[edge.sourceID] { degree[si] += 1 }
+            if let ti = idToIndex[edge.targetID] { degree[ti] += 1 }
         }
 
         for edge in edges {
@@ -143,7 +198,11 @@ final class ForceDirectedLayout {
             let dist = sqrt(dx * dx + dy * dy)
             guard dist > 0 else { continue }
 
-            let displacement = dist - idealLength
+            // 両端の最大次数に応じて理想距離をスケール: sqrt(maxDegree) で緩やかに伸ばす
+            let maxDeg = Double(max(degree[si], degree[ti]))
+            let scaledLength = idealLength * (1.0 + 0.3 * sqrt(maxDeg))
+
+            let displacement = dist - scaledLength
             let force = springStiffness * displacement * alpha
             let fx = force * dx / dist
             let fy = force * dy / dist

@@ -47,14 +47,19 @@ struct GraphCanvas: View {
                 let cameraOffset = state.cameraOffset
                 let selectedNodeID = state.selectedNodeID
                 let mapping = state.mapping
+                let nodeIconMap = state.nodeIconMap
 
-                // ノード半径キャッシュ
+                // ノード半径キャッシュ（選択ノードは1.6倍）
                 let nodeRadiusMap: [String: CGFloat] = {
                     var m: [String: CGFloat] = [:]
                     m.reserveCapacity(visibleNodes.count)
                     for node in visibleNodes {
                         let style = GraphNodeStyle.style(for: node.kind)
-                        m[node.id] = mapping.nodeRadius(for: node, baseRadius: style.radius)
+                        var radius = mapping.nodeRadius(for: node, baseRadius: style.radius)
+                        if node.id == selectedNodeID {
+                            radius *= 1.6
+                        }
+                        m[node.id] = radius
                     }
                     return m
                 }()
@@ -168,10 +173,25 @@ struct GraphCanvas: View {
                             // エッジラベル（LOD 3 のみ — Text 生成はコストが高い）
                             if lod >= 3 {
                                 let mid = Self.quadBezier(from: src, to: tgt, control: control, t: 0.5)
+                                // カーブの接線方向から法線を求め、ラベルをカーブの外側にオフセット
+                                let tangent = Self.quadBezierTangent(from: src, to: tgt, control: control, t: 0.5)
+                                let tLen = sqrt(tangent.x * tangent.x + tangent.y * tangent.y)
+                                let labelOffset: CGFloat = 12
+                                let labelPos: CGPoint
+                                if tLen > 0 {
+                                    // 法線（左側）= (-ty, tx) / len
+                                    let nx = -tangent.y / tLen
+                                    let ny = tangent.x / tLen
+                                    // curvature の符号に合わせてラベルをカーブの外側に配置
+                                    let sign: CGFloat = curvature >= 0 ? -1 : 1
+                                    labelPos = CGPoint(x: mid.x + nx * labelOffset * sign, y: mid.y + ny * labelOffset * sign)
+                                } else {
+                                    labelPos = CGPoint(x: mid.x, y: mid.y - labelOffset)
+                                }
                                 let text = Text(edge.label)
                                     .font(.system(size: 10))
-                                    .foregroundColor(isHighlighted ? .accentColor : .secondary)
-                                context.draw(text, at: CGPoint(x: mid.x, y: mid.y - 10))
+                                    .foregroundColor(isHighlighted ? .accentColor.opacity(0.8) : .secondary.opacity(0.4))
+                                context.draw(text, at: labelPos)
                             }
                         }
                     }
@@ -223,32 +243,37 @@ struct GraphCanvas: View {
                             let isDimmed = isSearchActive && !isMatched
                             let nodeOpacity: Double = isDimmed ? 0.15 : 1.0
 
-                            // 塗りつぶし円
+                            // 塗りつぶし円（ソリッドカラー）
                             let circleRect = CGRect(
                                 x: center.x - radius, y: center.y - radius,
                                 width: radius * 2, height: radius * 2
                             )
                             let circlePath = SwiftUI.Path(ellipseIn: circleRect)
-                            context.fill(circlePath, with: .color(color.opacity((isHighlighted ? 0.5 : 0.2) * nodeOpacity)))
+                            context.fill(circlePath, with: .color(color.opacity(nodeOpacity)))
 
                             // ストローク
-                            let strokeColor: Color = isMatched ? .yellow : (isSelected ? .accentColor : color)
-                            let strokeWidth: CGFloat = isMatched ? 3 : (isSelected ? 3 : (isHighlighted ? 2.5 : 1.5))
-                            context.stroke(circlePath, with: .color(strokeColor.opacity(nodeOpacity)), lineWidth: strokeWidth)
+                            let strokeColor: Color = isMatched ? .yellow : (isSelected ? .white : color)
+                            let strokeWidth: CGFloat = isMatched ? 3 : (isSelected ? 3 : (isHighlighted ? 2.5 : 0))
+                            if strokeWidth > 0 {
+                                context.stroke(circlePath, with: .color(strokeColor.opacity(nodeOpacity)), lineWidth: strokeWidth)
+                            }
 
-                            // アイコン（LOD 3 のみ — context.draw(Text) はコスト高）
+                            // アイコン（LOD 3 のみ — 白色・太ウェイトで描画）
                             if lod >= 3 {
-                                let iconText = Text(Image(systemName: style.iconName))
-                                    .font(.system(size: radius * 0.7))
-                                    .foregroundColor(color.opacity(nodeOpacity))
+                                let icon = nodeIconMap[node.id] ?? style.iconName
+                                let iconText = Text(Image(systemName: icon))
+                                    .font(.system(size: radius * 0.7, weight: .bold))
+                                    .foregroundColor(.white.opacity(nodeOpacity))
                                 context.draw(iconText, at: center)
                             }
 
-                            // ラベル（LOD 3 のみ）
+                            // ラベル（LOD 3 のみ、選択ノードは太字・大きめ）
                             if lod >= 3 {
                                 let labelColor: Color = isMatched ? .yellow : .primary
+                                let fontSize: CGFloat = isSelected ? 13 : 11
+                                let fontWeight: Font.Weight = isSelected ? .bold : .regular
                                 let label = Text(node.label)
-                                    .font(.system(size: 11))
+                                    .font(.system(size: fontSize, weight: fontWeight))
                                     .foregroundColor(labelColor.opacity(nodeOpacity))
                                 context.draw(label, at: CGPoint(x: center.x, y: center.y + radius + 10))
                             }
@@ -372,6 +397,15 @@ struct GraphCanvas: View {
         )
     }
 
+    /// 二次ベジェ曲線の t における接線ベクトル
+    private static func quadBezierTangent(from p0: CGPoint, to p2: CGPoint, control p1: CGPoint, t: CGFloat) -> CGPoint {
+        let u = 1 - t
+        return CGPoint(
+            x: 2 * u * (p1.x - p0.x) + 2 * t * (p2.x - p1.x),
+            y: 2 * u * (p1.y - p0.y) + 2 * t * (p2.y - p1.y)
+        )
+    }
+
     private static func arrowHead(
         from source: CGPoint, to target: CGPoint, control: CGPoint,
         targetRadius: CGFloat
@@ -392,8 +426,8 @@ struct GraphCanvas: View {
 
         let ux = adx / adist
         let uy = ady / adist
-        let arrowLength: CGFloat = 10
-        let arrowWidth: CGFloat = 5
+        let arrowLength: CGFloat = 6
+        let arrowWidth: CGFloat = 3
         let baseX = tip.x - ux * arrowLength
         let baseY = tip.y - uy * arrowLength
 
@@ -425,7 +459,7 @@ private struct EdgeCurvatureMap {
                 result[edgeIDs[0]] = 0
             } else {
                 for (i, edgeID) in edgeIDs.enumerated() {
-                    let level = CGFloat((i / 2) + 1) * 0.2
+                    let level = CGFloat((i / 2) + 1) * 0.4
                     let sign: CGFloat = i.isMultiple(of: 2) ? -1 : 1
                     result[edgeID] = sign * level
                 }

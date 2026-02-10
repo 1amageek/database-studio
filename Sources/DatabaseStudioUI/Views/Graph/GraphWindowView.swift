@@ -34,3 +34,37 @@ public struct GraphWindowView: View {
         }
     }
 }
+
+// MARK: - Event Graph Window
+
+/// イベント詳細グラフウィンドウの共有状態
+@Observable @MainActor
+public final class EventGraphWindowState {
+    public static let shared = EventGraphWindowState()
+
+    public var document: GraphDocument?
+    public var focusNodeID: String?
+    public var entityName: String = ""
+
+    public init() {}
+}
+
+/// 別ウィンドウでイベントノードにフォーカスしたグラフビュー
+public struct EventGraphWindowView: View {
+    let state = EventGraphWindowState.shared
+
+    public init() {}
+
+    public var body: some View {
+        if let document = state.document {
+            GraphView(document: document, focusNodeID: state.focusNodeID, focusHops: 1)
+                .navigationTitle("\(state.entityName) – Event")
+        } else {
+            ContentUnavailableView(
+                "No Event Data",
+                systemImage: "calendar",
+                description: Text("Open an event from the Events tab in the inspector")
+            )
+        }
+    }
+}

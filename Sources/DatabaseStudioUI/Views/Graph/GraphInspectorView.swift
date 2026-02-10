@@ -1,14 +1,102 @@
 import SwiftUI
 
-/// ノード詳細 Inspector（Info + Metrics + Edges）
+/// Inspector タブの種別
+enum GraphInspectorTab: String, CaseIterable {
+    case detail = "Detail"
+    case events = "Events"
+}
+
+/// ノード詳細 Inspector（Detail + Events タブ）
 struct GraphInspectorView: View {
     let node: GraphNode
     let incomingEdges: [GraphEdge]
     let outgoingEdges: [GraphEdge]
     let allNodes: [GraphNode]
+    let documentEdges: [GraphEdge]
+    let relatedEvents: [(node: GraphNode, date: Date?, role: String)]
+    var onSelectNode: (String) -> Void = { _ in }
+
+    @State private var selectedTab: GraphInspectorTab = .detail
+
+    /// URL として認識するメタデータキー
+    private static let urlKeys: Set<String> = ["imageURL", "wikipediaURL", "officialURL"]
+
+    private var imageURL: URL? {
+        guard let urlString = node.metadata["imageURL"] else { return nil }
+        return URL(string: urlString)
+    }
+
+    private var linkEntries: [(key: String, url: URL)] {
+        node.metadata
+            .filter { Self.urlKeys.contains($0.key) && $0.key != "imageURL" }
+            .sorted(by: { $0.key < $1.key })
+            .compactMap { key, value in
+                guard let url = URL(string: value) else { return nil }
+                return (key: key, url: url)
+            }
+    }
+
+    private var regularMetadata: [(key: String, value: String)] {
+        node.metadata
+            .filter { !Self.urlKeys.contains($0.key) }
+            .sorted(by: { $0.key < $1.key })
+    }
 
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("Inspector", selection: $selectedTab) {
+                ForEach(GraphInspectorTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            switch selectedTab {
+            case .detail:
+                detailContent
+            case .events:
+                EventTimelineView(
+                    events: relatedEvents,
+                    allEdges: documentEdges,
+                    allNodes: allNodes
+                )
+            }
+        }
+    }
+
+    // MARK: - Detail Tab
+
+    private var detailContent: some View {
         List {
+            // Image
+            if let imageURL {
+                Section {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                        case .failure:
+                            Label("Failed to load image", systemImage: "photo.badge.exclamationmark")
+                                .foregroundStyle(.secondary)
+                        case .empty:
+                            ProgressView()
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowInsets(EdgeInsets())
+                }
+            }
+
             // Info
             Section("Info") {
                 LabeledContent("IRI", value: node.id)
@@ -16,10 +104,26 @@ struct GraphInspectorView: View {
                 LabeledContent("Kind", value: node.kind.displayName)
             }
 
+            // Links
+            if !linkEntries.isEmpty {
+                Section("Links") {
+                    ForEach(linkEntries, id: \.key) { entry in
+                        Link(destination: entry.url) {
+                            LabeledContent {
+                                Image(systemName: "arrow.up.right.square")
+                                    .foregroundStyle(.secondary)
+                            } label: {
+                                Text(linkDisplayName(entry.key))
+                            }
+                        }
+                    }
+                }
+            }
+
             // Metadata
-            if !node.metadata.isEmpty {
+            if !regularMetadata.isEmpty {
                 Section("Metadata") {
-                    ForEach(node.metadata.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
+                    ForEach(regularMetadata, id: \.key) { key, value in
                         LabeledContent(key, value: value)
                     }
                 }
@@ -66,13 +170,33 @@ struct GraphInspectorView: View {
             if !outgoingEdges.isEmpty {
                 Section("Outgoing (\(outgoingEdges.count))") {
                     ForEach(outgoingEdges) { edge in
-                        HStack {
-                            Text(edge.label)
-                                .foregroundStyle(.secondary)
-                                .font(.callout)
-                            Spacer()
-                            Text(nodeLabel(for: edge.targetID))
-                                .lineLimit(1)
+                        if let url = URL(string: edge.targetID), url.scheme == "http" || url.scheme == "https" {
+                            Link(destination: url) {
+                                HStack {
+                                    Text(edge.label)
+                                        .foregroundStyle(.secondary)
+                                        .font(.callout)
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right.square")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                            }
+                        } else {
+                            Button {
+                                onSelectNode(edge.targetID)
+                            } label: {
+                                HStack {
+                                    Text(edge.label)
+                                        .foregroundStyle(.secondary)
+                                        .font(.callout)
+                                    Spacer()
+                                    Text(nodeLabel(for: edge.targetID))
+                                        .lineLimit(1)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -82,13 +206,33 @@ struct GraphInspectorView: View {
             if !incomingEdges.isEmpty {
                 Section("Incoming (\(incomingEdges.count))") {
                     ForEach(incomingEdges) { edge in
-                        HStack {
-                            Text(nodeLabel(for: edge.sourceID))
-                                .lineLimit(1)
-                            Spacer()
-                            Text(edge.label)
-                                .foregroundStyle(.secondary)
-                                .font(.callout)
+                        if let url = URL(string: edge.sourceID), url.scheme == "http" || url.scheme == "https" {
+                            Link(destination: url) {
+                                HStack {
+                                    Image(systemName: "arrow.up.right.square")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                    Spacer()
+                                    Text(edge.label)
+                                        .foregroundStyle(.secondary)
+                                        .font(.callout)
+                                }
+                            }
+                        } else {
+                            Button {
+                                onSelectNode(edge.sourceID)
+                            } label: {
+                                HStack {
+                                    Text(nodeLabel(for: edge.sourceID))
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(edge.label)
+                                        .foregroundStyle(.secondary)
+                                        .font(.callout)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -119,6 +263,14 @@ struct GraphInspectorView: View {
             return "\(Int(value))"
         default:
             return String(format: "%.6f", value)
+        }
+    }
+
+    private func linkDisplayName(_ key: String) -> String {
+        switch key {
+        case "wikipediaURL": return "Wikipedia"
+        case "officialURL": return "Official Site"
+        default: return key
         }
     }
 }
