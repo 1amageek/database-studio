@@ -1,5 +1,5 @@
 {
-  "originHash" : "60caaa1295f5bc11ac3fbc327c26d0e265e16eeed62cda022387523faeaada71",
+  "originHash" : "19674600a2bc6a576c169d93a76767d6eb42e3c246e78b6c7f824797e8771c30",
   "pins" : [
     {
       "identity" : "database-kit",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/1amageek/database-kit.git",
       "state" : {
         "branch" : "main",
-        "revision" : "a2124866a861934f89ea4278aa0651bb7141e4ee"
+        "revision" : "d99bb4ddd85296f2ade8883c64541b7453758a18"
       }
     },
     {

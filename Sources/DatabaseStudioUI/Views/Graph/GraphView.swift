@@ -20,10 +20,10 @@ public struct GraphView: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
         } detail: {
             detailContent
-                .inspector(isPresented: $showInspector) {
-                    inspectorContent
-                        .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
-                }
+        }
+        .inspector(isPresented: $showInspector) {
+            inspectorContent
+                .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
         }
         .navigationSubtitle(toolbarSubtitle)
         .toolbar {

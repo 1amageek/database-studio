@@ -101,6 +101,7 @@ final class GraphViewState {
     var cameraOffset: CGSize = .zero
     var cameraScale: CGFloat = 1.0
     var viewportSize: CGSize = .zero
+    private var hasUserAdjustedCamera = false
 
     // MARK: - レイアウトバージョン（Canvas 再描画トリガー）
 
@@ -218,7 +219,12 @@ final class GraphViewState {
 
                 self.layoutVersion &+= 1
 
-                if rawT >= 1.0 { return }
+                if rawT >= 1.0 {
+                    if self.viewportSize.width > 0, self.viewportSize.height > 0 {
+                        self.resumeSimulation(size: self.viewportSize)
+                    }
+                    return
+                }
 
                 do {
                     try await Task.sleep(for: .milliseconds(16))
@@ -240,28 +246,54 @@ final class GraphViewState {
         a + (b - a) * t
     }
 
+    /// 外れ値の影響を抑えたバウンディングボックス
+    private func robustBounds(for values: [NodePosition]) -> (minX: Double, maxX: Double, minY: Double, maxY: Double)? {
+        let finite = values.filter { $0.x.isFinite && $0.y.isFinite }
+        guard !finite.isEmpty else { return nil }
+
+        var xs = finite.map(\.x)
+        var ys = finite.map(\.y)
+        xs.sort()
+        ys.sort()
+
+        if xs.count >= 50 {
+            let trim = max(1, xs.count / 40) // 2.5%
+            let low = trim
+            let high = xs.count - 1 - trim
+            if low < high {
+                return (xs[low], xs[high], ys[low], ys[high])
+            }
+        }
+
+        return (xs.first!, xs.last!, ys.first!, ys.last!)
+    }
+
     /// 指定位置群に対する zoomToFit カメラ状態を計算（適用はしない）
     private func computeCamera(
         for positions: [String: NodePosition],
         padding: CGFloat = 60
     ) -> (offset: CGSize, scale: CGFloat) {
         let vals = Array(positions.values)
-        guard !vals.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else {
+        guard !vals.isEmpty, viewportSize.width > 0, viewportSize.height > 0,
+              let bounds = robustBounds(for: vals) else {
             return (offset: cameraOffset, scale: cameraScale)
         }
-        let minX = vals.map(\.x).min()!
-        let maxX = vals.map(\.x).max()!
-        let minY = vals.map(\.y).min()!
-        let maxY = vals.map(\.y).max()!
+        let minX = bounds.minX
+        let maxX = bounds.maxX
+        let minY = bounds.minY
+        let maxY = bounds.maxY
 
         let gw = maxX - minX
         let gh = maxY - minY
         let aw = Double(viewportSize.width) - Double(padding) * 2
         let ah = Double(viewportSize.height) - Double(padding) * 2
+        guard aw > 1, ah > 1 else {
+            return (offset: cameraOffset, scale: cameraScale)
+        }
 
         let sx = gw > 0 ? aw / gw : 2.0
         let sy = gh > 0 ? ah / gh : 2.0
-        let scale = CGFloat(min(sx, sy, 2.0))
+        let scale = CGFloat(max(0.08, min(sx, sy, 2.0)))
 
         let cx = (minX + maxX) / 2
         let cy = (minY + maxY) / 2
@@ -488,6 +520,37 @@ final class GraphViewState {
         }
     }
 
+    // MARK: - Viewport / Camera
+
+    func markUserAdjustedCamera() {
+        hasUserAdjustedCamera = true
+    }
+
+    /// Viewport 変化時の初期化・再レイアウトを一元化
+    func handleViewportChange(from oldSize: CGSize, to newSize: CGSize) {
+        viewportSize = newSize
+        guard newSize.width > 0, newSize.height > 0 else { return }
+
+        // 初回有効サイズ: シミュレーション開始
+        if !hasInitialFit || oldSize.width <= 0 || oldSize.height <= 0 {
+            startSimulation(size: newSize)
+            return
+        }
+
+        // 実質変化がない場合は何もしない
+        let dw = abs(newSize.width - oldSize.width)
+        let dh = abs(newSize.height - oldSize.height)
+        guard dw > 8 || dh > 8 else { return }
+
+        // ユーザーがカメラ未操作ならサイズ変化後に再フィット
+        if !hasUserAdjustedCamera {
+            zoomToFit()
+        }
+
+        // サイズ変化後の緩和
+        resumeSimulation(size: newSize)
+    }
+
     // MARK: - シミュレーション制御
 
     /// alpha に応じたフレームあたり tick 数（初期は多く、収束近くは少なく）
@@ -498,8 +561,16 @@ final class GraphViewState {
         return 1
     }
 
+    /// 大規模グラフほど warmup を増やし、初期表示の崩れを抑える
+    private func warmupIterations(for nodeCount: Int) -> Int {
+        let count = max(nodeCount, 2)
+        let scaled = 60 + Int(log2(Double(count)) * 22)
+        return min(220, max(60, scaled))
+    }
+
     func startSimulation(size: CGSize) {
         viewportSize = size
+        hasUserAdjustedCamera = false
         let nodeIDs = document.nodes.map(\.id)
         fullLayout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
         fullLayout.initialize(nodeIDs: nodeIDs, size: size)
@@ -509,10 +580,24 @@ final class GraphViewState {
         let simEdges = document.edges
 
         // 描画前にウォームアップ：大部分の収束を非表示で完了
-        fullLayout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: size)
+        fullLayout.warmup(
+            nodeIDs: nodeIDs,
+            edges: simEdges,
+            size: size,
+            iterations: warmupIterations(for: nodeIDs.count)
+        )
+        // warmup で減衰した alpha を戻し、初回表示後も自動で十分に緩和させる
+        fullLayout.reheat(alpha: 0.35)
         layoutVersion &+= 1
         hasInitialFit = true
         zoomToFit()
+
+        // 初回表示時に focus モードが先に有効化されていた場合でも、
+        // viewport が確定したこの時点で focusLayout を必ず構築する。
+        if isFocusMode {
+            updateFocusLayout()
+            return
+        }
 
         stopSimulation()
         simulationTask = Task { [weak self] in
@@ -581,22 +666,23 @@ final class GraphViewState {
     func zoomToFit(padding: CGFloat = 60) {
         let nodeIDs = visibleNodeIDs
         let nodePositions = nodeIDs.compactMap { activeLayout.positions[$0] }
-        guard !nodePositions.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
-
-        let minX = nodePositions.map(\.x).min()!
-        let maxX = nodePositions.map(\.x).max()!
-        let minY = nodePositions.map(\.y).min()!
-        let maxY = nodePositions.map(\.y).max()!
+        guard !nodePositions.isEmpty, viewportSize.width > 0, viewportSize.height > 0,
+              let bounds = robustBounds(for: nodePositions) else { return }
+        let minX = bounds.minX
+        let maxX = bounds.maxX
+        let minY = bounds.minY
+        let maxY = bounds.maxY
 
         let graphWidth = maxX - minX
         let graphHeight = maxY - minY
 
         let availableWidth = Double(viewportSize.width) - Double(padding) * 2
         let availableHeight = Double(viewportSize.height) - Double(padding) * 2
+        guard availableWidth > 1, availableHeight > 1 else { return }
 
         let scaleX = graphWidth > 0 ? availableWidth / graphWidth : 2.0
         let scaleY = graphHeight > 0 ? availableHeight / graphHeight : 2.0
-        cameraScale = CGFloat(min(scaleX, scaleY, 2.0))
+        cameraScale = CGFloat(max(0.08, min(scaleX, scaleY, 2.0)))
 
         let centerX = (minX + maxX) / 2
         let centerY = (minY + maxY) / 2

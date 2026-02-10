@@ -22,10 +22,12 @@ struct GraphCanvas: View {
 
             CanvasHostView(
                 onScroll: { dx, dy in
+                    state.markUserAdjustedCamera()
                     state.cameraOffset.width += dx
                     state.cameraOffset.height += dy
                 },
                 onMagnify: { delta, cursorPoint in
+                    state.markUserAdjustedCamera()
                     let oldScale = state.cameraScale
                     let newScale = max(0.05, min(5.0, oldScale * (1 + delta)))
                     let ratio = newScale / oldScale
@@ -324,11 +326,10 @@ struct GraphCanvas: View {
                 backgroundContextMenu
             }
             .onAppear {
-                state.viewportSize = size
-                state.startSimulation(size: size)
+                state.handleViewportChange(from: .zero, to: size)
             }
-            .onChange(of: size) { _, newSize in
-                state.viewportSize = newSize
+            .onChange(of: size) { oldSize, newSize in
+                state.handleViewportChange(from: oldSize, to: newSize)
             }
             .onDisappear {
                 state.stopSimulation()

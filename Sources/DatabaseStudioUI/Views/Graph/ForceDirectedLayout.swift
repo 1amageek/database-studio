@@ -32,6 +32,12 @@ final class ForceDirectedLayout {
     /// class ノード同士の追加反発力倍率
     var classRepulsionMultiplier: Double = 4.0
 
+    /// ノード同士の重なりを防ぐ最小距離
+    var minimumNodeDistance: Double = 56
+
+    /// 衝突回避力の強さ
+    var collisionStrength: Double = 0.7
+
     /// 度数に応じた理想距離スケール係数（0 = 全エッジ均一長）
     var degreeScaleFactor: Double = 0.3
 
@@ -58,6 +64,7 @@ final class ForceDirectedLayout {
     private var forcesY: [Double] = []
     private var qtNodes: [QTNode] = []
     private var qtCount: Int = 0
+    private var collisionBuckets: [Int64: [Int]] = [:]
 
     /// Barnes-Hut approximation parameter (theta)
     /// 0.0 = exact N-body, 1.0 = aggressive approximation
@@ -125,6 +132,14 @@ final class ForceDirectedLayout {
 
         let centerX = size.width / 2
         let centerY = size.height / 2
+        let nDouble = Double(n)
+        let area = max(1.0, Double(size.width * size.height))
+        let densitySpacing = sqrt(area / nDouble)
+        let baseLength = min(idealLength, max(40.0, densitySpacing * 0.9))
+        let maxScaledLength = baseLength * 2.5
+        let repulsionScale = min(1.0, sqrt(40.0 / nDouble))
+        let scaledRepulsion = repulsionStrength * repulsionScale
+        let collisionDistance = max(minimumNodeDistance, baseLength * 0.9)
 
         // バッファサイズ調整
         if bodyXs.count < n {
@@ -136,9 +151,17 @@ final class ForceDirectedLayout {
 
         // 位置を並列配列にコピー + 力をリセット
         for i in 0..<n {
-            if let pos = positions[nodeIDs[i]] {
+            let id = nodeIDs[i]
+            if let pos = positions[id], pos.x.isFinite, pos.y.isFinite {
                 bodyXs[i] = pos.x
                 bodyYs[i] = pos.y
+            } else {
+                // NaN/inf が入ったノードは中心付近に戻してシミュレーションを継続する
+                let fallbackX = centerX + Double.random(in: -20...20)
+                let fallbackY = centerY + Double.random(in: -20...20)
+                bodyXs[i] = fallbackX
+                bodyYs[i] = fallbackY
+                positions[id] = NodePosition(x: fallbackX, y: fallbackY)
             }
             forcesX[i] = 0
             forcesY[i] = 0
@@ -152,6 +175,7 @@ final class ForceDirectedLayout {
                 computeRepulsion(
                     nodeIdx: 0, bx: bodyXs[i], by: bodyYs[i],
                     bodyIndex: i, thetaSq: thetaSq,
+                    repulsionStrength: scaledRepulsion,
                     fx: &forcesX[i], fy: &forcesY[i]
                 )
             }
@@ -168,7 +192,7 @@ final class ForceDirectedLayout {
             for i in 0..<n where classNodeIDs.contains(nodeIDs[i]) {
                 classIndices.append(i)
             }
-            let extraStrength = repulsionStrength * (classRepulsionMultiplier - 1.0)
+            let extraStrength = scaledRepulsion * (classRepulsionMultiplier - 1.0)
             for a in 0..<classIndices.count {
                 let ai = classIndices[a]
                 for b in (a + 1)..<classIndices.count {
@@ -218,7 +242,10 @@ final class ForceDirectedLayout {
 
             // 両端の最大次数に応じて理想距離をスケール: sqrt(maxDegree) で緩やかに伸ばす
             let maxDeg = Double(max(degree[si], degree[ti]))
-            let scaledLength = idealLength * (1.0 + degreeScaleFactor * sqrt(maxDeg))
+            let scaledLength = min(
+                baseLength * (1.0 + degreeScaleFactor * sqrt(maxDeg)),
+                maxScaledLength
+            )
 
             let displacement = dist - scaledLength
             let force = springStiffness * displacement * alpha
@@ -239,7 +266,23 @@ final class ForceDirectedLayout {
             forcesY[i] += dy * centerStrength * alpha
         }
 
+        // 衝突回避（空間ハッシュで近傍のみ評価）
+        if n > 1 {
+            applyCollisionForces(
+                count: n,
+                minDistance: collisionDistance,
+                strength: collisionStrength
+            )
+        }
+
         // 速度・位置更新
+        let worldLimit = max(Double(size.width), Double(size.height)) * 8.0
+        let minXBound = centerX - worldLimit
+        let maxXBound = centerX + worldLimit
+        let minYBound = centerY - worldLimit
+        let maxYBound = centerY + worldLimit
+        let maxVelocity = max(120.0, worldLimit * 0.2)
+
         for i in 0..<n {
             let id = nodeIDs[i]
             guard var pos = positions[id], !pos.pinned else { continue }
@@ -247,8 +290,22 @@ final class ForceDirectedLayout {
             pos.velocityX = (pos.velocityX + forcesX[i]) * velocityDecay
             pos.velocityY = (pos.velocityY + forcesY[i]) * velocityDecay
 
+            if !pos.velocityX.isFinite { pos.velocityX = 0 }
+            if !pos.velocityY.isFinite { pos.velocityY = 0 }
+            pos.velocityX = min(max(pos.velocityX, -maxVelocity), maxVelocity)
+            pos.velocityY = min(max(pos.velocityY, -maxVelocity), maxVelocity)
+
             pos.x += pos.velocityX
             pos.y += pos.velocityY
+            if !pos.x.isFinite || !pos.y.isFinite {
+                pos.x = centerX + Double.random(in: -20...20)
+                pos.y = centerY + Double.random(in: -20...20)
+                pos.velocityX = 0
+                pos.velocityY = 0
+            } else {
+                pos.x = min(max(pos.x, minXBound), maxXBound)
+                pos.y = min(max(pos.y, minYBound), maxYBound)
+            }
 
             positions[id] = pos
         }
@@ -310,13 +367,13 @@ final class ForceDirectedLayout {
         }
     }
 
-    func reheat() {
+    func reheat(alpha targetAlpha: Double = 0.15) {
         for id in positions.keys {
             positions[id]?.velocityX = 0
             positions[id]?.velocityY = 0
         }
         iteration = 0
-        alpha = 0.15
+        alpha = max(targetAlpha, alphaMin * 2)
         isRunning = true
     }
 
@@ -466,7 +523,7 @@ final class ForceDirectedLayout {
     /// Quadtree を再帰走査して反発力を近似計算
     private func computeRepulsion(
         nodeIdx: Int, bx: Double, by: Double, bodyIndex: Int,
-        thetaSq: Double, fx: inout Double, fy: inout Double
+        thetaSq: Double, repulsionStrength: Double, fx: inout Double, fy: inout Double
     ) {
         let node = qtNodes[nodeIdx]
         guard node.mass > 0 else { return }
@@ -496,9 +553,100 @@ final class ForceDirectedLayout {
         }
 
         // 子ノードに再帰
-        if node.nw >= 0 { computeRepulsion(nodeIdx: Int(node.nw), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, fx: &fx, fy: &fy) }
-        if node.ne >= 0 { computeRepulsion(nodeIdx: Int(node.ne), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, fx: &fx, fy: &fy) }
-        if node.sw >= 0 { computeRepulsion(nodeIdx: Int(node.sw), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, fx: &fx, fy: &fy) }
-        if node.se >= 0 { computeRepulsion(nodeIdx: Int(node.se), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, fx: &fx, fy: &fy) }
+        if node.nw >= 0 { computeRepulsion(nodeIdx: Int(node.nw), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, repulsionStrength: repulsionStrength, fx: &fx, fy: &fy) }
+        if node.ne >= 0 { computeRepulsion(nodeIdx: Int(node.ne), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, repulsionStrength: repulsionStrength, fx: &fx, fy: &fy) }
+        if node.sw >= 0 { computeRepulsion(nodeIdx: Int(node.sw), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, repulsionStrength: repulsionStrength, fx: &fx, fy: &fy) }
+        if node.se >= 0 { computeRepulsion(nodeIdx: Int(node.se), bx: bx, by: by, bodyIndex: bodyIndex, thetaSq: thetaSq, repulsionStrength: repulsionStrength, fx: &fx, fy: &fy) }
+    }
+
+    // MARK: - Collision Avoidance
+
+    private func applyCollisionForces(count n: Int, minDistance: Double, strength: Double) {
+        guard minDistance.isFinite, minDistance > 0, strength.isFinite, strength > 0 else { return }
+
+        collisionBuckets.removeAll(keepingCapacity: true)
+        collisionBuckets.reserveCapacity(n * 2)
+
+        let minDistSq = minDistance * minDistance
+
+        for i in 0..<n {
+            let key = collisionCellKey(x: bodyXs[i], y: bodyYs[i], cellSize: minDistance)
+            collisionBuckets[key, default: []].append(i)
+        }
+
+        for i in 0..<n {
+            let (cellX, cellY) = collisionCell(x: bodyXs[i], y: bodyYs[i], cellSize: minDistance)
+
+            for ox in -1...1 {
+                for oy in -1...1 {
+                    let neighborKey = collisionPackedKey(
+                        x: saturatedAdd(cellX, Int32(ox)),
+                        y: saturatedAdd(cellY, Int32(oy))
+                    )
+                    guard let neighborIndices = collisionBuckets[neighborKey] else { continue }
+
+                    for j in neighborIndices where j > i {
+                        var dx = bodyXs[j] - bodyXs[i]
+                        var dy = bodyYs[j] - bodyYs[i]
+                        var distSq = dx * dx + dy * dy
+
+                        if distSq >= minDistSq { continue }
+                        if distSq < 1 {
+                            dx = Double.random(in: -1...1)
+                            dy = Double.random(in: -1...1)
+                            distSq = dx * dx + dy * dy
+                        }
+
+                        if distSq <= 0 || !distSq.isFinite { continue }
+                        let dist = sqrt(distSq)
+                        if dist <= 0 || !dist.isFinite { continue }
+                        let penetration = minDistance - dist
+                        if penetration <= 0 { continue }
+
+                        let force = penetration * strength
+                        if !force.isFinite { continue }
+                        let fx = force * dx / dist
+                        let fy = force * dy / dist
+
+                        forcesX[i] -= fx
+                        forcesY[i] -= fy
+                        forcesX[j] += fx
+                        forcesY[j] += fy
+                    }
+                }
+            }
+        }
+    }
+
+    private func collisionCell(x: Double, y: Double, cellSize: Double) -> (x: Int32, y: Int32) {
+        guard cellSize.isFinite, cellSize > 0 else { return (0, 0) }
+        let scaledX = floor(x / cellSize)
+        let scaledY = floor(y / cellSize)
+        let cx = clampedInt32(from: scaledX)
+        let cy = clampedInt32(from: scaledY)
+        return (cx, cy)
+    }
+
+    private func collisionCellKey(x: Double, y: Double, cellSize: Double) -> Int64 {
+        let cell = collisionCell(x: x, y: y, cellSize: cellSize)
+        return collisionPackedKey(x: cell.x, y: cell.y)
+    }
+
+    private func collisionPackedKey(x: Int32, y: Int32) -> Int64 {
+        (Int64(x) << 32) ^ Int64(UInt32(bitPattern: y))
+    }
+
+    private func clampedInt32(from value: Double) -> Int32 {
+        guard value.isFinite else { return 0 }
+        if value <= Double(Int32.min) { return Int32.min }
+        if value >= Double(Int32.max) { return Int32.max }
+        return Int32(value)
+    }
+
+    private func saturatedAdd(_ lhs: Int32, _ rhs: Int32) -> Int32 {
+        let sum = Int64(lhs) + Int64(rhs)
+        if sum <= Int64(Int32.min) { return Int32.min }
+        if sum >= Int64(Int32.max) { return Int32.max }
+        return Int32(sum)
     }
 }
