@@ -48,6 +48,7 @@ struct GraphCanvas: View {
                 let selectedNodeID = state.selectedNodeID
                 let mapping = state.mapping
                 let nodeIconMap = state.nodeIconMap
+                let nodeColorMap = state.nodeColorMap
 
                 // ノード半径キャッシュ（選択ノードは1.6倍）
                 let nodeRadiusMap: [String: CGFloat] = {
@@ -65,7 +66,7 @@ struct GraphCanvas: View {
                 }()
 
                 // Pre-computed screen positions（embedding-atlas pattern: 座標変換は1回だけ）
-                let layoutPositions = state.layout.positions
+                let layoutPositions = state.activeLayout.positions
                 let screenPositions: [String: CGPoint] = {
                     var sp: [String: CGPoint] = [:]
                     sp.reserveCapacity(layoutPositions.count)
@@ -212,10 +213,11 @@ struct GraphCanvas: View {
                                center.y < viewMinY || center.y > viewMaxY { continue }
 
                             let style = GraphNodeStyle.style(for: node.kind)
-                            let color = mapping.nodeColor(for: node, defaultColor: style.color)
+                            let baseColor = nodeColorMap[node.id] ?? style.color
+                            let color = mapping.nodeColor(for: node, defaultColor: baseColor)
                             let isHL = node.isHighlighted || highlightedPath.contains(node.id)
                             let isDimmed = isSearchActive && !searchMatched.contains(node.id)
-                            let opacity: Double = isDimmed ? 0.15 : (isHL ? 1.0 : 0.7)
+                            let opacity: Double = isDimmed ? 0.15 : 1.0
 
                             let r = isHL ? dotRadius * 1.5 : dotRadius
                             let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
@@ -236,7 +238,8 @@ struct GraphCanvas: View {
                             if center.x + cullMargin < viewMinX || center.x - cullMargin > viewMaxX ||
                                center.y + cullMargin < viewMinY || center.y - cullMargin > viewMaxY { continue }
 
-                            let color = mapping.nodeColor(for: node, defaultColor: style.color)
+                            let baseColor = nodeColorMap[node.id] ?? style.color
+                            let color = mapping.nodeColor(for: node, defaultColor: baseColor)
                             let isSelected = selectedNodeID == node.id
                             let isHighlighted = node.isHighlighted || highlightedPath.contains(node.id)
                             let isMatched = searchMatched.contains(node.id)
@@ -294,13 +297,13 @@ struct GraphCanvas: View {
                             }
                             if let nodeID = draggingNodeID {
                                 let raw = inverseTransform(value.location, scale: cameraScale, offset: cameraOffset)
-                                state.layout.pin(nodeID, at: raw)
+                                state.activeLayout.pin(nodeID, at: raw)
                                 state.bumpLayoutVersion()
                             }
                         }
                         .onEnded { _ in
                             if let nodeID = draggingNodeID {
-                                state.layout.unpin(nodeID)
+                                state.activeLayout.unpin(nodeID)
                                 state.resumeSimulation(size: size)
                             }
                             draggingNodeID = nil

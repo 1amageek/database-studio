@@ -21,10 +21,19 @@ struct GraphNodeStyle {
         }
     }
 
-    /// プリミティブクラス名からアイコンを解決（Individual ノード用）
-    /// typeClassLabel は rdf:type で指すクラスのラベル（localName）
+    /// プリミティブクラス名からアイコンを解決
     static func iconName(forClassLabel label: String) -> String? {
         primitiveClassIcons[label]
+    }
+
+    /// プリミティブクラス名から色を解決
+    static func color(forClassLabel label: String) -> Color? {
+        primitiveClassColors[label]
+    }
+
+    /// プリミティブクラスかどうか判定
+    static func isPrimitiveClass(_ label: String) -> Bool {
+        primitiveClassColors[label] != nil
     }
 
     /// プリミティブクラス → SF Symbol マッピング
@@ -42,5 +51,22 @@ struct GraphNodeStyle {
         "CreativeWork": "doc.richtext.fill",
         "Facility":     "building.columns.fill",
         "Market":       "chart.line.uptrend.xyaxis",
+    ]
+
+    /// プリミティブクラス → 色マッピング
+    private static let primitiveClassColors: [String: Color] = [
+        "Thing":        Color(.sRGB, red: 0.55, green: 0.55, blue: 0.55, opacity: 1),  // グレー
+        "Person":       Color(.sRGB, red: 0.30, green: 0.69, blue: 0.31, opacity: 1),  // グリーン
+        "Organization": Color(.sRGB, red: 0.25, green: 0.47, blue: 0.85, opacity: 1),  // ブルー
+        "Place":        Color(.sRGB, red: 0.90, green: 0.49, blue: 0.13, opacity: 1),  // オレンジ
+        "Event":        Color(.sRGB, red: 0.85, green: 0.26, blue: 0.33, opacity: 1),  // レッド
+        "Product":      Color(.sRGB, red: 0.61, green: 0.35, blue: 0.71, opacity: 1),  // パープル
+        "Service":      Color(.sRGB, red: 0.00, green: 0.74, blue: 0.83, opacity: 1),  // シアン
+        "Technology":   Color(.sRGB, red: 0.13, green: 0.59, blue: 0.95, opacity: 1),  // ライトブルー
+        "Industry":     Color(.sRGB, red: 0.47, green: 0.33, blue: 0.28, opacity: 1),  // ブラウン
+        "Concept":      Color(.sRGB, red: 0.96, green: 0.76, blue: 0.07, opacity: 1),  // イエロー
+        "CreativeWork": Color(.sRGB, red: 0.91, green: 0.44, blue: 0.67, opacity: 1),  // ピンク
+        "Facility":     Color(.sRGB, red: 0.40, green: 0.58, blue: 0.42, opacity: 1),  // セージグリーン
+        "Market":       Color(.sRGB, red: 0.00, green: 0.59, blue: 0.53, opacity: 1),  // ティール
     ]
 }

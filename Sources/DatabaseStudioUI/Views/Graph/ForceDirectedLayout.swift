@@ -32,6 +32,9 @@ final class ForceDirectedLayout {
     /// class ノード同士の追加反発力倍率
     var classRepulsionMultiplier: Double = 4.0
 
+    /// 度数に応じた理想距離スケール係数（0 = 全エッジ均一長）
+    var degreeScaleFactor: Double = 0.3
+
     /// class ノード ID（外部から設定）
     var classNodeIDs: Set<String> = []
 
@@ -62,24 +65,39 @@ final class ForceDirectedLayout {
 
     // MARK: - 初期化
 
-    func initialize(nodeIDs: [String], size: CGSize) {
+    func initialize(nodeIDs: [String], size: CGSize, initialPositions: [String: NodePosition]? = nil) {
         positions = [:]
         iteration = 0
         alpha = 1.0
         let centerX = size.width / 2
         let centerY = size.height / 2
-        // ノード数に応じて初期配置半径を拡大（密集を防ぐ）
-        let baseRadius = min(size.width, size.height) * 0.3
-        let radius = baseRadius * sqrt(Double(max(nodeIDs.count, 1)) / 20.0)
 
-        for (i, id) in nodeIDs.enumerated() {
-            let angle = (Double(i) / Double(max(nodeIDs.count, 1))) * 2 * .pi
-            let jitterX = Double.random(in: -30...30)
-            let jitterY = Double.random(in: -30...30)
-            positions[id] = NodePosition(
-                x: centerX + cos(angle) * radius + jitterX,
-                y: centerY + sin(angle) * radius + jitterY
-            )
+        if let initial = initialPositions {
+            // 既存位置を引き継ぎ（レイアウト遷移用）
+            for id in nodeIDs {
+                if let pos = initial[id] {
+                    positions[id] = NodePosition(x: pos.x, y: pos.y)
+                } else {
+                    positions[id] = NodePosition(
+                        x: centerX + Double.random(in: -50...50),
+                        y: centerY + Double.random(in: -50...50)
+                    )
+                }
+            }
+        } else {
+            // ノード数に応じて初期配置半径を拡大（密集を防ぐ）
+            let baseRadius = min(size.width, size.height) * 0.3
+            let radius = baseRadius * sqrt(Double(max(nodeIDs.count, 1)) / 20.0)
+
+            for (i, id) in nodeIDs.enumerated() {
+                let angle = (Double(i) / Double(max(nodeIDs.count, 1))) * 2 * .pi
+                let jitterX = Double.random(in: -30...30)
+                let jitterY = Double.random(in: -30...30)
+                positions[id] = NodePosition(
+                    x: centerX + cos(angle) * radius + jitterX,
+                    y: centerY + sin(angle) * radius + jitterY
+                )
+            }
         }
     }
 
@@ -200,7 +218,7 @@ final class ForceDirectedLayout {
 
             // 両端の最大次数に応じて理想距離をスケール: sqrt(maxDegree) で緩やかに伸ばす
             let maxDeg = Double(max(degree[si], degree[ti]))
-            let scaledLength = idealLength * (1.0 + 0.3 * sqrt(maxDeg))
+            let scaledLength = idealLength * (1.0 + degreeScaleFactor * sqrt(maxDeg))
 
             let displacement = dist - scaledLength
             let force = springStiffness * displacement * alpha
@@ -261,6 +279,11 @@ final class ForceDirectedLayout {
         isRunning = true
     }
 
+    /// 位置を直接設定（放射レイアウト等で使用）
+    func setPositions(_ newPositions: [String: NodePosition]) {
+        positions = newPositions
+    }
+
     func addNodes(_ newNodeIDs: [String]) {
         guard !newNodeIDs.isEmpty else { return }
         let existing = positions.values
@@ -295,6 +318,17 @@ final class ForceDirectedLayout {
         iteration = 0
         alpha = 0.15
         isRunning = true
+    }
+
+    /// 他レイアウトの位置を既存ノードにマージ（遷移アニメーション用）
+    func mergePositions(from other: [String: NodePosition]) {
+        for (id, pos) in other {
+            guard positions[id] != nil else { continue }
+            positions[id]?.x = pos.x
+            positions[id]?.y = pos.y
+            positions[id]?.velocityX = 0
+            positions[id]?.velocityY = 0
+        }
     }
 
     // MARK: - Barnes-Hut Quadtree

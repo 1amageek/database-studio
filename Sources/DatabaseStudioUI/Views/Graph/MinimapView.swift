@@ -9,7 +9,7 @@ struct MinimapView: View {
     var body: some View {
         let nodes = state.visibleNodes
         let positions = nodes.compactMap { node -> (id: String, pos: CGPoint)? in
-            guard let pos = state.layout.positions[node.id] else { return nil }
+            guard let pos = state.activeLayout.positions[node.id] else { return nil }
             return (node.id, CGPoint(x: pos.x, y: pos.y))
         }
 
@@ -34,13 +34,14 @@ struct MinimapView: View {
             let offsetX = padding + (drawW - graphWidth * scale) / 2
             let offsetY = padding + (drawH - graphHeight * scale) / 2
 
-            // ノードをドットで描画
+            // ノードをドットで描画（プリミティブクラス色を反映）
+            let colorMap = state.nodeColorMap
             for (id, pos) in positions {
                 let x = (pos.x - minX) * scale + offsetX
                 let y = (pos.y - minY) * scale + offsetY
                 let node = nodes.first { $0.id == id }
                 let style = node.map { GraphNodeStyle.style(for: $0.kind) }
-                let color = style?.color ?? .gray
+                let color = colorMap[id] ?? style?.color ?? .gray
                 let dotSize: CGFloat = 3
                 let rect = CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize)
                 context.fill(Circle().path(in: rect), with: .color(color))

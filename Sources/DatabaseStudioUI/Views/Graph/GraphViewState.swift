@@ -9,7 +9,22 @@ final class GraphViewState {
     var document: GraphDocument {
         didSet { invalidateCache() }
     }
-    let layout: ForceDirectedLayout = ForceDirectedLayout()
+
+    /// フルグラフ用レイアウト（サーチ中も位置を保持）
+    let fullLayout: ForceDirectedLayout = ForceDirectedLayout()
+
+    /// サーチフィルタ用レイアウト（独立インスタンス）
+    let focusLayout: ForceDirectedLayout = ForceDirectedLayout()
+
+    /// フォーカスモード判定（ノード選択 or 検索でサブセット表示中）
+    var isFocusMode: Bool {
+        (selectedNodeID != nil && focusHops > 0) || isSearchActive
+    }
+
+    /// 現在アクティブなレイアウト（フォーカスモード中は focusLayout）
+    var activeLayout: ForceDirectedLayout {
+        isFocusMode ? focusLayout : fullLayout
+    }
 
     // MARK: - ビジュアルマッピング
 
@@ -18,7 +33,10 @@ final class GraphViewState {
     // MARK: - 選択
 
     var selectedNodeID: String? {
-        didSet { invalidateVisibleCache() }
+        didSet {
+            invalidateVisibleCache()
+            updateFocusLayout()
+        }
     }
 
     var selectedNode: GraphNode? {
@@ -30,7 +48,10 @@ final class GraphViewState {
 
     /// 選択ノードから何ホップの近傍を表示するか（0 = 全ノード表示）
     var focusHops: Int = 1 {
-        didSet { invalidateVisibleCache() }
+        didSet {
+            invalidateVisibleCache()
+            updateFocusLayout()
+        }
     }
 
     private var cachedNeighborhoodNodeIDs: Set<String>?
@@ -95,7 +116,160 @@ final class GraphViewState {
     // MARK: - 検索
 
     var searchText: String = "" {
-        didSet { cachedSearchMatchedNodeIDs = nil }
+        didSet {
+            cachedSearchMatchedNodeIDs = nil
+            invalidateVisibleCache()
+            updateFocusLayout()
+        }
+    }
+
+    /// フォーカスモードの切り替えに応じてレイアウトを更新
+    private func updateFocusLayout() {
+        if isFocusMode {
+            enterFocusMode()
+        } else {
+            exitFocusMode()
+        }
+    }
+
+    /// フォーカスモード突入: warmup で目標位置を計算 → 補間アニメーション
+    private func enterFocusMode() {
+        let nodeIDs = Array(visibleNodeIDs)
+        guard !nodeIDs.isEmpty, viewportSize.width > 0 else { return }
+
+        // 1. 現在の表示位置をキャプチャ
+        var startPositions = fullLayout.positions
+        for (id, pos) in focusLayout.positions {
+            startPositions[id] = pos
+        }
+
+        // 2. 目標位置を warmup で事前計算（フレッシュな円周配置から収束させる）
+        let simEdges = visibleEdges
+        focusLayout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
+        focusLayout.initialize(nodeIDs: nodeIDs, size: viewportSize)
+        focusLayout.restart()
+        focusLayout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: viewportSize)
+        let targetPositions = focusLayout.positions
+
+        // 3. 補間アニメーション（embedding-atlas パターン）
+        animateLayoutTransition(
+            from: startPositions,
+            to: targetPositions,
+            layout: focusLayout
+        )
+    }
+
+    /// フォーカスモード解除: fullLayout の既存位置へ補間アニメーション
+    private func exitFocusMode() {
+        let startPositions = focusLayout.positions
+        let targetPositions = fullLayout.positions
+
+        animateLayoutTransition(
+            from: startPositions,
+            to: targetPositions,
+            layout: fullLayout
+        )
+    }
+
+    // MARK: - レイアウト遷移アニメーション (embedding-atlas inspired)
+
+    /// 位置 + カメラを cubicOut easing で補間するアニメーションループ
+    private func animateLayoutTransition(
+        from startPositions: [String: NodePosition],
+        to targetPositions: [String: NodePosition],
+        layout: ForceDirectedLayout,
+        duration: Double = 0.6
+    ) {
+        stopSimulation()
+
+        // カメラの開始・目標状態をキャプチャ
+        let startCamera = (offset: cameraOffset, scale: cameraScale)
+        let targetCamera = computeCamera(for: targetPositions)
+
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        simulationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+
+                let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                let rawT = min(elapsed / duration, 1.0)
+                let t = cubicOut(rawT)
+
+                // ノード位置を補間
+                var interpolated: [String: NodePosition] = [:]
+                for (id, target) in targetPositions {
+                    let start = startPositions[id] ?? target
+                    interpolated[id] = NodePosition(
+                        x: mix(start.x, target.x, t),
+                        y: mix(start.y, target.y, t)
+                    )
+                }
+                layout.setPositions(interpolated)
+
+                // カメラを補間（scale は log domain で自然なズーム）
+                let logS0 = log(max(Double(startCamera.scale), 0.001))
+                let logS1 = log(max(Double(targetCamera.scale), 0.001))
+                self.cameraScale = CGFloat(exp(mix(logS0, logS1, t)))
+                self.cameraOffset = CGSize(
+                    width: CGFloat(mix(Double(startCamera.offset.width), Double(targetCamera.offset.width), t)),
+                    height: CGFloat(mix(Double(startCamera.offset.height), Double(targetCamera.offset.height), t))
+                )
+
+                self.layoutVersion &+= 1
+
+                if rawT >= 1.0 { return }
+
+                do {
+                    try await Task.sleep(for: .milliseconds(16))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
+    /// cubicOut easing: 高速スタート → 滑らかに減速
+    private func cubicOut(_ t: Double) -> Double {
+        let f = t - 1.0
+        return f * f * f + 1.0
+    }
+
+    /// 線形補間
+    private func mix(_ a: Double, _ b: Double, _ t: Double) -> Double {
+        a + (b - a) * t
+    }
+
+    /// 指定位置群に対する zoomToFit カメラ状態を計算（適用はしない）
+    private func computeCamera(
+        for positions: [String: NodePosition],
+        padding: CGFloat = 60
+    ) -> (offset: CGSize, scale: CGFloat) {
+        let vals = Array(positions.values)
+        guard !vals.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else {
+            return (offset: cameraOffset, scale: cameraScale)
+        }
+        let minX = vals.map(\.x).min()!
+        let maxX = vals.map(\.x).max()!
+        let minY = vals.map(\.y).min()!
+        let maxY = vals.map(\.y).max()!
+
+        let gw = maxX - minX
+        let gh = maxY - minY
+        let aw = Double(viewportSize.width) - Double(padding) * 2
+        let ah = Double(viewportSize.height) - Double(padding) * 2
+
+        let sx = gw > 0 ? aw / gw : 2.0
+        let sy = gh > 0 ? ah / gh : 2.0
+        let scale = CGFloat(min(sx, sy, 2.0))
+
+        let cx = (minX + maxX) / 2
+        let cy = (minY + maxY) / 2
+        let offset = CGSize(
+            width: viewportSize.width / 2 - CGFloat(cx) * scale,
+            height: viewportSize.height / 2 - CGFloat(cy) * scale
+        )
+        return (offset: offset, scale: scale)
     }
 
     private var cachedSearchMatchedNodeIDs: Set<String>?
@@ -107,7 +281,7 @@ final class GraphViewState {
             cachedSearchMatchedNodeIDs = []
             return []
         }
-        let result = Set(visibleNodes.filter { node in
+        let result = Set(document.nodes.filter { node in
             if node.label.lowercased().contains(query) { return true }
             return node.metadata.values.contains { $0.lowercased().contains(query) }
         }.map(\.id))
@@ -184,6 +358,11 @@ final class GraphViewState {
         if let neighborhood = neighborhoodNodeIDs {
             result = result.filter { neighborhood.contains($0.sourceID) && neighborhood.contains($0.targetID) }
         }
+        // サーチフィルタ: マッチしたノードに接続するエッジのみ
+        if isSearchActive {
+            let matched = searchMatchedNodeIDs
+            result = result.filter { matched.contains($0.sourceID) || matched.contains($0.targetID) }
+        }
         cachedVisibleEdges = result
         return result
     }
@@ -213,7 +392,10 @@ final class GraphViewState {
         cachedAllEdgeLabels = nil
         cachedEdgeCounts = nil
         cachedNodeTypeMap = nil
+        cachedSubClassOfMap = nil
+        cachedNodePrimitiveClassMap = nil
         cachedNodeIconMap = nil
+        cachedNodeColorMap = nil
         cachedNodeMap = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0) })
         invalidateVisibleCache()
     }
@@ -296,9 +478,9 @@ final class GraphViewState {
         let addedNodeIDs = Array(newNodeIDs.subtracting(previousNodeIDs))
         let removedNodeIDs = previousNodeIDs.subtracting(newNodeIDs)
 
-        layout.addNodes(addedNodeIDs)
-        layout.removeNodes(removedNodeIDs)
-        layout.classNodeIDs = Set(newDocument.nodes.filter { $0.kind == .owlClass }.map(\.id))
+        fullLayout.addNodes(addedNodeIDs)
+        fullLayout.removeNodes(removedNodeIDs)
+        fullLayout.classNodeIDs = Set(newDocument.nodes.filter { $0.kind == .owlClass }.map(\.id))
 
         // シミュレーション再開
         if viewportSize.width > 0 {
@@ -319,35 +501,31 @@ final class GraphViewState {
     func startSimulation(size: CGSize) {
         viewportSize = size
         let nodeIDs = document.nodes.map(\.id)
-        layout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
-        layout.initialize(nodeIDs: nodeIDs, size: size)
-        layout.restart()
+        fullLayout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
+        fullLayout.initialize(nodeIDs: nodeIDs, size: size)
+        fullLayout.restart()
 
         // シミュレーション中に参照するデータをキャプチャ（毎 tick の再生成を回避）
         let simEdges = document.edges
 
         // 描画前にウォームアップ：大部分の収束を非表示で完了
-        layout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: size)
+        fullLayout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: size)
         layoutVersion &+= 1
+        hasInitialFit = true
+        zoomToFit()
 
         stopSimulation()
         simulationTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let batchSize = self.ticksPerFrame(alpha: self.layout.alpha)
+                let batchSize = self.ticksPerFrame(alpha: self.fullLayout.alpha)
                 var running = true
                 for _ in 0..<batchSize {
-                    running = self.layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
+                    running = self.fullLayout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
                     if !running { break }
                 }
                 self.layoutVersion &+= 1
-                if !running {
-                    if !self.hasInitialFit {
-                        self.hasInitialFit = true
-                        self.zoomToFit()
-                    }
-                    return
-                }
+                if !running { return }
                 do {
                     try await Task.sleep(for: .milliseconds(16))
                 } catch {
@@ -359,19 +537,27 @@ final class GraphViewState {
 
     /// ドラッグ後に位置を保ったまま微調整シミュレーションを再開
     func resumeSimulation(size: CGSize) {
+        let layout = activeLayout
         layout.reheat()
 
-        let nodeIDs = document.nodes.map(\.id)
-        let simEdges = document.edges
+        let nodeIDs: [String]
+        let simEdges: [GraphEdge]
+        if isFocusMode {
+            nodeIDs = Array(visibleNodeIDs)
+            simEdges = visibleEdges
+        } else {
+            nodeIDs = document.nodes.map(\.id)
+            simEdges = document.edges
+        }
 
         stopSimulation()
         simulationTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let batchSize = self.ticksPerFrame(alpha: self.layout.alpha)
+                let batchSize = self.ticksPerFrame(alpha: layout.alpha)
                 var running = true
                 for _ in 0..<batchSize {
-                    running = self.layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
+                    running = layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
                     if !running { break }
                 }
                 self.layoutVersion &+= 1
@@ -394,7 +580,7 @@ final class GraphViewState {
 
     func zoomToFit(padding: CGFloat = 60) {
         let nodeIDs = visibleNodeIDs
-        let nodePositions = nodeIDs.compactMap { layout.positions[$0] }
+        let nodePositions = nodeIDs.compactMap { activeLayout.positions[$0] }
         guard !nodePositions.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
 
         let minX = nodePositions.map(\.x).min()!
@@ -438,27 +624,102 @@ final class GraphViewState {
         return map
     }
 
+    // MARK: - プリミティブクラス階層解決
+
+    /// subClassOf エッジラベル
+    private static let subClassOfLabels: Set<String> = ["subClassOf", "rdfs:subClassOf"]
+
+    /// クラス ID → 祖先のプリミティブクラスラベルを解決（subClassOf 階層を遡る）
+    /// BFS で最も近いプリミティブクラスを決定的に解決する
+    private func resolvePrimitiveClass(for classID: String, subClassOfMap: [String: Set<String>]) -> String? {
+        var visited: Set<String> = []
+        var queue: [String] = [classID]
+        visited.insert(classID)
+
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            let label = cachedNodeMap[current]?.label ?? localName(current)
+            if GraphNodeStyle.isPrimitiveClass(label) {
+                return label
+            }
+            guard let parents = subClassOfMap[current] else { continue }
+            // ソートして決定的な順序にする
+            for parentID in parents.sorted() {
+                if !visited.contains(parentID) {
+                    visited.insert(parentID)
+                    queue.append(parentID)
+                }
+            }
+        }
+        return nil
+    }
+
+    /// subClassOf マッピング（キャッシュ済み）
+    private var cachedSubClassOfMap: [String: Set<String>]?
+    private var subClassOfMap: [String: Set<String>] {
+        if let cached = cachedSubClassOfMap { return cached }
+        var map: [String: Set<String>] = [:]
+        for edge in document.edges where Self.subClassOfLabels.contains(edge.label) {
+            map[edge.sourceID, default: []].insert(edge.targetID)
+        }
+        cachedSubClassOfMap = map
+        return map
+    }
+
+    /// ノード ID → プリミティブクラスラベル（キャッシュ済み）
+    private var cachedNodePrimitiveClassMap: [String: String]?
+    private var nodePrimitiveClassMap: [String: String] {
+        if let cached = cachedNodePrimitiveClassMap { return cached }
+        let scMap = subClassOfMap
+        var map: [String: String] = [:]
+
+        // owlClass ノード → 自身またはsubClassOf 先のプリミティブクラスを解決
+        for node in document.nodes where node.kind == .owlClass {
+            if let primitive = resolvePrimitiveClass(for: node.id, subClassOfMap: scMap) {
+                map[node.id] = primitive
+            }
+        }
+
+        // Individual ノード → rdf:type のクラスが属するプリミティブクラスを解決
+        // typeIDs をソートして決定的にする
+        for (nodeID, typeIDs) in nodeTypeMap {
+            for typeID in typeIDs.sorted() {
+                if let primitive = map[typeID] {
+                    map[nodeID] = primitive
+                    break
+                }
+            }
+        }
+
+        cachedNodePrimitiveClassMap = map
+        return map
+    }
+
     /// ノード ID → プリミティブクラスに基づくアイコン名（キャッシュ済み）
     private var cachedNodeIconMap: [String: String]?
     var nodeIconMap: [String: String] {
         if let cached = cachedNodeIconMap { return cached }
         var map: [String: String] = [:]
-        for (nodeID, typeIDs) in nodeTypeMap {
-            for typeID in typeIDs {
-                let classLabel = cachedNodeMap[typeID]?.label ?? localName(typeID)
-                if let icon = GraphNodeStyle.iconName(forClassLabel: classLabel) {
-                    map[nodeID] = icon
-                    break
-                }
-            }
-        }
-        // owlClass 自身にもアイコンを設定
-        for node in document.nodes where node.kind == .owlClass {
-            if let icon = GraphNodeStyle.iconName(forClassLabel: node.label) {
-                map[node.id] = icon
+        for (nodeID, primitive) in nodePrimitiveClassMap {
+            if let icon = GraphNodeStyle.iconName(forClassLabel: primitive) {
+                map[nodeID] = icon
             }
         }
         cachedNodeIconMap = map
+        return map
+    }
+
+    /// ノード ID → プリミティブクラスに基づく色（キャッシュ済み）
+    private var cachedNodeColorMap: [String: Color]?
+    var nodeColorMap: [String: Color] {
+        if let cached = cachedNodeColorMap { return cached }
+        var map: [String: Color] = [:]
+        for (nodeID, primitive) in nodePrimitiveClassMap {
+            if let color = GraphNodeStyle.color(forClassLabel: primitive) {
+                map[nodeID] = color
+            }
+        }
+        cachedNodeColorMap = map
         return map
     }
 
@@ -496,7 +757,7 @@ final class GraphViewState {
     }
 
     func position(for nodeID: String) -> CGPoint {
-        guard let pos = layout.positions[nodeID] else {
+        guard let pos = activeLayout.positions[nodeID] else {
             return .zero
         }
         return CGPoint(x: pos.x, y: pos.y)

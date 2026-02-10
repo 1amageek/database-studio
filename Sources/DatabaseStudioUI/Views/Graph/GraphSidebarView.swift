@@ -21,8 +21,9 @@ struct GraphSidebarView: View {
                     HStack {
                         let style = GraphNodeStyle.style(for: selectedNode.kind)
                         let icon = state.nodeIconMap[selectedNode.id] ?? style.iconName
+                        let color = state.nodeColorMap[selectedNode.id] ?? style.color
                         Image(systemName: icon)
-                            .foregroundStyle(style.color)
+                            .foregroundStyle(color)
                         Text(selectedNode.label)
                             .lineLimit(1)
                         Spacer()
@@ -48,12 +49,13 @@ struct GraphSidebarView: View {
                     ForEach(nodes) { node in
                         let style = GraphNodeStyle.style(for: node.kind)
                         let icon = state.nodeIconMap[node.id] ?? style.iconName
+                        let color = state.nodeColorMap[node.id] ?? style.color
                         Label {
                             Text(node.label)
                                 .lineLimit(1)
                         } icon: {
                             Image(systemName: icon)
-                                .foregroundStyle(style.color)
+                                .foregroundStyle(color)
                         }
                         .tag(node.id)
                     }
