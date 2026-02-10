@@ -363,6 +363,127 @@ struct ItemsTableView: View {
                         .help("Open Graph")
                     }
 
+                    // Map ウィンドウを開く（spatial インデックスまたは lat/lng フィールドがある場合）
+                    if let spatialIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "spatial" }) {
+                        Button {
+                            Task {
+                                let allItems = await viewModel.loadAllItems(for: typeName)
+                                let items = allItems.map(\.fields)
+                                let latField = spatialIndex.kind.fieldNames.first ?? "latitude"
+                                let lngField = spatialIndex.kind.fieldNames.count > 1 ? spatialIndex.kind.fieldNames[1] : "longitude"
+                                let mapState = MapWindowState.shared
+                                mapState.document = MapDocument(
+                                    items: items,
+                                    entityName: typeName,
+                                    latitudeField: latField,
+                                    longitudeField: lngField
+                                )
+                                mapState.entityName = typeName
+                                mapState.refreshAction = { [weak viewModel] in
+                                    guard let viewModel else { return nil }
+                                    let items = await viewModel.loadAllItems(for: typeName)
+                                    return MapDocument(
+                                        items: items.map(\.fields),
+                                        entityName: typeName,
+                                        latitudeField: latField,
+                                        longitudeField: lngField
+                                    )
+                                }
+                                openWindow(id: "map-view")
+                            }
+                        } label: {
+                            Image(systemName: "map")
+                        }
+                        .help("Open Map")
+                    }
+
+                    // Search Console を開く（fulltext インデックスがある場合）
+                    if let fulltextIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "fulltext" }) {
+                        Button {
+                            Task {
+                                let allItems = await viewModel.loadAllItems(for: typeName)
+                                let items = allItems.map(\.fields)
+                                let searchState = SearchWindowState.shared
+                                searchState.document = SearchDocument(
+                                    items: items,
+                                    entityName: typeName,
+                                    textFieldNames: fulltextIndex.kind.fieldNames
+                                )
+                                searchState.entityName = typeName
+                                searchState.refreshAction = { [weak viewModel] in
+                                    guard let viewModel else { return nil }
+                                    let items = await viewModel.loadAllItems(for: typeName)
+                                    return SearchDocument(
+                                        items: items.map(\.fields),
+                                        entityName: typeName,
+                                        textFieldNames: fulltextIndex.kind.fieldNames
+                                    )
+                                }
+                                openWindow(id: "search-console")
+                            }
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                        }
+                        .help("Open Search Console")
+                    }
+
+                    // Vector Explorer を開く（vector インデックスがある場合）
+                    if let vectorIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "vector" }) {
+                        Button {
+                            Task {
+                                let allItems = await viewModel.loadAllItems(for: typeName)
+                                let items = allItems.map(\.fields)
+                                let embeddingField = vectorIndex.kind.fieldNames.first ?? "embedding"
+                                let vectorState = VectorWindowState.shared
+                                vectorState.document = VectorDocument(
+                                    items: items,
+                                    entityName: typeName,
+                                    embeddingField: embeddingField
+                                )
+                                vectorState.entityName = typeName
+                                vectorState.refreshAction = { [weak viewModel] in
+                                    guard let viewModel else { return nil }
+                                    let items = await viewModel.loadAllItems(for: typeName)
+                                    return VectorDocument(
+                                        items: items.map(\.fields),
+                                        entityName: typeName,
+                                        embeddingField: embeddingField
+                                    )
+                                }
+                                openWindow(id: "vector-explorer")
+                            }
+                        } label: {
+                            Image(systemName: "cube.transparent")
+                        }
+                        .help("Open Vector Explorer")
+                    }
+
+                    // Analytics ダッシュボード（常時表示）
+                    Button {
+                        Task {
+                            let allItems = await viewModel.loadAllItems(for: typeName)
+                            let items = allItems.map(\.fields)
+                            let analyticsState = AnalyticsWindowState.shared
+                            analyticsState.document = AnalyticsDocument(
+                                items: items,
+                                entityName: typeName
+                            )
+                            analyticsState.entityName = typeName
+                            analyticsState.refreshAction = { [weak viewModel] in
+                                guard let viewModel else { return nil }
+                                let items = await viewModel.loadAllItems(for: typeName)
+                                return AnalyticsDocument(
+                                    items: items.map(\.fields),
+                                    entityName: typeName
+                                )
+                            }
+                            openWindow(id: "analytics-dashboard")
+                        }
+                    } label: {
+                        Image(systemName: "chart.bar")
+                    }
+                    .help("Open Analytics")
+
                     // 一括操作メニュー（選択時 or Import/Export）
                     Menu {
                         Button {
