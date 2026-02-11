@@ -542,6 +542,13 @@ final class GraphViewState {
         let dh = abs(newSize.height - oldSize.height)
         guard dw > 8 || dh > 8 else { return }
 
+        // ユーザー操作前にサイズが大幅変化した場合は再初期化
+        // （NavigationSplitView のサイドバー出現、GeometryReader の初回プレースホルダー値等）
+        if !hasUserAdjustedCamera && (dw > 80 || dh > 80) {
+            startSimulation(size: newSize)
+            return
+        }
+
         // ユーザーがカメラ未操作ならサイズ変化後に再フィット
         if !hasUserAdjustedCamera {
             zoomToFit()

@@ -24,16 +24,16 @@ final class ForceDirectedLayout {
 
     // MARK: - パラメータ
 
-    var idealLength: Double = 120
-    var springStiffness: Double = 0.04
+    var idealLength: Double = 170
+    var springStiffness: Double = 0.033
     var repulsionStrength: Double = 800
-    var centerStrength: Double = 0.02
+    var centerStrength: Double = 0.04
 
     /// class ノード同士の追加反発力倍率
-    var classRepulsionMultiplier: Double = 4.0
+    var classRepulsionMultiplier: Double = 3.0
 
     /// ノード同士の重なりを防ぐ最小距離
-    var minimumNodeDistance: Double = 56
+    var minimumNodeDistance: Double = 60
 
     /// 衝突回避力の強さ
     var collisionStrength: Double = 0.7
@@ -93,23 +93,26 @@ final class ForceDirectedLayout {
             }
         } else {
             // ノード数に応じて初期配置半径を拡大（密集を防ぐ）
+            // ビューポートのアスペクト比に合わせて楕円配置
             let baseRadius = min(size.width, size.height) * 0.3
             let radius = baseRadius * sqrt(Double(max(nodeIDs.count, 1)) / 20.0)
+            let aspectX = size.width / max(size.width, size.height)
+            let aspectY = size.height / max(size.width, size.height)
 
             for (i, id) in nodeIDs.enumerated() {
                 let angle = (Double(i) / Double(max(nodeIDs.count, 1))) * 2 * .pi
                 let jitterX = Double.random(in: -30...30)
                 let jitterY = Double.random(in: -30...30)
                 positions[id] = NodePosition(
-                    x: centerX + cos(angle) * radius + jitterX,
-                    y: centerY + sin(angle) * radius + jitterY
+                    x: centerX + cos(angle) * radius / aspectX + jitterX,
+                    y: centerY + sin(angle) * radius / aspectY + jitterY
                 )
             }
         }
     }
 
     /// 描画前に高速にシミュレーションを進めるウォームアップ
-    func warmup(nodeIDs: [String], edges: [GraphEdge], size: CGSize, iterations: Int = 80) {
+    func warmup(nodeIDs: [String], edges: [GraphEdge], size: CGSize, iterations: Int = 100) {
         for _ in 0..<iterations {
             let running = tick(nodeIDs: nodeIDs, edges: edges, size: size)
             if !running { break }
@@ -258,12 +261,15 @@ final class ForceDirectedLayout {
             forcesY[ti] -= fy
         }
 
-        // 中心引力
+        // 中心引力（アスペクト比考慮: 短い軸方向に強く引くことで矩形に広がる）
+        let maxDim = max(size.width, size.height)
+        let centerScaleX = maxDim / max(size.width, 1.0)
+        let centerScaleY = maxDim / max(size.height, 1.0)
         for i in 0..<n {
             let dx = centerX - bodyXs[i]
             let dy = centerY - bodyYs[i]
-            forcesX[i] += dx * centerStrength * alpha
-            forcesY[i] += dy * centerStrength * alpha
+            forcesX[i] += dx * centerStrength * alpha * centerScaleX
+            forcesY[i] += dy * centerStrength * alpha * centerScaleY
         }
 
         // 衝突回避（空間ハッシュで近傍のみ評価）

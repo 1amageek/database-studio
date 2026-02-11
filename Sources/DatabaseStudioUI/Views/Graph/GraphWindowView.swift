@@ -8,6 +8,10 @@ public final class GraphWindowState {
 
     public var document: GraphDocument?
     public var entityName: String = ""
+    public var isLoading: Bool = false
+
+    /// ウィンドウ表示後にドキュメントをロードするクロージャ
+    public var loadAction: (@MainActor () async -> GraphDocument?)?
 
     /// データソースからドキュメントを再取得するクロージャ
     public var refreshAction: (@MainActor () async -> GraphDocument?)?
@@ -25,6 +29,16 @@ public struct GraphWindowView: View {
         if let document = state.document {
             GraphView(document: document)
                 .navigationTitle("\(state.entityName) – Graph")
+        } else if state.isLoading {
+            ProgressView("Loading graph data…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .task {
+                    if let loadAction = state.loadAction {
+                        let document = await loadAction()
+                        state.document = document
+                        state.isLoading = false
+                    }
+                }
         } else {
             ContentUnavailableView(
                 "No Graph Data",

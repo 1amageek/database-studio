@@ -339,24 +339,20 @@ struct ItemsTableView: View {
                     // Graph ウィンドウを開く（Graph インデックスがある場合のみ）
                     if let graphIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "graph" }) {
                         Button {
-                            Task {
-                                let allItems = await viewModel.loadAllItems(for: typeName)
-                                let windowState = GraphWindowState.shared
-                                windowState.document = GraphDocument(
-                                    items: allItems,
+                            let windowState = GraphWindowState.shared
+                            windowState.document = nil
+                            windowState.isLoading = true
+                            windowState.entityName = typeName
+                            windowState.loadAction = { [weak viewModel] in
+                                guard let viewModel else { return nil }
+                                let items = await viewModel.loadAllItems(for: typeName)
+                                return GraphDocument(
+                                    items: items,
                                     graphIndex: graphIndex
                                 )
-                                windowState.entityName = typeName
-                                windowState.refreshAction = { [weak viewModel] in
-                                    guard let viewModel else { return nil }
-                                    let items = await viewModel.loadAllItems(for: typeName)
-                                    return GraphDocument(
-                                        items: items,
-                                        graphIndex: graphIndex
-                                    )
-                                }
-                                openWindow(id: "graph-viewer")
                             }
+                            windowState.refreshAction = windowState.loadAction
+                            openWindow(id: "graph-viewer")
                         } label: {
                             Image(systemName: "point.3.connected.trianglepath.dotted")
                         }
