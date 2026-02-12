@@ -20,10 +20,10 @@ public struct GraphView: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
         } detail: {
             detailContent
-        }
-        .inspector(isPresented: $showInspector) {
-            inspectorContent
-                .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
+                .inspector(isPresented: $showInspector) {
+                    inspectorContent
+                        .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
+                }
         }
         .navigationSubtitle(toolbarSubtitle)
         .toolbar {
@@ -85,7 +85,7 @@ public struct GraphView: View {
             if let node = state.selectedNode {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(GraphNodeStyle.style(for: node.kind).color)
+                        .fill(GraphNodeStyle.style(for: node.role).color)
                         .frame(width: 8, height: 8)
 
                     Text(node.label)
@@ -149,6 +149,8 @@ public struct GraphView: View {
                 allNodes: state.document.nodes,
                 documentEdges: state.document.edges,
                 relatedEvents: state.relatedEvents(for: node.id),
+                relatedPeople: state.relatedNodes(for: node.id, className: "Person"),
+                relatedPlaces: state.relatedNodes(for: node.id, className: "Place"),
                 onSelectNode: { nodeID in
                     state.focusOnNode(nodeID)
                 }
@@ -165,8 +167,8 @@ public struct GraphView: View {
     // MARK: - Toolbar Subtitle
 
     private var toolbarSubtitle: String {
-        let classCount = state.visibleNodes.filter { $0.kind == .owlClass }.count
-        let individualCount = state.visibleNodes.filter { $0.kind == .individual }.count
+        let classCount = state.visibleNodes.filter { $0.role == .type }.count
+        let individualCount = state.visibleNodes.filter { $0.role == .instance }.count
         let edgeCount = state.visibleEdges.count
 
         var parts = [

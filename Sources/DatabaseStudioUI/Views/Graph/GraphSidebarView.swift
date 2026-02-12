@@ -19,7 +19,7 @@ struct GraphSidebarView: View {
             if let selectedNode = state.selectedNode {
                 Section {
                     HStack {
-                        let style = GraphNodeStyle.style(for: selectedNode.kind)
+                        let style = GraphNodeStyle.style(for: selectedNode.role)
                         let icon = state.nodeIconMap[selectedNode.id] ?? style.iconName
                         let color = state.nodeColorMap[selectedNode.id] ?? style.color
                         Image(systemName: icon)
@@ -43,24 +43,17 @@ struct GraphSidebarView: View {
             // アルゴリズム結果
             algorithmResultsSection(mapping: state.mapping)
 
-            // ノード種別ごとのセクション
-            ForEach(filteredNodesByKind, id: \.kind) { kind, nodes in
+            // クラス階層セクション
+            classHierarchySection
+
+            // クラス以外の種別セクション
+            ForEach(nonClassNodesByRole, id: \.role) { role, nodes in
                 Section {
                     ForEach(nodes) { node in
-                        let style = GraphNodeStyle.style(for: node.kind)
-                        let icon = state.nodeIconMap[node.id] ?? style.iconName
-                        let color = state.nodeColorMap[node.id] ?? style.color
-                        Label {
-                            Text(node.label)
-                                .lineLimit(1)
-                        } icon: {
-                            Image(systemName: icon)
-                                .foregroundStyle(color)
-                        }
-                        .tag(node.id)
+                        nodeRow(node)
                     }
                 } header: {
-                    Text("\(kind.displayName) (\(nodes.count))")
+                    Text("\(role.displayName) (\(nodes.count))")
                 }
             }
         }
@@ -68,21 +61,80 @@ struct GraphSidebarView: View {
         .searchable(text: $state.searchText, prompt: "Filter nodes")
     }
 
-    // MARK: - フィルター済みノード
+    // MARK: - クラス階層セクション
 
-    private var filteredNodesByKind: [(kind: GraphNodeKind, nodes: [GraphNode])] {
-        if state.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return state.visibleNodesByKind
+    @ViewBuilder
+    private var classHierarchySection: some View {
+        let totalCount = state.totalClassCount
+        if totalCount > 0 {
+            if isSearchActive {
+                // 検索中はフラットリストで一致するクラスのみ表示
+                let query = state.searchText.lowercased()
+                let allClassNodes = state.document.nodes
+                    .filter { $0.role == .type }
+                    .filter { $0.label.lowercased().contains(query) }
+                    .sorted { $0.label < $1.label }
+                if !allClassNodes.isEmpty {
+                    Section {
+                        ForEach(allClassNodes) { node in
+                            nodeRow(node)
+                        }
+                    } header: {
+                        Text("Classes (\(allClassNodes.count))")
+                    }
+                }
+            } else {
+                // 通常時は subClassOf 階層表示（DisclosureGroup による再帰ツリー）
+                Section {
+                    ForEach(state.classTree) { treeNode in
+                        ClassTreeRowView(treeNode: treeNode, state: state)
+                    }
+                } header: {
+                    Text("Classes (\(totalCount))")
+                }
+            }
+        }
+    }
+
+    // MARK: - 共通ノード行
+
+    private func nodeRow(_ node: GraphNode) -> some View {
+        let style = GraphNodeStyle.style(for: node.role)
+        let icon = state.nodeIconMap[node.id] ?? style.iconName
+        let color = state.nodeColorMap[node.id] ?? style.color
+        return Label {
+            Text(node.label)
+                .lineLimit(1)
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+        }
+        .tag(node.id)
+    }
+
+    // MARK: - フィルター
+
+    private var isSearchActive: Bool {
+        !state.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var filteredNodesByRole: [(role: GraphNodeRole, nodes: [GraphNode])] {
+        if !isSearchActive {
+            return state.visibleNodesByRole
         }
         let query = state.searchText.lowercased()
-        return state.visibleNodesByKind.compactMap { kind, nodes in
+        return state.visibleNodesByRole.compactMap { role, nodes in
             let filtered = nodes.filter { node in
                 if node.label.lowercased().contains(query) { return true }
                 return node.metadata.values.contains { $0.lowercased().contains(query) }
             }
             guard !filtered.isEmpty else { return nil }
-            return (kind, filtered)
+            return (role, filtered)
         }
+    }
+
+    private var nonClassNodesByRole: [(role: GraphNodeRole, nodes: [GraphNode])] {
+        filteredNodesByRole.filter { $0.role != .type }
     }
 
     // MARK: - Algorithm Results
@@ -134,5 +186,42 @@ struct GraphSidebarView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - 再帰的クラスツリー行
+
+/// DisclosureGroup を使った再帰的なクラスツリー行
+/// OutlineGroup の代わりに明示的な再帰で確実にツリーを表示する
+struct ClassTreeRowView: View {
+    let treeNode: GraphViewState.ClassTreeNode
+    let state: GraphViewState
+
+    var body: some View {
+        if let children = treeNode.children {
+            DisclosureGroup {
+                ForEach(children) { child in
+                    ClassTreeRowView(treeNode: child, state: state)
+                }
+            } label: {
+                nodeLabel(treeNode.node)
+            }
+        } else {
+            nodeLabel(treeNode.node)
+        }
+    }
+
+    private func nodeLabel(_ node: GraphNode) -> some View {
+        let style = GraphNodeStyle.style(for: node.role)
+        let icon = state.nodeIconMap[node.id] ?? style.iconName
+        let color = state.nodeColorMap[node.id] ?? style.color
+        return Label {
+            Text(node.label)
+                .lineLimit(1)
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+        }
+        .tag(node.id)
     }
 }

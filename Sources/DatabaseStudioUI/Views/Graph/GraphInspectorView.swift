@@ -4,9 +4,11 @@ import SwiftUI
 enum GraphInspectorTab: String, CaseIterable {
     case detail = "Detail"
     case events = "Events"
+    case people = "People"
+    case places = "Places"
 }
 
-/// ノード詳細 Inspector（Detail + Events タブ）
+/// ノード詳細 Inspector（Detail + Events + People + Places タブ）
 struct GraphInspectorView: View {
     let node: GraphNode
     let incomingEdges: [GraphEdge]
@@ -14,6 +16,8 @@ struct GraphInspectorView: View {
     let allNodes: [GraphNode]
     let documentEdges: [GraphEdge]
     let relatedEvents: [(node: GraphNode, date: Date?, role: String)]
+    let relatedPeople: [(node: GraphNode, role: String)]
+    let relatedPlaces: [(node: GraphNode, role: String)]
     var onSelectNode: (String) -> Void = { _ in }
 
     @State private var selectedTab: GraphInspectorTab = .detail
@@ -65,6 +69,22 @@ struct GraphInspectorView: View {
                     allEdges: documentEdges,
                     allNodes: allNodes
                 )
+            case .people:
+                RelatedNodesListView(
+                    relatedNodes: relatedPeople,
+                    emptyTitle: "No People",
+                    emptyIcon: "person.slash",
+                    emptyDescription: "No people are connected to this node",
+                    onSelectNode: onSelectNode
+                )
+            case .places:
+                RelatedNodesListView(
+                    relatedNodes: relatedPlaces,
+                    emptyTitle: "No Places",
+                    emptyIcon: "mappin.slash",
+                    emptyDescription: "No places are connected to this node",
+                    onSelectNode: onSelectNode
+                )
             }
         }
     }
@@ -101,7 +121,7 @@ struct GraphInspectorView: View {
             Section("Info") {
                 LabeledContent("IRI", value: node.id)
                 LabeledContent("Label", value: node.label)
-                LabeledContent("Kind", value: node.kind.displayName)
+                LabeledContent("Role", value: node.role.displayName)
             }
 
             // Links

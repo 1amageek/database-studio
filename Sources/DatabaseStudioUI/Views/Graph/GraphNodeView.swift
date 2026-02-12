@@ -10,7 +10,7 @@ struct GraphNodeView: View {
     var isSearchDimmed: Bool = false
 
     var body: some View {
-        let style = GraphNodeStyle.style(for: node.kind)
+        let style = GraphNodeStyle.style(for: node.role)
         let radius = mapping?.nodeRadius(for: node, baseRadius: style.radius) ?? style.radius
         let color = mapping?.nodeColor(for: node, defaultColor: style.color) ?? style.color
         let highlighted = node.isHighlighted || (mapping?.highlightedPath.contains(node.id) ?? false)
@@ -53,27 +53,27 @@ struct GraphNodeView: View {
 
 // MARK: - Preview
 
-#Preview("All Node Kinds") {
+#Preview("All Node Roles") {
     HStack(spacing: 40) {
         GraphNodeView(
-            node: GraphNode(id: "1", label: "Person", kind: .owlClass),
+            node: GraphNode(id: "1", label: "Person", role: .type),
             isSelected: false
         )
         GraphNodeView(
-            node: GraphNode(id: "2", label: "Toyota", kind: .individual),
+            node: GraphNode(id: "2", label: "Toyota", role: .instance),
             isSelected: true
         )
         GraphNodeView(
-            node: GraphNode(id: "3", label: "hasChild", kind: .objectProperty),
+            node: GraphNode(id: "3", label: "hasChild", role: .property),
             isSelected: false
         )
         GraphNodeView(
-            node: GraphNode(id: "4", label: "Highlighted", kind: .individual, isHighlighted: true),
+            node: GraphNode(id: "4", label: "Highlighted", role: .instance, isHighlighted: true),
             isSelected: false
         )
         GraphNodeView(
             node: GraphNode(
-                id: "5", label: "PageRank High", kind: .individual,
+                id: "5", label: "PageRank High", role: .instance,
                 metrics: ["pageRank": 0.85]
             ),
             isSelected: false,

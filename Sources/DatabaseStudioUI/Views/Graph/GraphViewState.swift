@@ -146,7 +146,7 @@ final class GraphViewState {
 
         // 2. 目標位置を warmup で事前計算（フレッシュな円周配置から収束させる）
         let simEdges = visibleEdges
-        focusLayout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
+        focusLayout.classNodeIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
         focusLayout.initialize(nodeIDs: nodeIDs, size: viewportSize)
         focusLayout.restart()
         focusLayout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: viewportSize)
@@ -428,6 +428,7 @@ final class GraphViewState {
         cachedNodePrimitiveClassMap = nil
         cachedNodeIconMap = nil
         cachedNodeColorMap = nil
+        cachedClassTree = nil
         cachedNodeMap = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0) })
         invalidateVisibleCache()
     }
@@ -461,21 +462,28 @@ final class GraphViewState {
         return lines.joined(separator: "\n")
     }
 
-    /// クエリ実行（将来 StudioGraphService に接続）
+    /// GraphDocument のインメモリデータに対して SPARQL クエリを実行
     func executeQuery() {
         isQueryExecuting = true
         queryError = nil
         queryResults = []
         queryResultColumns = []
 
+        let doc = document
+        let text = queryText
+
         Task {
             do {
-                try await Task.sleep(for: .milliseconds(500))
+                let store = InMemoryTripleStore(document: doc)
+                let parsed = try SPARQLParser.parse(text)
+                let evaluator = SPARQLEvaluator(store: store, prefixes: parsed.prefixes)
+                let (columns, rows) = try evaluator.evaluate(parsed)
+                self.queryResultColumns = columns
+                self.queryResults = rows.map { QueryResultRow(bindings: $0) }
             } catch {
-                return
+                self.queryError = error.localizedDescription
             }
             self.isQueryExecuting = false
-            self.queryError = "SPARQL execution requires a graph service connection. Connect to a FoundationDB instance with GraphIndex to execute queries."
         }
     }
 
@@ -512,7 +520,7 @@ final class GraphViewState {
 
         fullLayout.addNodes(addedNodeIDs)
         fullLayout.removeNodes(removedNodeIDs)
-        fullLayout.classNodeIDs = Set(newDocument.nodes.filter { $0.kind == .owlClass }.map(\.id))
+        fullLayout.classNodeIDs = Set(newDocument.nodes.filter { $0.role == .type }.map(\.id))
 
         // シミュレーション再開
         if viewportSize.width > 0 {
@@ -579,7 +587,7 @@ final class GraphViewState {
         viewportSize = size
         hasUserAdjustedCamera = false
         let nodeIDs = document.nodes.map(\.id)
-        fullLayout.classNodeIDs = Set(document.nodes.filter { $0.kind == .owlClass }.map(\.id))
+        fullLayout.classNodeIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
         fullLayout.initialize(nodeIDs: nodeIDs, size: size)
         fullLayout.restart()
 
@@ -719,8 +727,14 @@ final class GraphViewState {
 
     // MARK: - プリミティブクラス階層解決
 
-    /// subClassOf エッジラベル
-    private static let subClassOfLabels: Set<String> = ["subClassOf", "rdfs:subClassOf"]
+    /// subClassOf エッジラベル判定（case-insensitive、IRI末尾もサポート）
+    private static func isSubClassOfLabel(_ label: String) -> Bool {
+        let lower = label.lowercased()
+        return lower == "subclassof"
+            || lower == "rdfs:subclassof"
+            || lower.hasSuffix("#subclassof")
+            || lower.hasSuffix("/subclassof")
+    }
 
     /// クラス ID → 祖先のプリミティブクラスラベルを解決（subClassOf 階層を遡る）
     /// BFS で最も近いプリミティブクラスを決定的に解決する
@@ -752,7 +766,7 @@ final class GraphViewState {
     private var subClassOfMap: [String: Set<String>] {
         if let cached = cachedSubClassOfMap { return cached }
         var map: [String: Set<String>] = [:]
-        for edge in document.edges where Self.subClassOfLabels.contains(edge.label) {
+        for edge in document.edges where Self.isSubClassOfLabel(edge.label) {
             map[edge.sourceID, default: []].insert(edge.targetID)
         }
         cachedSubClassOfMap = map
@@ -767,7 +781,7 @@ final class GraphViewState {
         var map: [String: String] = [:]
 
         // owlClass ノード → 自身またはsubClassOf 先のプリミティブクラスを解決
-        for node in document.nodes where node.kind == .owlClass {
+        for node in document.nodes where node.role == .type {
             if let primitive = resolvePrimitiveClass(for: node.id, subClassOfMap: scMap) {
                 map[node.id] = primitive
             }
@@ -827,14 +841,128 @@ final class GraphViewState {
             .sorted { $0.label < $1.label }
     }
 
-    /// 表示中ノードを種別ごとにグループ化（空グループは除外）
-    var visibleNodesByKind: [(kind: GraphNodeKind, nodes: [GraphNode])] {
-        let grouped = Dictionary(grouping: visibleNodes, by: \.kind)
-        let order: [GraphNodeKind] = [.owlClass, .individual, .objectProperty, .dataProperty, .literal]
-        return order.compactMap { kind in
-            guard let nodes = grouped[kind], !nodes.isEmpty else { return nil }
-            return (kind, nodes.sorted { $0.label < $1.label })
+    /// 表示中ノードをロールごとにグループ化（空グループは除外）
+    var visibleNodesByRole: [(role: GraphNodeRole, nodes: [GraphNode])] {
+        let grouped = Dictionary(grouping: visibleNodes, by: \.role)
+        let order: [GraphNodeRole] = [.type, .instance, .property, .literal]
+        return order.compactMap { role in
+            guard let nodes = grouped[role], !nodes.isEmpty else { return nil }
+            return (role, nodes.sorted { $0.label < $1.label })
         }
+    }
+
+    // MARK: - クラス階層ツリー
+
+    /// クラス階層のツリーノード（サイドバー表示用）
+    struct ClassTreeNode: Identifiable, Hashable {
+        let id: String
+        let node: GraphNode
+        var children: [ClassTreeNode]?
+    }
+
+    /// ドキュメント全体の owlClass を subClassOf 階層でツリー化
+    private var cachedClassTree: [ClassTreeNode]?
+
+    var classTree: [ClassTreeNode] {
+        if let cached = cachedClassTree { return cached }
+        let result = buildClassTree()
+        cachedClassTree = result
+        return result
+    }
+
+    /// ドキュメント内の全クラス数（type ロール + subClassOf 参加ノード）
+    var totalClassCount: Int {
+        var classIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
+        for (childID, parentIDs) in subClassOfMap {
+            classIDs.insert(childID)
+            classIDs.formUnion(parentIDs)
+        }
+        return classIDs.count(where: { cachedNodeMap[$0] != nil })
+    }
+
+    private func buildClassTree() -> [ClassTreeNode] {
+        // type ロールノード + subClassOf 関係に参加するノードをすべてクラスとして扱う
+        var classIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
+        for (childID, parentIDs) in subClassOfMap {
+            classIDs.insert(childID)
+            classIDs.formUnion(parentIDs)
+        }
+        let classIDSet = classIDs.filter { cachedNodeMap[$0] != nil }
+        guard !classIDSet.isEmpty else { return [] }
+
+        // 親 → 子 マッピング（subClassOfMap は 子 → 親）
+        var childrenMap: [String: [String]] = [:]
+        for (childID, parentIDs) in subClassOfMap {
+            guard classIDSet.contains(childID) else { continue }
+            for parentID in parentIDs where classIDSet.contains(parentID) {
+                childrenMap[parentID, default: []].append(childID)
+            }
+        }
+
+        // デバッグ: subClassOf 関係の統計
+        let edgeLabels = Set(document.edges.map(\.label))
+        print("[ClassTree] edge labels: \(edgeLabels.sorted())")
+        print("[ClassTree] subClassOfMap entries: \(subClassOfMap.count), childrenMap entries: \(childrenMap.count)")
+        print("[ClassTree] total classes: \(classIDSet.count), type nodes: \(document.nodes.filter { $0.role == .type }.count)")
+
+        // 表示中クラスに親を持つクラスを特定
+        let nodesWithParents = Set(subClassOfMap.keys.filter { childID in
+            classIDSet.contains(childID) &&
+            subClassOfMap[childID]?.contains(where: { classIDSet.contains($0) }) == true
+        })
+        let rootIDs = classIDSet.subtracting(nodesWithParents)
+
+        print("[ClassTree] roots: \(rootIDs.count), nodesWithParents: \(nodesWithParents.count)")
+
+        // 再帰的にツリー構築（循環参照対策で visited を管理）
+        func buildNode(id: String, visited: inout Set<String>) -> ClassTreeNode? {
+            guard let node = cachedNodeMap[id], !visited.contains(id) else { return nil }
+            visited.insert(id)
+            let kids = childrenMap[id]?
+                .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
+                .compactMap { buildNode(id: $0, visited: &visited) }
+            return ClassTreeNode(
+                id: id,
+                node: node,
+                children: kids?.isEmpty == true ? nil : kids
+            )
+        }
+
+        var visited: Set<String> = []
+
+        // Thing 等の最上位ルートはスキップし、その子をトップレベルに昇格
+        var promotedRootIDs: Set<String> = []
+        for id in rootIDs {
+            let label = cachedNodeMap[id]?.label ?? localName(id)
+            if label == "Thing" {
+                visited.insert(id)
+                if let kids = childrenMap[id] {
+                    promotedRootIDs.formUnion(kids)
+                }
+            }
+        }
+        let effectiveRootIDs = rootIDs
+            .subtracting(visited)       // Thing 自体を除外
+            .union(promotedRootIDs)     // Thing の子を追加
+
+        let roots = effectiveRootIDs
+            .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
+            .compactMap { buildNode(id: $0, visited: &visited) }
+
+        // 循環参照で未訪問のクラスをルートに追加
+        let remaining = classIDSet.subtracting(visited)
+        let extras = remaining
+            .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
+            .compactMap { id -> ClassTreeNode? in
+                guard let node = cachedNodeMap[id] else { return nil }
+                return ClassTreeNode(id: id, node: node, children: nil)
+            }
+
+        let result = roots + extras
+        let withChildren = result.filter { $0.children != nil }.count
+        print("[ClassTree] result: \(result.count) nodes, \(withChildren) with children, \(extras.count) orphans")
+
+        return result
     }
 
     // MARK: - インタラクション
@@ -961,5 +1089,48 @@ final class GraphViewState {
             }
         }
         return nil
+    }
+
+    // MARK: - プリミティブクラス分類による関連ノード検出
+
+    /// ノードが指定プリミティブクラスに属するか判定
+    func nodeMatchesPrimitiveClass(_ nodeID: String, className: String) -> Bool {
+        if let primitive = nodePrimitiveClassMap[nodeID], primitive == className {
+            return true
+        }
+        // rdf:type で直接チェック
+        if let types = nodeTypeMap[nodeID] {
+            for typeID in types {
+                let name = cachedNodeMap[typeID]?.label ?? localName(typeID)
+                if name.contains(className) { return true }
+            }
+        }
+        return false
+    }
+
+    /// 選択ノードに関連する指定クラスのノードをラベル順で取得
+    func relatedNodes(for nodeID: String, className: String) -> [(node: GraphNode, role: String)] {
+        var entries: [(node: GraphNode, role: String)] = []
+        var seen: Set<String> = []
+
+        for edge in allIncomingEdges(for: nodeID) {
+            let sourceID = edge.sourceID
+            guard !seen.contains(sourceID),
+                  nodeMatchesPrimitiveClass(sourceID, className: className),
+                  let node = cachedNodeMap[sourceID] else { continue }
+            seen.insert(sourceID)
+            entries.append((node: node, role: edge.label))
+        }
+
+        for edge in allOutgoingEdges(for: nodeID) {
+            let targetID = edge.targetID
+            guard !seen.contains(targetID),
+                  nodeMatchesPrimitiveClass(targetID, className: className),
+                  let node = cachedNodeMap[targetID] else { continue }
+            seen.insert(targetID)
+            entries.append((node: node, role: edge.label))
+        }
+
+        return entries.sorted { $0.node.label < $1.node.label }
     }
 }

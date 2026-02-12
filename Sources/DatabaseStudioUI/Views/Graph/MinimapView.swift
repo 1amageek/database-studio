@@ -40,7 +40,7 @@ struct MinimapView: View {
                 let x = (pos.x - minX) * scale + offsetX
                 let y = (pos.y - minY) * scale + offsetY
                 let node = nodes.first { $0.id == id }
-                let style = node.map { GraphNodeStyle.style(for: $0.kind) }
+                let style = node.map { GraphNodeStyle.style(for: $0.role) }
                 let color = colorMap[id] ?? style?.color ?? .gray
                 let dotSize: CGFloat = 3
                 let rect = CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize)

@@ -5,7 +5,7 @@ extension GraphDocument {
 
     /// RDFTripleData 配列からグラフドキュメントを構築する
     ///
-    /// - `rdf:type` トリプル → object ノードを `.owlClass` に昇格
+    /// - `rdf:type` トリプル → object ノードを `.type` ロールに昇格
     /// - リテラル（`"` で始まる object）→ subject の metadata に格納（ノード化しない）
     /// - その他の object property トリプル → エッジ
     public init(triples: [RDFTripleData]) {
@@ -16,12 +16,13 @@ extension GraphDocument {
         for triple in triples {
             let subjectLabel = localName(triple.subject)
 
-            // subject ノードがなければ individual として追加
+            // subject ノードがなければ instance として追加
             if nodeMap[triple.subject] == nil {
                 nodeMap[triple.subject] = GraphNode(
                     id: triple.subject,
                     label: subjectLabel,
-                    kind: .individual
+                    role: .instance,
+                    source: .graphIndex
                 )
             }
 
@@ -33,23 +34,32 @@ extension GraphDocument {
                 || triple.predicate == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
             {
                 let classLabel = localName(triple.object)
-                // object を owlClass ノードとして登録（昇格）
+                // object を type ノードとして登録（昇格）
                 if var existing = nodeMap[triple.object] {
-                    existing.kind = .owlClass
+                    existing.role = .type
+                    existing.ontologyClass = triple.object
                     nodeMap[triple.object] = existing
                 } else {
                     nodeMap[triple.object] = GraphNode(
                         id: triple.object,
                         label: classLabel,
-                        kind: .owlClass
+                        role: .type,
+                        ontologyClass: triple.object,
+                        source: .graphIndex
                     )
+                }
+                // subject に ontologyClass を設定
+                if var subjectNode = nodeMap[triple.subject] {
+                    subjectNode.ontologyClass = triple.object
+                    nodeMap[triple.subject] = subjectNode
                 }
                 let edgeID = "\(triple.subject)-rdf:type-\(triple.object)"
                 edges.append(GraphEdge(
                     id: edgeID,
                     sourceID: triple.subject,
                     targetID: triple.object,
-                    label: "rdf:type"
+                    label: "rdf:type",
+                    edgeKind: .instanceOf
                 ))
                 continue
             }
@@ -67,8 +77,24 @@ extension GraphDocument {
                 nodeMap[triple.object] = GraphNode(
                     id: triple.object,
                     label: objectLabel,
-                    kind: .individual
+                    role: .instance,
+                    source: .graphIndex
                 )
+            }
+
+            // subClassOf の場合、両端をクラスに昇格（case-insensitive）
+            let isSubClassOf = predicateLocal.lowercased() == "subclassof"
+            if isSubClassOf {
+                if var node = nodeMap[triple.subject], node.role != .type {
+                    node.role = .type
+                    node.ontologyClass = triple.subject
+                    nodeMap[triple.subject] = node
+                }
+                if var node = nodeMap[triple.object], node.role != .type {
+                    node.role = .type
+                    node.ontologyClass = triple.object
+                    nodeMap[triple.object] = node
+                }
             }
 
             let edgeID = "\(triple.subject)-\(triple.predicate)-\(triple.object)"
@@ -76,7 +102,9 @@ extension GraphDocument {
                 id: edgeID,
                 sourceID: triple.subject,
                 targetID: triple.object,
-                label: predicateLocal
+                label: predicateLocal,
+                ontologyProperty: triple.predicate,
+                edgeKind: isSubClassOf ? .subClassOf : .relationship
             ))
         }
 

@@ -416,6 +416,75 @@ let stateSubspace = subspace.subspace(SubspaceKey.state)
 
 ---
 
+## Schema.Ontology — オントロジーの型消去パターン
+
+**詳細設計**: `database-framework/Docs/OWL-DL-Design.md` セクション 8 を参照
+
+### 概要
+
+オントロジーは `Schema.Ontology`（Core モジュール）として型消去され、
+Entity と同様にシステム全体を自動的に流れる。
+
+```
+OWLOntology (Graph)
+    ↓ .asSchemaOntology()
+Schema.Ontology (Core) ← Codable, 型消去
+    ↓ Schema(types, ontology:)
+FDBContainer.init
+    ↓ SchemaRegistry.persist()
+FDB: _schema_ontology → JSON
+    ↓ SchemaResponse
+Client ← ontology 自動転送
+```
+
+### 型の役割
+
+| 型 | モジュール | 役割 |
+|---|---------|------|
+| `OWLOntology` | Graph (database-kit) | 構築（DSL）、推論、検証 |
+| `Schema.Ontology` | Core (database-kit) | 永続化、転送、モジュール境界の型消去 |
+
+### Schema.Ontology 構造
+
+```swift
+extension Schema {
+    public struct Ontology: Sendable, Codable, Hashable {
+        public let iri: String              // オントロジー IRI
+        public let typeIdentifier: String   // 具象型識別子（例: "OWLOntology"）
+        public let encodedData: Data        // JSON エンコード済みデータ
+    }
+}
+```
+
+### AnyIndexDescriptor との類似性
+
+| 観点 | AnyIndexDescriptor | Schema.Ontology |
+|------|-------------------|-----------------|
+| 配置 | Core | Core |
+| 具象型 | IndexDescriptor | OWLOntology (Graph) |
+| 永続化 | `_schema/[name]` | `_schema_ontology` |
+| 転送 | SchemaResponse.entities[].indexes | SchemaResponse.ontology |
+
+### FDB キーレイアウト
+
+```
+(_schema, "EntityName")  → JSON(Schema.Entity)     ← Entity 永続化
+(_schema_ontology)       → JSON(Schema.Ontology)    ← Ontology 永続化
+```
+
+### 変換
+
+```swift
+// Graph モジュール側
+let owlOntology = OntologyPolicy.buildBaseOntology()
+let schemaOntology = owlOntology.asSchemaOntology()  // OWLOntology → Schema.Ontology
+
+// GraphIndex モジュール側（復元）
+let restored = try OWLOntology(schemaOntology: schemaOntology)  // Schema.Ontology → OWLOntology
+```
+
+---
+
 ## SwiftUI Inspector ルール
 
 macOS/iPadOS でコンテキスト依存の補足情報を表示するトレーリングサイドバー。

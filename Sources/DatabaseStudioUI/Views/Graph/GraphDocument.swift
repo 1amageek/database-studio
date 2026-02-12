@@ -13,30 +13,46 @@ public struct RDFTripleData: Hashable, Sendable {
     }
 }
 
-/// グラフノードの種別
-public enum GraphNodeKind: String, Hashable, Sendable {
-    case owlClass
-    case individual
-    case objectProperty
-    case dataProperty
-    case literal
+/// グラフ内でのノードの構造的役割
+public enum GraphNodeRole: String, Hashable, Sendable, CaseIterable {
+    case type       // クラス定義・テーブル定義（ex:Employee, Employee.self）
+    case instance   // インスタンス（alice, bob）
+    case property   // プロパティ定義（ex:worksFor）
+    case literal    // リテラル値（"2024-01-01"）
 
     public var displayName: String {
         switch self {
-        case .owlClass: return "Classes"
-        case .individual: return "Individuals"
-        case .objectProperty: return "Object Properties"
-        case .dataProperty: return "Data Properties"
-        case .literal: return "Literals"
+        case .type:     return "Types"
+        case .instance: return "Instances"
+        case .property: return "Properties"
+        case .literal:  return "Literals"
         }
     }
+}
+
+/// ノードの出自（どのデータソースから来たか）
+public enum GraphNodeSource: String, Hashable, Sendable {
+    case ontology    // OWLOntology のクラス・プロパティ定義
+    case graphIndex  // GraphIndex（RDF トリプル）のデータ
+    case persistable // Persistable 型のテーブルデータ
+    case derived     // 推論・計算で生成
+}
+
+/// エッジの種類
+public enum GraphEdgeKind: String, Hashable, Sendable {
+    case subClassOf    // クラス階層（型 → 親型）
+    case instanceOf    // インスタンスの型（alice → Employee）
+    case relationship  // ドメイン関係（alice → dept1 via worksFor）
+    case property      // プロパティ定義の接続（domain/range）
 }
 
 /// グラフ内の単一ノード
 public struct GraphNode: Identifiable, Hashable, Sendable {
     public let id: String
     public var label: String
-    public var kind: GraphNodeKind
+    public var role: GraphNodeRole
+    public var ontologyClass: String?
+    public var source: GraphNodeSource
     public var metadata: [String: String]
     public var metrics: [String: Double]
     public var communityID: Int?
@@ -45,7 +61,9 @@ public struct GraphNode: Identifiable, Hashable, Sendable {
     public init(
         id: String,
         label: String,
-        kind: GraphNodeKind,
+        role: GraphNodeRole,
+        ontologyClass: String? = nil,
+        source: GraphNodeSource = .graphIndex,
         metadata: [String: String] = [:],
         metrics: [String: Double] = [:],
         communityID: Int? = nil,
@@ -53,7 +71,9 @@ public struct GraphNode: Identifiable, Hashable, Sendable {
     ) {
         self.id = id
         self.label = label
-        self.kind = kind
+        self.role = role
+        self.ontologyClass = ontologyClass
+        self.source = source
         self.metadata = metadata
         self.metrics = metrics
         self.communityID = communityID
@@ -67,6 +87,8 @@ public struct GraphEdge: Identifiable, Hashable, Sendable {
     public var sourceID: String
     public var targetID: String
     public var label: String
+    public var ontologyProperty: String?
+    public var edgeKind: GraphEdgeKind
     public var weight: Double?
     public var isHighlighted: Bool
 
@@ -75,6 +97,8 @@ public struct GraphEdge: Identifiable, Hashable, Sendable {
         sourceID: String,
         targetID: String,
         label: String,
+        ontologyProperty: String? = nil,
+        edgeKind: GraphEdgeKind = .relationship,
         weight: Double? = nil,
         isHighlighted: Bool = false
     ) {
@@ -82,6 +106,8 @@ public struct GraphEdge: Identifiable, Hashable, Sendable {
         self.sourceID = sourceID
         self.targetID = targetID
         self.label = label
+        self.ontologyProperty = ontologyProperty
+        self.edgeKind = edgeKind
         self.weight = weight
         self.isHighlighted = isHighlighted
     }

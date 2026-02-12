@@ -28,6 +28,14 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/local/lib"])
             ]
         ),
+        .testTarget(
+            name: "GraphDocumentTests",
+            dependencies: ["DatabaseStudioUI"],
+            linkerSettings: [
+                .unsafeFlags(["-L/usr/local/lib"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/local/lib"])
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

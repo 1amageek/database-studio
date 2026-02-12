@@ -13,12 +13,12 @@ final class GraphVisualMapping {
 
     /// ノードカラーの決定方法
     enum ColorMode: String, CaseIterable {
-        case byNodeKind = "Kind"
+        case byRole = "Role"
         case byCommunity = "Community"
     }
 
     var sizeMode: SizeMode = .uniform
-    var colorMode: ColorMode = .byNodeKind
+    var colorMode: ColorMode = .byRole
 
     /// 最短経路ハイライト対象ノード ID 列
     var highlightedPath: Set<String> = []
@@ -45,7 +45,7 @@ final class GraphVisualMapping {
 
     func nodeColor(for node: GraphNode, defaultColor: Color) -> Color {
         switch colorMode {
-        case .byNodeKind:
+        case .byRole:
             return defaultColor
         case .byCommunity:
             guard let communityID = node.communityID else { return defaultColor }

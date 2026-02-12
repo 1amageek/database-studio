@@ -5,7 +5,7 @@ extension GraphDocument {
 
     /// OWLOntology からグラフドキュメントを構築する
     ///
-    /// - `ontology.classes` → `.owlClass` ノード
+    /// - `ontology.classes` → `.type` ノード
     /// - `.subClassOf` axiom → `subClassOf` エッジ
     /// - `.equivalentClasses` axiom → `equivalentTo` エッジ
     /// - `ontology.objectProperties` → domain→range エッジ
@@ -20,7 +20,9 @@ extension GraphDocument {
             nodeMap[cls.iri] = GraphNode(
                 id: cls.iri,
                 label: label,
-                kind: .owlClass,
+                role: .type,
+                ontologyClass: cls.iri,
+                source: .ontology,
                 metadata: cls.comment.map { ["comment": $0] } ?? [:]
             )
         }
@@ -31,13 +33,14 @@ extension GraphDocument {
             case .subClassOf(let sub, let sup):
                 guard case .named(let subIRI) = sub,
                       case .named(let supIRI) = sup else { continue }
-                ensureNode(iri: subIRI, kind: .owlClass, in: &nodeMap)
-                ensureNode(iri: supIRI, kind: .owlClass, in: &nodeMap)
+                ensureNode(iri: subIRI, role: .type, source: .ontology, in: &nodeMap)
+                ensureNode(iri: supIRI, role: .type, source: .ontology, in: &nodeMap)
                 edges.append(GraphEdge(
                     id: "subClassOf-\(subIRI)-\(supIRI)",
                     sourceID: subIRI,
                     targetID: supIRI,
-                    label: "subClassOf"
+                    label: "subClassOf",
+                    edgeKind: .subClassOf
                 ))
 
             case .equivalentClasses(let expressions):
@@ -47,8 +50,8 @@ extension GraphDocument {
                 }
                 for i in 0..<namedIRIs.count {
                     for j in (i + 1)..<namedIRIs.count {
-                        ensureNode(iri: namedIRIs[i], kind: .owlClass, in: &nodeMap)
-                        ensureNode(iri: namedIRIs[j], kind: .owlClass, in: &nodeMap)
+                        ensureNode(iri: namedIRIs[i], role: .type, source: .ontology, in: &nodeMap)
+                        ensureNode(iri: namedIRIs[j], role: .type, source: .ontology, in: &nodeMap)
                         edges.append(GraphEdge(
                             id: "equivalentTo-\(namedIRIs[i])-\(namedIRIs[j])",
                             sourceID: namedIRIs[i],
@@ -71,13 +74,15 @@ extension GraphDocument {
                 guard case .named(let domainIRI) = domain else { continue }
                 for range in prop.ranges {
                     guard case .named(let rangeIRI) = range else { continue }
-                    ensureNode(iri: domainIRI, kind: .owlClass, in: &nodeMap)
-                    ensureNode(iri: rangeIRI, kind: .owlClass, in: &nodeMap)
+                    ensureNode(iri: domainIRI, role: .type, source: .ontology, in: &nodeMap)
+                    ensureNode(iri: rangeIRI, role: .type, source: .ontology, in: &nodeMap)
                     edges.append(GraphEdge(
                         id: "objProp-\(prop.iri)-\(domainIRI)-\(rangeIRI)",
                         sourceID: domainIRI,
                         targetID: rangeIRI,
-                        label: propLabel
+                        label: propLabel,
+                        ontologyProperty: prop.iri,
+                        edgeKind: .property
                     ))
                 }
             }
@@ -101,12 +106,14 @@ extension GraphDocument {
     }
 }
 
-private func ensureNode(iri: String, kind: GraphNodeKind, in nodeMap: inout [String: GraphNode]) {
+private func ensureNode(iri: String, role: GraphNodeRole, source: GraphNodeSource = .graphIndex, in nodeMap: inout [String: GraphNode]) {
     if nodeMap[iri] == nil {
         nodeMap[iri] = GraphNode(
             id: iri,
             label: localName(iri),
-            kind: kind
+            role: role,
+            ontologyClass: role == .type ? iri : nil,
+            source: source
         )
     }
 }

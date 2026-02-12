@@ -29,7 +29,8 @@ extension GraphDocument {
                 nodeMap[fromValue] = GraphNode(
                     id: fromValue,
                     label: localName(fromValue),
-                    kind: .individual
+                    role: .instance,
+                    source: .graphIndex
                 )
             }
 
@@ -55,25 +56,51 @@ extension GraphDocument {
                 nodeMap[toValue] = GraphNode(
                     id: toValue,
                     label: localName(toValue),
-                    kind: .individual
+                    role: .instance,
+                    source: .graphIndex
                 )
             }
 
-            // rdf:type の場合、to ノードを owlClass に昇格
-            if edgeLabel == "rdf:type"
+            // rdf:type の場合、to ノードを .type ロールに昇格
+            let isRdfType = edgeLabel == "rdf:type"
                 || edgeLabel.hasSuffix("#type")
-                || edgeLabel == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" {
+                || edgeLabel == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+            if isRdfType {
                 if var node = nodeMap[toValue] {
-                    node.kind = .owlClass
+                    node.role = .type
+                    node.ontologyClass = toValue
+                    nodeMap[toValue] = node
+                }
+                // from ノードに ontologyClass を設定
+                if var node = nodeMap[fromValue] {
+                    node.ontologyClass = toValue
+                    nodeMap[fromValue] = node
+                }
+            }
+
+            // subClassOf の場合、両端をクラスに昇格（case-insensitive）
+            let isSubClassOf = predicateLocal.lowercased() == "subclassof"
+            if isSubClassOf {
+                if var node = nodeMap[fromValue], node.role != .type {
+                    node.role = .type
+                    node.ontologyClass = fromValue
+                    nodeMap[fromValue] = node
+                }
+                if var node = nodeMap[toValue], node.role != .type {
+                    node.role = .type
+                    node.ontologyClass = toValue
                     nodeMap[toValue] = node
                 }
             }
 
+            let edgeKind: GraphEdgeKind = isRdfType ? .instanceOf : (isSubClassOf ? .subClassOf : .relationship)
             edges.append(GraphEdge(
                 id: item.id,
                 sourceID: fromValue,
                 targetID: toValue,
-                label: predicateLocal
+                label: predicateLocal,
+                ontologyProperty: edgeLabel,
+                edgeKind: edgeKind
             ))
         }
 

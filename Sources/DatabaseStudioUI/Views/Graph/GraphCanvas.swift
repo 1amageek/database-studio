@@ -57,7 +57,7 @@ struct GraphCanvas: View {
                     var m: [String: CGFloat] = [:]
                     m.reserveCapacity(visibleNodes.count)
                     for node in visibleNodes {
-                        let style = GraphNodeStyle.style(for: node.kind)
+                        let style = GraphNodeStyle.style(for: node.role)
                         var radius = mapping.nodeRadius(for: node, baseRadius: style.radius)
                         if node.id == selectedNodeID {
                             radius *= 1.6
@@ -214,7 +214,7 @@ struct GraphCanvas: View {
                             if center.x < viewMinX || center.x > viewMaxX ||
                                center.y < viewMinY || center.y > viewMaxY { continue }
 
-                            let style = GraphNodeStyle.style(for: node.kind)
+                            let style = GraphNodeStyle.style(for: node.role)
                             let baseColor = nodeColorMap[node.id] ?? style.color
                             let color = mapping.nodeColor(for: node, defaultColor: baseColor)
                             let isHL = node.isHighlighted || highlightedPath.contains(node.id)
@@ -232,7 +232,7 @@ struct GraphCanvas: View {
                         for node in visibleNodes {
                             guard let center = screenPositions[node.id] else { continue }
 
-                            let style = GraphNodeStyle.style(for: node.kind)
+                            let style = GraphNodeStyle.style(for: node.role)
                             let radius = (nodeRadiusMap[node.id] ?? style.radius) * nodeScale
 
                             // Viewport cull（ラベル分の余白を考慮）

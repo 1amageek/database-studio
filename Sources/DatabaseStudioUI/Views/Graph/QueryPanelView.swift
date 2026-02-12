@@ -15,7 +15,7 @@ struct QueryPanelView: View {
                     .scrollContentBackground(.hidden)
                     .padding(8)
             }
-            .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 結果表示
             VStack(spacing: 0) {
@@ -23,7 +23,7 @@ struct QueryPanelView: View {
                 Divider()
                 resultContent
             }
-            .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)

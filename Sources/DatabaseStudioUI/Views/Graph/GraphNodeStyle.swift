@@ -6,16 +6,15 @@ struct GraphNodeStyle {
     let iconName: String
     let radius: CGFloat
 
-    static func style(for kind: GraphNodeKind) -> GraphNodeStyle {
-        switch kind {
-        case .owlClass:
+    /// ロールベースのスタイル解決
+    static func style(for role: GraphNodeRole) -> GraphNodeStyle {
+        switch role {
+        case .type:
             return GraphNodeStyle(color: .blue, iconName: "square.stack.3d.up", radius: 30)
-        case .individual:
+        case .instance:
             return GraphNodeStyle(color: .green, iconName: "circle.fill", radius: 26)
-        case .objectProperty:
+        case .property:
             return GraphNodeStyle(color: .orange, iconName: "arrow.right", radius: 22)
-        case .dataProperty:
-            return GraphNodeStyle(color: .purple, iconName: "textformat", radius: 22)
         case .literal:
             return GraphNodeStyle(color: .gray, iconName: "quote.closing", radius: 20)
         }

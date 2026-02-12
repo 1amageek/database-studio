@@ -146,10 +146,7 @@ struct ColumnConfigurationView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(availableFields, id: \.path) { field in
                             Button {
-                                if !config.jsonFieldColumns.contains(field.path) {
-                                    config.jsonFieldColumns.append(field.path)
-                                }
-                                showingFieldPicker = false
+                                addFieldColumn(field.path)
                             } label: {
                                 HStack {
                                     Text(field.path)
@@ -183,17 +180,30 @@ struct ColumnConfigurationView: View {
                     .textFieldStyle(.roundedBorder)
 
                 Button("Add") {
-                    let path = newFieldPath.trimmingCharacters(in: .whitespaces)
-                    if !path.isEmpty && !config.jsonFieldColumns.contains(path) {
-                        config.jsonFieldColumns.append(path)
-                        newFieldPath = ""
-                    }
+                    addManualFieldColumn()
                 }
                 .disabled(newFieldPath.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding()
         .frame(minWidth: 300)
+    }
+
+    // MARK: - Actions
+
+    private func addFieldColumn(_ path: String) {
+        if !config.jsonFieldColumns.contains(path) {
+            config.jsonFieldColumns.append(path)
+        }
+        showingFieldPicker = false
+    }
+
+    private func addManualFieldColumn() {
+        let path = newFieldPath.trimmingCharacters(in: .whitespaces)
+        if !path.isEmpty && !config.jsonFieldColumns.contains(path) {
+            config.jsonFieldColumns.append(path)
+            newFieldPath = ""
+        }
     }
 }
 

@@ -7,7 +7,7 @@
       "location" : "https://github.com/1amageek/database-kit.git",
       "state" : {
         "branch" : "main",
-        "revision" : "d99bb4ddd85296f2ade8883c64541b7453758a18"
+        "revision" : "19364ed445191bdf6b82fcd2738384df4146cafb"
       }
     },
     {
@@ -16,7 +16,7 @@
       "location" : "https://github.com/1amageek/fdb-swift-bindings.git",
       "state" : {
         "branch" : "feature/directory-layer",
-        "revision" : "d1e89822c92a027d8534273179b5dc5bf198fe59"
+        "revision" : "5fc169744a7fa4573e45adaed9735976c1e6e668"
       }
     },
     {

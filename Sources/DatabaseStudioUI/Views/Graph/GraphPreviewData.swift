@@ -34,16 +34,16 @@ enum GraphPreviewData {
     /// 手動構築のオントロジー風 GraphDocument（TBox 表現）
     static let ontologyDocument: GraphDocument = {
         let nodes: [GraphNode] = [
-            GraphNode(id: "ex:Organization", label: "Organization", kind: .owlClass),
-            GraphNode(id: "ex:Corporation", label: "Corporation", kind: .owlClass),
-            GraphNode(id: "ex:Manufacturer", label: "Manufacturer", kind: .owlClass),
-            GraphNode(id: "ex:AutomotiveManufacturer", label: "AutomotiveManufacturer", kind: .owlClass),
-            GraphNode(id: "ex:Supplier", label: "Supplier", kind: .owlClass),
-            GraphNode(id: "ex:GlobalManufacturer", label: "GlobalManufacturer", kind: .owlClass,
+            GraphNode(id: "ex:Organization", label: "Organization", role: .type),
+            GraphNode(id: "ex:Corporation", label: "Corporation", role: .type),
+            GraphNode(id: "ex:Manufacturer", label: "Manufacturer", role: .type),
+            GraphNode(id: "ex:AutomotiveManufacturer", label: "AutomotiveManufacturer", role: .type),
+            GraphNode(id: "ex:Supplier", label: "Supplier", role: .type),
+            GraphNode(id: "ex:GlobalManufacturer", label: "GlobalManufacturer", role: .type,
                       metadata: ["definedAs": "Corporation AND scale=Global"]),
-            GraphNode(id: "ex:City", label: "City", kind: .owlClass),
-            GraphNode(id: "ex:Country", label: "Country", kind: .owlClass),
-            GraphNode(id: "ex:Location", label: "Location", kind: .owlClass),
+            GraphNode(id: "ex:City", label: "City", role: .type),
+            GraphNode(id: "ex:Country", label: "Country", role: .type),
+            GraphNode(id: "ex:Location", label: "Location", role: .type),
         ]
         let edges: [GraphEdge] = [
             GraphEdge(id: "e1", sourceID: "ex:Corporation", targetID: "ex:Organization", label: "subClassOf"),
@@ -62,7 +62,7 @@ enum GraphPreviewData {
     static let sampleNode: GraphNode = GraphNode(
         id: "ex:Toyota",
         label: "Toyota",
-        kind: .individual,
+        role: .instance,
         metadata: ["foundedYear": "1937", "scale": "Global"]
     )
 
