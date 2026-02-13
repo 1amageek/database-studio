@@ -15,6 +15,8 @@ import AppKit
 struct CanvasHostView<Content: View>: NSViewRepresentable {
     let onScroll: @MainActor (CGFloat, CGFloat) -> Void
     let onMagnify: @MainActor (CGFloat, CGPoint) -> Void
+    var onNavigateBack: (@MainActor () -> Void)?
+    var onNavigateForward: (@MainActor () -> Void)?
     @ViewBuilder var content: Content
 
     func makeNSView(context: Context) -> CanvasNSView {
@@ -22,6 +24,8 @@ struct CanvasHostView<Content: View>: NSViewRepresentable {
         nsView.clipsToBounds = true
         nsView.onScroll = onScroll
         nsView.onMagnify = onMagnify
+        nsView.onNavigateBack = onNavigateBack
+        nsView.onNavigateForward = onNavigateForward
 
         let hosting = NSHostingView(rootView: content)
         hosting.translatesAutoresizingMaskIntoConstraints = false
@@ -39,6 +43,8 @@ struct CanvasHostView<Content: View>: NSViewRepresentable {
     func updateNSView(_ nsView: CanvasNSView, context: Context) {
         nsView.onScroll = onScroll
         nsView.onMagnify = onMagnify
+        nsView.onNavigateBack = onNavigateBack
+        nsView.onNavigateForward = onNavigateForward
         context.coordinator.hostingView?.rootView = content
     }
 
@@ -49,12 +55,15 @@ struct CanvasHostView<Content: View>: NSViewRepresentable {
     }
 }
 
-/// scrollWheel と magnify を処理する NSView
+/// scrollWheel / magnify / マウス戻る・進むを処理する NSView
 final class CanvasNSView: NSView {
     var onScroll: (@MainActor (CGFloat, CGFloat) -> Void)?
     var onMagnify: (@MainActor (CGFloat, CGPoint) -> Void)?
+    var onNavigateBack: (@MainActor () -> Void)?
+    var onNavigateForward: (@MainActor () -> Void)?
 
     override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
 
     override func scrollWheel(with event: NSEvent) {
         let dx: CGFloat
@@ -75,6 +84,27 @@ final class CanvasNSView: NSView {
         let location = convert(event.locationInWindow, from: nil)
         MainActor.assumeIsolated {
             onMagnify?(event.magnification, CGPoint(x: location.x, y: location.y))
+        }
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        // マウスボタン 3 = 戻る、4 = 進む（多ボタンマウス標準）
+        switch event.buttonNumber {
+        case 3:
+            MainActor.assumeIsolated { onNavigateBack?() }
+        case 4:
+            MainActor.assumeIsolated { onNavigateForward?() }
+        default:
+            super.otherMouseUp(with: event)
+        }
+    }
+
+    override func swipe(with event: NSEvent) {
+        // トラックパッド 3本指スワイプ
+        if event.deltaX > 0 {
+            MainActor.assumeIsolated { onNavigateBack?() }
+        } else if event.deltaX < 0 {
+            MainActor.assumeIsolated { onNavigateForward?() }
         }
     }
 }

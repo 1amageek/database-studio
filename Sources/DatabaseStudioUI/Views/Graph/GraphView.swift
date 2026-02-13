@@ -27,6 +27,9 @@ public struct GraphView: View {
         }
         .navigationSubtitle(toolbarSubtitle)
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                navigationActions
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 toolbarActions
             }
@@ -193,11 +196,12 @@ public struct GraphView: View {
         let individualCount = state.visibleNodes.filter { $0.role == .instance }.count
         let edgeCount = state.visibleEdges.count
 
-        var parts = [
-            "\(classCount) classes",
-            "\(individualCount) individuals",
-            "\(edgeCount) edges"
-        ]
+        var parts: [String] = []
+        if classCount > 0 {
+            parts.append("\(classCount) classes")
+        }
+        parts.append("\(individualCount) individuals")
+        parts.append("\(edgeCount) edges")
 
         if !state.filterTokens.isEmpty {
             parts.append("\(state.filterTokens.count) filters")
@@ -250,6 +254,29 @@ public struct GraphView: View {
 
     }
 
+    // MARK: - Navigation Actions
+
+    @ViewBuilder
+    private var navigationActions: some View {
+        Button {
+            state.goBack()
+        } label: {
+            Image(systemName: "chevron.left")
+        }
+        .help("Back")
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(!state.canGoBack)
+
+        Button {
+            state.goForward()
+        } label: {
+            Image(systemName: "chevron.right")
+        }
+        .help("Forward")
+        .keyboardShortcut("]", modifiers: .command)
+        .disabled(!state.canGoForward)
+    }
+
     // MARK: - Toolbar Actions
 
     @ViewBuilder
@@ -286,6 +313,16 @@ public struct GraphView: View {
             .help(state.isBackboneActive ? "Show All Nodes" : "Show Backbone")
             .keyboardShortcut("b", modifiers: .command)
         }
+
+        Button {
+            state.showClassNodes.toggle()
+        } label: {
+            Image(systemName: state.showClassNodes
+                  ? "square.stack.3d.up.fill"
+                  : "square.stack.3d.up.slash")
+        }
+        .help(state.showClassNodes ? "Hide Classes" : "Show Classes")
+        .keyboardShortcut("t", modifiers: .command)
 
         filterMenu
 

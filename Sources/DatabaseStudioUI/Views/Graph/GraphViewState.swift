@@ -30,6 +30,13 @@ final class GraphViewState {
 
     var mapping: GraphVisualMapping = GraphVisualMapping()
 
+    // MARK: - クラスノード表示
+
+    /// クラス（.type）ノードをグラフに表示するか
+    var showClassNodes: Bool = false {
+        didSet { invalidateVisibleCache() }
+    }
+
     // MARK: - Backbone
 
     /// Backbone モードが有効か（大規模グラフの初期表示で代表ノードのみ表示）
@@ -72,6 +79,53 @@ final class GraphViewState {
     var selectedNode: GraphNode? {
         guard let id = selectedNodeID else { return nil }
         return cachedNodeMap[id]
+    }
+
+    // MARK: - 選択履歴（ブラウザバック / フォワード）
+
+    private var selectionHistory: [String] = []
+    private var selectionHistoryIndex: Int = -1
+    private var isNavigatingHistory = false
+
+    var canGoBack: Bool { selectionHistoryIndex > 0 }
+    var canGoForward: Bool { selectionHistoryIndex < selectionHistory.count - 1 }
+
+    /// 履歴に新しい選択を記録する
+    private func pushHistory(_ nodeID: String?) {
+        guard !isNavigatingHistory else { return }
+        guard let nodeID else {
+            // nil 選択は履歴に入れない
+            return
+        }
+        // 現在位置より先の履歴を切り捨て
+        if selectionHistoryIndex < selectionHistory.count - 1 {
+            selectionHistory.removeSubrange((selectionHistoryIndex + 1)...)
+        }
+        // 直前と同じなら追加しない
+        if selectionHistory.last != nodeID {
+            selectionHistory.append(nodeID)
+        }
+        selectionHistoryIndex = selectionHistory.count - 1
+    }
+
+    func goBack() {
+        guard canGoBack else { return }
+        isNavigatingHistory = true
+        selectionHistoryIndex -= 1
+        let nodeID = selectionHistory[selectionHistoryIndex]
+        selectedNodeID = nodeID
+        zoomToFit()
+        isNavigatingHistory = false
+    }
+
+    func goForward() {
+        guard canGoForward else { return }
+        isNavigatingHistory = true
+        selectionHistoryIndex += 1
+        let nodeID = selectionHistory[selectionHistoryIndex]
+        selectedNodeID = nodeID
+        zoomToFit()
+        isNavigatingHistory = false
     }
 
     // MARK: - N-hop 近傍フィルタ
@@ -401,6 +455,12 @@ final class GraphViewState {
     var visibleEdges: [GraphEdge] {
         if let cached = cachedVisibleEdges { return cached }
         var result = document.edges.filter { activeEdgeLabels.contains($0.label) }
+        // クラスノードフィルタ: showClassNodes が OFF かつ選択ノードが .type 以外の場合のみ除外
+        let selectedIsType = selectedNodeID.flatMap({ cachedNodeMap[$0] })?.role == .type
+        if !showClassNodes && !selectedIsType {
+            let typeNodeIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
+            result = result.filter { !typeNodeIDs.contains($0.sourceID) && !typeNodeIDs.contains($0.targetID) }
+        }
         // Backbone フィルタ: 両端が backbone ノードのエッジのみ
         if isBackboneActive && !isFocusMode && !isSearchActive {
             let backbone = backboneNodeIDs
@@ -467,6 +527,12 @@ final class GraphViewState {
         // 孤立 backbone ノードも含める（他の backbone ノードと直接接続がなくても表示）
         if isBackboneActive && !isFocusMode && !isSearchActive {
             ids.formUnion(backboneNodeIDs)
+        }
+        // showClassNodes が OFF かつ選択ノードが .type 以外の場合のみ除外
+        let selectedIsType = selectedNodeID.flatMap({ cachedNodeMap[$0] })?.role == .type
+        if !showClassNodes && !selectedIsType {
+            let typeNodeIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
+            ids.subtract(typeNodeIDs)
         }
         cachedVisibleNodeIDs = ids
         return ids
@@ -1148,11 +1214,36 @@ final class GraphViewState {
             }
         }
 
-        // クラス → インスタンス マッピング
+        // クラス → インスタンス マッピング（leaf type のみ）
+        // 各インスタンスの rdf:type のうち、より具体的なサブクラスが同じインスタンスの
+        // rdf:type に存在しない型（= leaf type）にのみ割り当てる。
+        // これにより NYSE が StockExchange と FinancialMarket と Market の全てに
+        // 重複表示されるのを防ぐ。
+
+        // child が ancestor のサブクラス（推移的）か判定
+        func isTransitiveSubclass(_ child: String, of ancestor: String) -> Bool {
+            var visited = Set<String>()
+            var queue = [child]
+            while let current = queue.popLast() {
+                guard visited.insert(current).inserted else { continue }
+                guard let parents = subClassOfMap[current] else { continue }
+                if parents.contains(ancestor) { return true }
+                queue.append(contentsOf: parents)
+            }
+            return false
+        }
+
         var instancesMap: [String: [GraphNode]] = [:]
         for (instanceID, typeIDs) in nodeTypeMap {
             guard let node = cachedNodeMap[instanceID], node.role == .instance else { continue }
-            for typeID in typeIDs where classIDSet.contains(typeID) {
+            let validTypes = typeIDs.filter { classIDSet.contains($0) }
+            // leaf type = validTypes の中に自分のサブクラスがない型
+            let leafTypes = validTypes.filter { typeID in
+                !validTypes.contains { otherID in
+                    otherID != typeID && isTransitiveSubclass(otherID, of: typeID)
+                }
+            }
+            for typeID in leafTypes {
                 instancesMap[typeID, default: []].append(node)
             }
         }
@@ -1237,11 +1328,13 @@ final class GraphViewState {
 
     func selectNode(_ id: String?) {
         selectedNodeID = id
+        pushHistory(id)
     }
 
     /// サイドバーからノードを選択し、キャンバス上で全ノードが収まるようにフィットする
     func focusOnNode(_ nodeID: String) {
         selectedNodeID = nodeID
+        pushHistory(nodeID)
         zoomToFit()
     }
 

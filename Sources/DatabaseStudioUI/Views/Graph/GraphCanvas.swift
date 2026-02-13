@@ -36,7 +36,9 @@ struct GraphCanvas: View {
                         height: cursorPoint.y - (cursorPoint.y - state.cameraOffset.height) * ratio
                     )
                     state.cameraScale = newScale
-                }
+                },
+                onNavigateBack: { state.goBack() },
+                onNavigateForward: { state.goForward() }
             ) {
                 // スナップショットを body 評価時に1回だけ取得
                 let visibleEdges = state.visibleEdges
@@ -194,7 +196,7 @@ struct GraphCanvas: View {
                     // ノード描画
                     // ============================
                     if lod <= 1 {
-                        // LOD 0-1: シンプルなドット（Text 生成ゼロ）
+                        // LOD 0-1: シンプルなドット / 四角（Text 生成ゼロ）
                         let dotRadius: CGFloat = lod == 0 ? 2 : 3
 
                         for node in visibleNodes {
@@ -213,10 +215,17 @@ struct GraphCanvas: View {
 
                             let r = isHL ? dotRadius * 1.5 : dotRadius
                             let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
-                            context.fill(SwiftUI.Path(ellipseIn: rect), with: .color(color.opacity(opacity)))
+                            let dotPath: SwiftUI.Path
+                            if node.role == .type {
+                                dotPath = SwiftUI.Path(roundedRect: rect, cornerRadius: r * 0.3)
+                            } else {
+                                dotPath = SwiftUI.Path(ellipseIn: rect)
+                            }
+                            context.fill(dotPath, with: .color(color.opacity(opacity)))
                         }
                     } else {
-                        // LOD 2-3: 着色円 + ストローク（+ テキスト @ LOD 3）
+                        // LOD 2-3: 形状描画 + ストローク（+ テキスト @ LOD 3）
+                        // .type → 角丸四角形、それ以外 → 円
                         let nodeScale = min(scale, 1.0)
 
                         for node in visibleNodes {
@@ -238,19 +247,23 @@ struct GraphCanvas: View {
                             let isDimmed = isSearchActive && !isMatched
                             let nodeOpacity: Double = isDimmed ? 0.15 : 1.0
 
-                            // 塗りつぶし円（ソリッドカラー）
-                            let circleRect = CGRect(
+                            let nodeRect = CGRect(
                                 x: center.x - radius, y: center.y - radius,
                                 width: radius * 2, height: radius * 2
                             )
-                            let circlePath = SwiftUI.Path(ellipseIn: circleRect)
-                            context.fill(circlePath, with: .color(color.opacity(nodeOpacity)))
+                            let nodePath: SwiftUI.Path
+                            if node.role == .type {
+                                nodePath = SwiftUI.Path(roundedRect: nodeRect, cornerRadius: radius * 0.3)
+                            } else {
+                                nodePath = SwiftUI.Path(ellipseIn: nodeRect)
+                            }
+                            context.fill(nodePath, with: .color(color.opacity(nodeOpacity)))
 
                             // ストローク
                             let strokeColor: Color = isMatched ? .yellow : (isSelected ? .white : color)
                             let strokeWidth: CGFloat = isMatched ? 3 : (isSelected ? 3 : (isHighlighted ? 2.5 : 0))
                             if strokeWidth > 0 {
-                                context.stroke(circlePath, with: .color(strokeColor.opacity(nodeOpacity)), lineWidth: strokeWidth)
+                                context.stroke(nodePath, with: .color(strokeColor.opacity(nodeOpacity)), lineWidth: strokeWidth)
                             }
 
                             // アイコン（LOD 3 のみ — 白色・太ウェイトで描画）
@@ -341,10 +354,21 @@ struct GraphCanvas: View {
         for node in nodes.reversed() {
             guard let center = screenPositions[node.id] else { continue }
             let radius = (radiusMap[node.id] ?? 24) * nodeScale
-            let dx = point.x - center.x
-            let dy = point.y - center.y
-            if dx * dx + dy * dy <= radius * radius {
-                return node.id
+            if node.role == .type {
+                // 角丸四角形のヒットテスト（バウンディングボックス判定）
+                let rect = CGRect(
+                    x: center.x - radius, y: center.y - radius,
+                    width: radius * 2, height: radius * 2
+                )
+                if rect.contains(point) {
+                    return node.id
+                }
+            } else {
+                let dx = point.x - center.x
+                let dy = point.y - center.y
+                if dx * dx + dy * dy <= radius * radius {
+                    return node.id
+                }
             }
         }
         return nil
