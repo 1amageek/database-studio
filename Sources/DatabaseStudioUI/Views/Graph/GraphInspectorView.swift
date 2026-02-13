@@ -11,6 +11,7 @@ enum GraphInspectorTab: String, CaseIterable {
 /// ノード詳細 Inspector（Detail + Events + People + Places タブ）
 struct GraphInspectorView: View {
     let node: GraphNode
+    let state: GraphViewState
     let incomingEdges: [GraphEdge]
     let outgoingEdges: [GraphEdge]
     let allNodes: [GraphNode]
@@ -18,6 +19,8 @@ struct GraphInspectorView: View {
     let relatedEvents: [(node: GraphNode, date: Date?, role: String)]
     let relatedPeople: [(node: GraphNode, role: String)]
     let relatedPlaces: [(node: GraphNode, role: String)]
+    let superclassNodes: [GraphNode]
+    let subclassNodes: [GraphNode]
     var onSelectNode: (String) -> Void = { _ in }
 
     @State private var selectedTab: GraphInspectorTab = .detail
@@ -38,6 +41,20 @@ struct GraphInspectorView: View {
                 guard let url = URL(string: value) else { return nil }
                 return (key: key, url: url)
             }
+    }
+
+    /// クラス階層チェーン（.type → superclassNodes, .instance → classHierarchyChain）
+    private var classHierarchyNodes: [GraphNode]? {
+        switch node.role {
+        case .type:
+            let nodes = superclassNodes
+            return nodes.isEmpty ? nil : nodes
+        case .instance:
+            let chain = state.classHierarchyChain(of: node.id)
+            return chain.isEmpty ? nil : chain
+        default:
+            return nil
+        }
     }
 
     private var regularMetadata: [(key: String, value: String)] {
@@ -122,6 +139,64 @@ struct GraphInspectorView: View {
                 LabeledContent("IRI", value: node.id)
                 LabeledContent("Label", value: node.label)
                 LabeledContent("Role", value: node.role.displayName)
+            }
+
+            // Class Hierarchy
+            if let hierarchyNodes = classHierarchyNodes, !hierarchyNodes.isEmpty {
+                Section("Class Hierarchy") {
+                    LabeledContent(node.role == .instance ? "Class" : "Superclass") {
+                        HStack(spacing: 4) {
+                            ForEach(Array(hierarchyNodes.reversed().enumerated()), id: \.element.id) { index, ancestor in
+                                if index > 0 {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Button {
+                                    onSelectNode(ancestor.id)
+                                } label: {
+                                    let icon = state.nodeIconMap[ancestor.id] ?? GraphNodeStyle.style(for: ancestor.role).iconName
+                                    let color = state.nodeColorMap[ancestor.id] ?? GraphNodeStyle.style(for: ancestor.role).color
+                                    HStack(spacing: 3) {
+                                        Image(systemName: icon)
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(color)
+                                        Text(ancestor.label)
+                                            .font(.callout)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    // サブクラス（.type のみ、折りたたみ）
+                    if node.role == .type, !subclassNodes.isEmpty {
+                        DisclosureGroup("Subclasses (\(subclassNodes.count))") {
+                            ForEach(subclassNodes) { child in
+                                let icon = state.nodeIconMap[child.id] ?? GraphNodeStyle.style(for: child.role).iconName
+                                let color = state.nodeColorMap[child.id] ?? GraphNodeStyle.style(for: child.role).color
+                                Button {
+                                    onSelectNode(child.id)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: icon)
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(color)
+                                            .frame(width: 18, alignment: .center)
+                                        Text(child.label)
+                                            .font(.callout)
+                                            .lineLimit(1)
+                                        Spacer()
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
             }
 
             // Links
@@ -294,3 +369,4 @@ struct GraphInspectorView: View {
         }
     }
 }
+

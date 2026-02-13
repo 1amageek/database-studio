@@ -20,6 +20,7 @@ let package = Package(
             dependencies: [
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseCLICore", package: "database-framework"),
+                .product(name: "GraphIndex", package: "database-framework"),
                 .product(name: "Graph", package: "database-kit"),
             ],
             path: "Sources/DatabaseStudioUI",

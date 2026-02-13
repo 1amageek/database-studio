@@ -46,7 +46,10 @@ struct GraphSidebarView: View {
             // クラス階層セクション
             classHierarchySection
 
-            // クラス以外の種別セクション
+            // クラスに属さないインスタンス
+            untypedInstancesSection
+
+            // クラス・インスタンス以外の種別セクション
             ForEach(nonClassNodesByRole, id: \.role) { role, nodes in
                 Section {
                     ForEach(nodes) { node in
@@ -58,40 +61,51 @@ struct GraphSidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .searchable(text: $state.searchText, prompt: "Filter nodes")
     }
 
     // MARK: - クラス階層セクション
 
     @ViewBuilder
     private var classHierarchySection: some View {
-        let totalCount = state.totalClassCount
-        if totalCount > 0 {
-            if isSearchActive {
-                // 検索中はフラットリストで一致するクラスのみ表示
-                let query = state.searchText.lowercased()
-                let allClassNodes = state.document.nodes
-                    .filter { $0.role == .type }
-                    .filter { $0.label.lowercased().contains(query) }
-                    .sorted { $0.label < $1.label }
-                if !allClassNodes.isEmpty {
-                    Section {
-                        ForEach(allClassNodes) { node in
-                            nodeRow(node)
-                        }
-                    } header: {
-                        Text("Classes (\(allClassNodes.count))")
-                    }
+        let tree = state.classTree
+        let orphans = state.orphanClassNodes
+        // オントロジー階層ツリー
+        if !tree.isEmpty {
+            Section {
+                ForEach(tree) { treeNode in
+                    ClassTreeRowView(treeNode: treeNode, state: state)
                 }
-            } else {
-                // 通常時は subClassOf 階層表示（DisclosureGroup による再帰ツリー）
-                Section {
-                    ForEach(state.classTree) { treeNode in
-                        ClassTreeRowView(treeNode: treeNode, state: state)
-                    }
-                } header: {
-                    Text("Classes (\(totalCount))")
+            } header: {
+                Text("Classes (\(state.hierarchyClassCount))")
+            }
+        }
+        // 階層に属さない孤立クラス
+        if !orphans.isEmpty {
+            Section {
+                ForEach(orphans) { treeNode in
+                    ClassTreeRowView(treeNode: treeNode, state: state)
                 }
+            } header: {
+                Text("Other Classes (\(orphans.count))")
+            }
+        }
+    }
+
+    // MARK: - 未分類インスタンスセクション
+
+    @ViewBuilder
+    private var untypedInstancesSection: some View {
+        let typedInstanceIDs = Set(state.nodeTypeMap.keys)
+        let instances = state.visibleNodesByRole
+            .first(where: { $0.role == .instance })?.nodes ?? []
+        let untyped = instances.filter { !typedInstanceIDs.contains($0.id) }
+        if !untyped.isEmpty {
+            Section {
+                ForEach(untyped) { node in
+                    nodeRow(node)
+                }
+            } header: {
+                Text("Individuals (\(untyped.count))")
             }
         }
     }
@@ -114,27 +128,9 @@ struct GraphSidebarView: View {
 
     // MARK: - フィルター
 
-    private var isSearchActive: Bool {
-        !state.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var filteredNodesByRole: [(role: GraphNodeRole, nodes: [GraphNode])] {
-        if !isSearchActive {
-            return state.visibleNodesByRole
-        }
-        let query = state.searchText.lowercased()
-        return state.visibleNodesByRole.compactMap { role, nodes in
-            let filtered = nodes.filter { node in
-                if node.label.lowercased().contains(query) { return true }
-                return node.metadata.values.contains { $0.lowercased().contains(query) }
-            }
-            guard !filtered.isEmpty else { return nil }
-            return (role, filtered)
-        }
-    }
-
     private var nonClassNodesByRole: [(role: GraphNodeRole, nodes: [GraphNode])] {
-        filteredNodesByRole.filter { $0.role != .type }
+        // type はクラス階層セクション、instance はクラスツリー内に表示されるため除外
+        state.visibleNodesByRole.filter { $0.role != .type && $0.role != .instance }
     }
 
     // MARK: - Algorithm Results
@@ -198,10 +194,17 @@ struct ClassTreeRowView: View {
     let state: GraphViewState
 
     var body: some View {
-        if let children = treeNode.children {
+        if treeNode.hasChildren {
             DisclosureGroup {
-                ForEach(children) { child in
-                    ClassTreeRowView(treeNode: child, state: state)
+                if let subclasses = treeNode.subclasses {
+                    ForEach(subclasses) { child in
+                        ClassTreeRowView(treeNode: child, state: state)
+                    }
+                }
+                if let instances = treeNode.instances {
+                    ForEach(instances, id: \.id) { instance in
+                        instanceLabel(instance)
+                    }
                 }
             } label: {
                 nodeLabel(treeNode.node)
@@ -221,6 +224,21 @@ struct ClassTreeRowView: View {
         } icon: {
             Image(systemName: icon)
                 .foregroundStyle(color)
+        }
+        .tag(node.id)
+    }
+
+    private func instanceLabel(_ node: GraphNode) -> some View {
+        let style = GraphNodeStyle.style(for: node.role)
+        let color = state.nodeColorMap[node.id] ?? style.color
+        return Label {
+            Text(node.label)
+                .lineLimit(1)
+                .font(.callout)
+        } icon: {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
         }
         .tag(node.id)
     }

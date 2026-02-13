@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import Core
+import Graph
 
 /// アプリケーション全体のViewModel
 @MainActor
@@ -286,6 +287,21 @@ public final class AppViewModel {
         } catch {
             print("Failed to load all items for graph: \(error)")
             return []
+        }
+    }
+
+    /// OntologyStore から OWLOntology をロードする
+    public func loadOntology() async -> OWLOntology? {
+        if isPreviewMode { return nil }
+        do {
+            let ontology = try await dataService.loadOntology()
+            if let ontology {
+                print("[Ontology] Loaded: \(ontology.classes.count) classes, \(ontology.axioms.count) axioms")
+            }
+            return ontology
+        } catch {
+            print("[Ontology] Failed to load: \(error)")
+            return nil
         }
     }
 

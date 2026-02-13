@@ -52,27 +52,17 @@ struct GraphCanvas: View {
                 let nodeIconMap = state.nodeIconMap
                 let nodeColorMap = state.nodeColorMap
 
-                // ノード半径キャッシュ（選択ノードは1.6倍）
-                let nodeRadiusMap: [String: CGFloat] = {
-                    var m: [String: CGFloat] = [:]
-                    m.reserveCapacity(visibleNodes.count)
-                    for node in visibleNodes {
-                        let style = GraphNodeStyle.style(for: node.role)
-                        var radius = mapping.nodeRadius(for: node, baseRadius: style.radius)
-                        if node.id == selectedNodeID {
-                            radius *= 1.6
-                        }
-                        m[node.id] = radius
-                    }
-                    return m
-                }()
+                // ノード半径キャッシュ（GraphViewState のキャッシュ版を利用）
+                let nodeRadiusMap = state.nodeRadiusMap
 
-                // Pre-computed screen positions（embedding-atlas pattern: 座標変換は1回だけ）
+                // Pre-computed screen positions（visible ノードのみに限定）
                 let layoutPositions = state.activeLayout.positions
+                let visibleIDs = state.visibleNodeIDs
                 let screenPositions: [String: CGPoint] = {
                     var sp: [String: CGPoint] = [:]
-                    sp.reserveCapacity(layoutPositions.count)
-                    for (id, pos) in layoutPositions {
+                    sp.reserveCapacity(visibleIDs.count)
+                    for id in visibleIDs {
+                        guard let pos = layoutPositions[id] else { continue }
                         sp[id] = CGPoint(
                             x: pos.x * cameraScale + cameraOffset.width,
                             y: pos.y * cameraScale + cameraOffset.height
@@ -81,9 +71,9 @@ struct GraphCanvas: View {
                     return sp
                 }()
 
-                // EdgeCurvatureMap は LOD 2 以上でのみ必要
+                // EdgeCurvatureMap は LOD 2 以上でのみ必要（キャッシュ版を利用）
                 let edgeCurvatures: EdgeCurvatureMap? = cameraScale >= 0.15
-                    ? EdgeCurvatureMap(edges: visibleEdges) : nil
+                    ? state.edgeCurvatureMap : nil
 
                 Canvas { context, canvasSize in
                     let scale = cameraScale
@@ -446,14 +436,22 @@ struct GraphCanvas: View {
 
 // MARK: - EdgeCurvatureMap
 
-private struct EdgeCurvatureMap {
+struct EdgeCurvatureMap {
     private let curvatures: [String: CGFloat]
 
+    private struct PairKey: Hashable {
+        let lo: String
+        let hi: String
+        init(_ a: String, _ b: String) {
+            if a < b { lo = a; hi = b } else { lo = b; hi = a }
+        }
+    }
+
     init(edges: [GraphEdge]) {
-        var groups: [String: [String]] = [:]
+        var groups: [PairKey: [String]] = [:]
         for edge in edges {
-            let pairKey = Self.pairKey(edge.sourceID, edge.targetID)
-            groups[pairKey, default: []].append(edge.id)
+            let key = PairKey(edge.sourceID, edge.targetID)
+            groups[key, default: []].append(edge.id)
         }
 
         var result: [String: CGFloat] = [:]
@@ -474,9 +472,5 @@ private struct EdgeCurvatureMap {
 
     func curvature(for edgeID: String) -> CGFloat {
         curvatures[edgeID] ?? 0
-    }
-
-    private static func pairKey(_ a: String, _ b: String) -> String {
-        a < b ? "\(a)⟷\(b)" : "\(b)⟷\(a)"
     }
 }

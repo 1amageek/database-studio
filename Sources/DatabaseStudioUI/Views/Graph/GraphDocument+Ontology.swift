@@ -106,6 +106,76 @@ extension GraphDocument {
     }
 }
 
+extension GraphDocument {
+
+    /// 既存ドキュメントに OWLOntology のクラス定義と subClassOf エッジをマージする
+    ///
+    /// RDF データから構築したドキュメントに ontology の階層情報を追加することで、
+    /// サイドバーのクラスツリーに subClassOf 関係を反映させる。
+    public mutating func mergeOntology(_ ontology: OWLOntology) {
+        var nodeMap: [String: GraphNode] = Dictionary(
+            uniqueKeysWithValues: nodes.map { ($0.id, $0) }
+        )
+
+        // Ontology クラスをマージ（既存ノードがあれば metadata を補完、なければ追加）
+        for cls in ontology.classes {
+            let iri = cls.iri
+            let label = cls.label ?? localName(iri)
+            if var existing = nodeMap[iri] {
+                existing.role = .type
+                if let comment = cls.comment {
+                    existing.metadata["comment"] = comment
+                }
+                nodeMap[iri] = existing
+            } else {
+                nodeMap[iri] = GraphNode(
+                    id: iri,
+                    label: label,
+                    role: .type,
+                    ontologyClass: iri,
+                    source: .ontology,
+                    metadata: cls.comment.map { ["comment": $0] } ?? [:]
+                )
+            }
+        }
+
+        // subClassOf エッジをマージ（重複チェック）
+        var existingEdgeIDs = Set(edges.map(\.id))
+        for axiom in ontology.axioms {
+            if case .subClassOf(let sub, let sup) = axiom,
+               case .named(let subIRI) = sub,
+               case .named(let supIRI) = sup {
+                let edgeID = "subClassOf-\(subIRI)-\(supIRI)"
+                guard !existingEdgeIDs.contains(edgeID) else { continue }
+                existingEdgeIDs.insert(edgeID)
+
+                if nodeMap[subIRI] == nil {
+                    nodeMap[subIRI] = GraphNode(
+                        id: subIRI, label: localName(subIRI),
+                        role: .type, ontologyClass: subIRI, source: .ontology
+                    )
+                }
+                if nodeMap[supIRI] == nil {
+                    nodeMap[supIRI] = GraphNode(
+                        id: supIRI, label: localName(supIRI),
+                        role: .type, ontologyClass: supIRI, source: .ontology
+                    )
+                }
+
+                edges.append(GraphEdge(
+                    id: edgeID,
+                    sourceID: subIRI,
+                    targetID: supIRI,
+                    label: "subClassOf",
+                    edgeKind: .subClassOf
+                ))
+            }
+        }
+
+        nodes = Array(nodeMap.values)
+    }
+}
+
 private func ensureNode(iri: String, role: GraphNodeRole, source: GraphNodeSource = .graphIndex, in nodeMap: inout [String: GraphNode]) {
     if nodeMap[iri] == nil {
         nodeMap[iri] = GraphNode(

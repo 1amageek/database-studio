@@ -66,6 +66,13 @@ final class ForceDirectedLayout {
     private var qtCount: Int = 0
     private var collisionBuckets: [Int64: [Int]] = [:]
 
+    // MARK: - tick キャッシュ（prepareForSimulation で事前計算）
+
+    private var cachedIdToIndex: [String: Int] = [:]
+    private var cachedDegree: [Int] = []
+    private var cachedClassIndices: [Int] = []
+    private var isCachePrepared = false
+
     /// Barnes-Hut approximation parameter (theta)
     /// 0.0 = exact N-body, 1.0 = aggressive approximation
     private let theta: Double = 0.8
@@ -111,8 +118,35 @@ final class ForceDirectedLayout {
         }
     }
 
+    /// tick() で毎回再構築していた idToIndex, degree, classIndices を事前計算
+    func prepareForSimulation(nodeIDs: [String], edges: [GraphEdge]) {
+        let n = nodeIDs.count
+        cachedIdToIndex.removeAll(keepingCapacity: true)
+        cachedIdToIndex.reserveCapacity(n)
+        for i in 0..<n { cachedIdToIndex[nodeIDs[i]] = i }
+
+        if cachedDegree.count < n {
+            cachedDegree = [Int](repeating: 0, count: n)
+        } else {
+            for i in 0..<n { cachedDegree[i] = 0 }
+        }
+        for edge in edges {
+            if let si = cachedIdToIndex[edge.sourceID] { cachedDegree[si] += 1 }
+            if let ti = cachedIdToIndex[edge.targetID] { cachedDegree[ti] += 1 }
+        }
+
+        cachedClassIndices.removeAll(keepingCapacity: true)
+        if !classNodeIDs.isEmpty {
+            for i in 0..<n where classNodeIDs.contains(nodeIDs[i]) {
+                cachedClassIndices.append(i)
+            }
+        }
+        isCachePrepared = true
+    }
+
     /// 描画前に高速にシミュレーションを進めるウォームアップ
     func warmup(nodeIDs: [String], edges: [GraphEdge], size: CGSize, iterations: Int = 100) {
+        prepareForSimulation(nodeIDs: nodeIDs, edges: edges)
         for _ in 0..<iterations {
             let running = tick(nodeIDs: nodeIDs, edges: edges, size: size)
             if !running { break }
@@ -190,11 +224,14 @@ final class ForceDirectedLayout {
 
         // Class 同士の追加反発力 O(C²)（C = class ノード数、通常 N より大幅に小さい）
         if !classNodeIDs.isEmpty {
-            var classIndices: [Int] = []
-            classIndices.reserveCapacity(classNodeIDs.count)
-            for i in 0..<n where classNodeIDs.contains(nodeIDs[i]) {
-                classIndices.append(i)
-            }
+            let classIndices = isCachePrepared ? cachedClassIndices : {
+                var indices: [Int] = []
+                indices.reserveCapacity(classNodeIDs.count)
+                for i in 0..<n where classNodeIDs.contains(nodeIDs[i]) {
+                    indices.append(i)
+                }
+                return indices
+            }()
             let extraStrength = scaledRepulsion * (classRepulsionMultiplier - 1.0)
             for a in 0..<classIndices.count {
                 let ai = classIndices[a]
@@ -221,17 +258,23 @@ final class ForceDirectedLayout {
         }
 
         // Spring 引力（エッジ接続ノード間）
-        var idToIndex: [String: Int] = [:]
-        idToIndex.reserveCapacity(n)
-        for i in 0..<n {
-            idToIndex[nodeIDs[i]] = i
-        }
+        let idToIndex: [String: Int]
+        let degree: [Int]
+        if isCachePrepared {
+            idToIndex = cachedIdToIndex
+            degree = cachedDegree
+        } else {
+            var idx: [String: Int] = [:]
+            idx.reserveCapacity(n)
+            for i in 0..<n { idx[nodeIDs[i]] = i }
+            idToIndex = idx
 
-        // ノード次数を計算（高次数ノードの接続先を遠くに配置するため）
-        var degree = [Int](repeating: 0, count: n)
-        for edge in edges {
-            if let si = idToIndex[edge.sourceID] { degree[si] += 1 }
-            if let ti = idToIndex[edge.targetID] { degree[ti] += 1 }
+            var deg = [Int](repeating: 0, count: n)
+            for edge in edges {
+                if let si = idx[edge.sourceID] { deg[si] += 1 }
+                if let ti = idx[edge.targetID] { deg[ti] += 1 }
+            }
+            degree = deg
         }
 
         for edge in edges {
@@ -441,7 +484,7 @@ final class ForceDirectedLayout {
         // Pre-allocate (worst case ~4N nodes)
         let capacity = n * 4 + 16
         if qtNodes.count < capacity {
-            qtNodes = [QTNode](repeating: QTNode(), count: capacity)
+            qtNodes.append(contentsOf: repeatElement(QTNode(), count: capacity - qtNodes.count))
         }
         qtCount = 0
 

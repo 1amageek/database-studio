@@ -1,7 +1,9 @@
 import Foundation
 import DatabaseEngine
 import DatabaseCLICore
+import GraphIndex
 import Core
+import Graph
 import FoundationDB
 
 /// SchemaRegistry + CatalogDataAccess をラップする統合データサービス
@@ -106,6 +108,20 @@ public final class StudioDataService {
             documentCount: items.count,
             storageSize: totalSize
         )
+    }
+
+    // MARK: - Ontology
+
+    public nonisolated func loadOntology() async throws -> OWLOntology? {
+        guard let db = database else { return nil }
+        let store = OntologyStore.default()
+        let iris = try await db.withTransaction { tx in
+            try await store.listOntologies(transaction: tx)
+        }
+        guard let firstIRI = iris.first else { return nil }
+        return try await db.withTransaction { tx in
+            try await store.reconstruct(iri: firstIRI, transaction: tx)
+        }
     }
 
     // MARK: - Entity Lookup

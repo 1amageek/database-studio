@@ -346,10 +346,25 @@ struct ItemsTableView: View {
                             windowState.loadAction = { [weak viewModel] in
                                 guard let viewModel else { return nil }
                                 let items = await viewModel.loadAllItems(for: typeName)
-                                return GraphDocument(
+                                var doc = GraphDocument(
                                     items: items,
                                     graphIndex: graphIndex
                                 )
+                                let typeNodeCount = doc.nodes.filter { $0.role == .type }.count
+                                print("[Graph] Built document: \(doc.nodes.count) nodes, \(doc.edges.count) edges, \(typeNodeCount) type nodes")
+                                if let ontology = await viewModel.loadOntology() {
+                                    let subClassOfCount = ontology.axioms.filter {
+                                        if case .subClassOf = $0 { return true }
+                                        return false
+                                    }.count
+                                    print("[Graph] Ontology has \(subClassOfCount) subClassOf axioms")
+                                    doc.mergeOntology(ontology)
+                                    let subClassOfEdges = doc.edges.filter { $0.label.lowercased() == "subclassof" }.count
+                                    print("[Graph] After merge: \(doc.nodes.count) nodes, \(doc.edges.count) edges, \(subClassOfEdges) subClassOf edges")
+                                } else {
+                                    print("[Graph] WARNING: No ontology loaded - class hierarchy will be flat")
+                                }
+                                return doc
                             }
                             windowState.refreshAction = windowState.loadAction
                             openWindow(id: "graph-viewer")

@@ -122,6 +122,27 @@ public struct GraphDocument: Sendable {
         self.nodes = nodes
         self.edges = edges
     }
+
+    /// owl:Thing ノードとその接続エッジを除外したドキュメントを返す
+    /// owl:Thing は全クラスの暗黙的スーパークラスであり、表示すると全ノードと接続してしまう
+    func removingOwlThing() -> GraphDocument {
+        let thingIDs = Set(
+            nodes.filter { isOwlThing($0.id, label: $0.label) }.map(\.id)
+        )
+        guard !thingIDs.isEmpty else { return self }
+        return GraphDocument(
+            nodes: nodes.filter { !thingIDs.contains($0.id) },
+            edges: edges.filter { !thingIDs.contains($0.sourceID) && !thingIDs.contains($0.targetID) }
+        )
+    }
+}
+
+/// owl:Thing 判定（IRI 末尾またはラベルで判定）
+private func isOwlThing(_ id: String, label: String) -> Bool {
+    label == "Thing"
+        || id.hasSuffix("#Thing")
+        || id.hasSuffix("/Thing")
+        || id == "owl:Thing"
 }
 
 /// IRI からローカル名を抽出する

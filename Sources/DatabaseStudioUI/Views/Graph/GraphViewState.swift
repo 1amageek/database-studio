@@ -30,6 +30,36 @@ final class GraphViewState {
 
     var mapping: GraphVisualMapping = GraphVisualMapping()
 
+    // MARK: - Backbone
+
+    /// Backbone モードが有効か（大規模グラフの初期表示で代表ノードのみ表示）
+    var isBackboneActive: Bool = false {
+        didSet { invalidateVisibleCache() }
+    }
+
+    private var cachedMetrics: GraphMetricsComputer.Result?
+    private var cachedBackboneNodeIDs: Set<String>?
+
+    /// Backbone ノード ID（キャッシュ済み）
+    var backboneNodeIDs: Set<String> {
+        if let cached = cachedBackboneNodeIDs { return cached }
+        let metrics = computedMetrics
+        let result = GraphBackbone.selectBackboneNodes(document: document, metrics: metrics)
+        cachedBackboneNodeIDs = result
+        return result
+    }
+
+    /// 計算済みメトリクス（キャッシュ済み）
+    var computedMetrics: GraphMetricsComputer.Result {
+        if let cached = cachedMetrics { return cached }
+        let result = GraphMetricsComputer.compute(document: document)
+        cachedMetrics = result
+        return result
+    }
+
+    /// グラフが backbone 表示可能な規模か
+    var isBackboneAvailable: Bool { document.nodes.count >= 50 }
+
     // MARK: - 選択
 
     var selectedNodeID: String? {
@@ -58,8 +88,10 @@ final class GraphViewState {
 
     /// 選択ノードからの N-hop BFS で到達可能なノード ID を計算
     private func computeNeighborhood(from nodeID: String, hops: Int) -> Set<String> {
-        // エッジラベルフィルタ適用済みのエッジを使用
-        let filteredEdges = document.edges.filter { activeEdgeLabels.contains($0.label) }
+        // エッジラベルフィルタ適用済みのエッジを使用（subClassOf を除外: 親クラスは Inspector のみ）
+        let filteredEdges = document.edges.filter {
+            activeEdgeLabels.contains($0.label) && !Self.isSubClassOfLabel($0.label)
+        }
 
         // 隣接リスト構築
         var adjacency: [String: [String]] = [:]
@@ -327,12 +359,12 @@ final class GraphViewState {
 
     // MARK: - フィルター
 
-    /// Individuals のタイプフィルタ（nil = 全表示）
-    var individualTypeFilter: String? = nil {
+    var activeEdgeLabels: Set<String> {
         didSet { invalidateVisibleCache() }
     }
 
-    var activeEdgeLabels: Set<String> {
+    /// ファセットフィルタートークン（ファセット間 AND、ファセット内 OR）
+    var filterTokens: [GraphFilterToken] = [] {
         didSet { invalidateVisibleCache() }
     }
 
@@ -365,26 +397,14 @@ final class GraphViewState {
     private var cachedVisibleNodeIDs: Set<String>?
     private var cachedNodeMap: [String: GraphNode] = [:]
 
-    /// タイプフィルタに一致するノード ID の集合
-    private var typeFilteredNodeIDs: Set<String>? {
-        guard let typeFilter = individualTypeFilter else { return nil }
-        // フィルタ対象タイプに属する individual
-        let matchedIndividuals = nodeTypeMap
-            .filter { $0.value.contains(typeFilter) }
-            .map(\.key)
-        var ids = Set(matchedIndividuals)
-        // タイプノード自身も含める
-        ids.insert(typeFilter)
-        return ids
-    }
-
-    /// フィルター適用後のエッジ（タイプフィルタ + 近傍フィルタ含む）
+    /// フィルター適用後のエッジ（近傍フィルタ + ファセットフィルタ含む）
     var visibleEdges: [GraphEdge] {
         if let cached = cachedVisibleEdges { return cached }
         var result = document.edges.filter { activeEdgeLabels.contains($0.label) }
-        // タイプフィルタ: 少なくとも片方がフィルタ対象ノードであるエッジのみ
-        if let allowedIDs = typeFilteredNodeIDs {
-            result = result.filter { allowedIDs.contains($0.sourceID) || allowedIDs.contains($0.targetID) }
+        // Backbone フィルタ: 両端が backbone ノードのエッジのみ
+        if isBackboneActive && !isFocusMode && !isSearchActive {
+            let backbone = backboneNodeIDs
+            result = result.filter { backbone.contains($0.sourceID) && backbone.contains($0.targetID) }
         }
         // N-hop 近傍フィルタ: 選択ノードがある場合は近傍内のエッジのみ
         if let neighborhood = neighborhoodNodeIDs {
@@ -394,6 +414,34 @@ final class GraphViewState {
         if isSearchActive {
             let matched = searchMatchedNodeIDs
             result = result.filter { matched.contains($0.sourceID) || matched.contains($0.targetID) }
+        }
+        // ファセットフィルタートークン適用
+        for token in filterTokens {
+            if token.facet.isEdgeFacet {
+                switch token.mode {
+                case .include:
+                    result = result.filter { token.facet.matchesEdge($0) }
+                case .exclude:
+                    result = result.filter { !token.facet.matchesEdge($0) }
+                }
+            }
+            if token.facet.isNodeFacet {
+                let types = nodeTypeMap
+                switch token.mode {
+                case .include:
+                    result = result.filter { edge in
+                        let srcMatch = cachedNodeMap[edge.sourceID].map { token.facet.matchesNode($0, nodeTypeMap: types) } ?? false
+                        let tgtMatch = cachedNodeMap[edge.targetID].map { token.facet.matchesNode($0, nodeTypeMap: types) } ?? false
+                        return srcMatch || tgtMatch
+                    }
+                case .exclude:
+                    result = result.filter { edge in
+                        let srcExclude = cachedNodeMap[edge.sourceID].map { token.facet.matchesNode($0, nodeTypeMap: types) } ?? false
+                        let tgtExclude = cachedNodeMap[edge.targetID].map { token.facet.matchesNode($0, nodeTypeMap: types) } ?? false
+                        return !srcExclude || !tgtExclude
+                    }
+                }
+            }
         }
         cachedVisibleEdges = result
         return result
@@ -416,6 +464,10 @@ final class GraphViewState {
         if let nodeID = selectedNodeID {
             ids.insert(nodeID)
         }
+        // 孤立 backbone ノードも含める（他の backbone ノードと直接接続がなくても表示）
+        if isBackboneActive && !isFocusMode && !isSearchActive {
+            ids.formUnion(backboneNodeIDs)
+        }
         cachedVisibleNodeIDs = ids
         return ids
     }
@@ -425,10 +477,12 @@ final class GraphViewState {
         cachedEdgeCounts = nil
         cachedNodeTypeMap = nil
         cachedSubClassOfMap = nil
-        cachedNodePrimitiveClassMap = nil
         cachedNodeIconMap = nil
         cachedNodeColorMap = nil
         cachedClassTree = nil
+        cachedOrphanClassNodes = nil
+        cachedMetrics = nil
+        cachedBackboneNodeIDs = nil
         cachedNodeMap = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0) })
         invalidateVisibleCache()
     }
@@ -439,6 +493,45 @@ final class GraphViewState {
         cachedVisibleNodeIDs = nil
         cachedNeighborhoodNodeIDs = nil
         cachedSearchMatchedNodeIDs = nil
+        cachedNodeRadiusMap = nil
+        cachedEdgeCurvatureMap = nil
+    }
+
+    // MARK: - nodeRadiusMap キャッシュ
+
+    private var cachedNodeRadiusMap: [String: CGFloat]?
+    private var cachedRadiusSelectedNodeID: String?
+    private var cachedRadiusSizeMode: GraphVisualMapping.SizeMode?
+
+    var nodeRadiusMap: [String: CGFloat] {
+        if let cached = cachedNodeRadiusMap,
+           cachedRadiusSelectedNodeID == selectedNodeID,
+           cachedRadiusSizeMode == mapping.sizeMode {
+            return cached
+        }
+        var m: [String: CGFloat] = [:]
+        m.reserveCapacity(visibleNodes.count)
+        for node in visibleNodes {
+            let style = GraphNodeStyle.style(for: node.role)
+            var radius = mapping.nodeRadius(for: node, baseRadius: style.radius)
+            if node.id == selectedNodeID { radius *= 1.6 }
+            m[node.id] = radius
+        }
+        cachedNodeRadiusMap = m
+        cachedRadiusSelectedNodeID = selectedNodeID
+        cachedRadiusSizeMode = mapping.sizeMode
+        return m
+    }
+
+    // MARK: - EdgeCurvatureMap キャッシュ
+
+    private var cachedEdgeCurvatureMap: EdgeCurvatureMap?
+
+    var edgeCurvatureMap: EdgeCurvatureMap {
+        if let cached = cachedEdgeCurvatureMap { return cached }
+        let result = EdgeCurvatureMap(edges: visibleEdges)
+        cachedEdgeCurvatureMap = result
+        return result
     }
 
     // MARK: - クエリ
@@ -495,32 +588,57 @@ final class GraphViewState {
     // MARK: - 初期化
 
     init(document: GraphDocument) {
-        self.document = document
-        self.activeEdgeLabels = Set(document.edges.map(\.label))
-        self.cachedNodeMap = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0) })
+        let cleaned = document.removingOwlThing()
+        let metrics = GraphMetricsComputer.compute(document: cleaned)
+        var enriched = cleaned
+        for i in enriched.nodes.indices {
+            let id = enriched.nodes[i].id
+            enriched.nodes[i].metrics["degree"] = metrics.degree[id] ?? 0
+            if let pr = metrics.pageRank[id] { enriched.nodes[i].metrics["pageRank"] = pr }
+            if let cid = metrics.communityID[id] { enriched.nodes[i].communityID = cid }
+        }
+        self.document = enriched
+        self.cachedMetrics = metrics
+        self.activeEdgeLabels = Set(enriched.edges.map(\.label))
+        self.cachedNodeMap = Dictionary(uniqueKeysWithValues: enriched.nodes.map { ($0.id, $0) })
+        self.isBackboneActive = enriched.nodes.count >= 50
     }
 
     // MARK: - ドキュメント更新
 
     func updateDocument(_ newDocument: GraphDocument) {
+        let cleaned = newDocument.removingOwlThing()
         let previousNodeIDs = Set(document.nodes.map(\.id))
-        document = newDocument
+
+        // メトリクス計算 → ノードに設定
+        let metrics = GraphMetricsComputer.compute(document: cleaned)
+        var enriched = cleaned
+        for i in enriched.nodes.indices {
+            let id = enriched.nodes[i].id
+            enriched.nodes[i].metrics["degree"] = metrics.degree[id] ?? 0
+            if let pr = metrics.pageRank[id] { enriched.nodes[i].metrics["pageRank"] = pr }
+            if let cid = metrics.communityID[id] { enriched.nodes[i].communityID = cid }
+        }
+        cachedMetrics = metrics
+        cachedBackboneNodeIDs = nil
+
+        document = enriched
 
         // 新しいエッジラベルを activeEdgeLabels に追加（既存のフィルタ状態は維持）
-        let newLabels = Set(newDocument.edges.map(\.label))
+        let newLabels = Set(enriched.edges.map(\.label))
         let addedLabels = newLabels.subtracting(activeEdgeLabels.union(allEdgeLabels))
         activeEdgeLabels.formUnion(addedLabels)
         // 削除されたラベルを除去
         activeEdgeLabels = activeEdgeLabels.intersection(newLabels)
 
         // レイアウト更新: 新規ノード追加、削除ノード除去
-        let newNodeIDs = Set(newDocument.nodes.map(\.id))
+        let newNodeIDs = Set(enriched.nodes.map(\.id))
         let addedNodeIDs = Array(newNodeIDs.subtracting(previousNodeIDs))
         let removedNodeIDs = previousNodeIDs.subtracting(newNodeIDs)
 
         fullLayout.addNodes(addedNodeIDs)
         fullLayout.removeNodes(removedNodeIDs)
-        fullLayout.classNodeIDs = Set(newDocument.nodes.filter { $0.role == .type }.map(\.id))
+        fullLayout.classNodeIDs = Set(enriched.nodes.filter { $0.role == .type }.map(\.id))
 
         // シミュレーション再開
         if viewportSize.width > 0 {
@@ -614,6 +732,8 @@ final class GraphViewState {
             return
         }
 
+        fullLayout.prepareForSimulation(nodeIDs: nodeIDs, edges: simEdges)
+
         stopSimulation()
         simulationTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -649,6 +769,8 @@ final class GraphViewState {
             nodeIDs = document.nodes.map(\.id)
             simEdges = document.edges
         }
+
+        layout.prepareForSimulation(nodeIDs: nodeIDs, edges: simEdges)
 
         stopSimulation()
         simulationTask = Task { [weak self] in
@@ -736,9 +858,12 @@ final class GraphViewState {
             || lower.hasSuffix("/subclassof")
     }
 
-    /// クラス ID → 祖先のプリミティブクラスラベルを解決（subClassOf 階層を遡る）
-    /// BFS で最も近いプリミティブクラスを決定的に解決する
-    private func resolvePrimitiveClass(for classID: String, subClassOfMap: [String: Set<String>]) -> String? {
+    /// クラス ID → 祖先を BFS で遡り、述語にマッチする最初のクラスラベルを返す
+    private func resolveAncestor(
+        for classID: String,
+        subClassOfMap: [String: Set<String>],
+        matching predicate: (String) -> Bool
+    ) -> String? {
         var visited: Set<String> = []
         var queue: [String] = [classID]
         visited.insert(classID)
@@ -746,11 +871,10 @@ final class GraphViewState {
         while !queue.isEmpty {
             let current = queue.removeFirst()
             let label = cachedNodeMap[current]?.label ?? localName(current)
-            if GraphNodeStyle.isPrimitiveClass(label) {
+            if predicate(label) {
                 return label
             }
             guard let parents = subClassOfMap[current] else { continue }
-            // ソートして決定的な順序にする
             for parentID in parents.sorted() {
                 if !visited.contains(parentID) {
                     visited.insert(parentID)
@@ -773,57 +897,100 @@ final class GraphViewState {
         return map
     }
 
-    /// ノード ID → プリミティブクラスラベル（キャッシュ済み）
-    private var cachedNodePrimitiveClassMap: [String: String]?
-    private var nodePrimitiveClassMap: [String: String] {
-        if let cached = cachedNodePrimitiveClassMap { return cached }
-        let scMap = subClassOfMap
-        var map: [String: String] = [:]
-
-        // owlClass ノード → 自身またはsubClassOf 先のプリミティブクラスを解決
-        for node in document.nodes where node.role == .type {
-            if let primitive = resolvePrimitiveClass(for: node.id, subClassOfMap: scMap) {
-                map[node.id] = primitive
-            }
-        }
-
-        // Individual ノード → rdf:type のクラスが属するプリミティブクラスを解決
-        // typeIDs をソートして決定的にする
-        for (nodeID, typeIDs) in nodeTypeMap {
-            for typeID in typeIDs.sorted() {
-                if let primitive = map[typeID] {
-                    map[nodeID] = primitive
-                    break
-                }
-            }
-        }
-
-        cachedNodePrimitiveClassMap = map
-        return map
+    /// 指定クラスの親クラス（直接の superclass）
+    func superclasses(of classID: String) -> [GraphNode] {
+        guard let parentIDs = subClassOfMap[classID] else { return [] }
+        return parentIDs.sorted().compactMap { cachedNodeMap[$0] }
     }
 
-    /// ノード ID → プリミティブクラスに基づくアイコン名（キャッシュ済み）
+    /// インスタンスノードの rdf:type クラスノードを返す
+    func typeClasses(of instanceID: String) -> [GraphNode] {
+        guard let typeIDs = nodeTypeMap[instanceID] else { return [] }
+        return typeIDs.sorted().compactMap { cachedNodeMap[$0] }
+    }
+
+    /// インスタンスノードの完全なクラス階層チェーンを返す
+    /// rdf:type で直接のクラスを取得し、そこから superclass チェーンを辿る
+    func classHierarchyChain(of instanceID: String) -> [GraphNode] {
+        guard let typeIDs = nodeTypeMap[instanceID] else { return [] }
+        // 最初の rdf:type クラスを使用
+        guard let classID = typeIDs.sorted().first,
+              let classNode = cachedNodeMap[classID] else { return [] }
+        // 直接クラス + その親クラスチェーン
+        var chain: [GraphNode] = [classNode]
+        var currentID = classID
+        while let parentIDs = subClassOfMap[currentID],
+              let parentID = parentIDs.sorted().first,
+              let parentNode = cachedNodeMap[parentID] {
+            chain.append(parentNode)
+            currentID = parentID
+        }
+        return chain
+    }
+
+    /// 指定クラスの子クラス（直接の subclass）
+    func subclasses(of classID: String) -> [GraphNode] {
+        var children: [String] = []
+        for (childID, parentIDs) in subClassOfMap {
+            if parentIDs.contains(classID) {
+                children.append(childID)
+            }
+        }
+        return children.sorted().compactMap { cachedNodeMap[$0] }
+    }
+
+    /// ノード ID → アイコン名（キャッシュ済み）
+    /// classIcons 辞書（サブクラス含む）で BFS 解決。最も近いアイコン定義を使用。
     private var cachedNodeIconMap: [String: String]?
     var nodeIconMap: [String: String] {
         if let cached = cachedNodeIconMap { return cached }
-        var map: [String: String] = [:]
-        for (nodeID, primitive) in nodePrimitiveClassMap {
-            if let icon = GraphNodeStyle.iconName(forClassLabel: primitive) {
-                map[nodeID] = icon
+        let scMap = subClassOfMap
+        var typeMap: [String: String] = [:]
+
+        for node in document.nodes where node.role == .type {
+            if let label = resolveAncestor(for: node.id, subClassOfMap: scMap, matching: {
+                GraphNodeStyle.iconName(forClassLabel: $0) != nil
+            }), let icon = GraphNodeStyle.iconName(forClassLabel: label) {
+                typeMap[node.id] = icon
+            }
+        }
+
+        var map = typeMap
+        for (nodeID, typeIDs) in nodeTypeMap {
+            for typeID in typeIDs.sorted() {
+                if let icon = typeMap[typeID] {
+                    map[nodeID] = icon
+                    break
+                }
             }
         }
         cachedNodeIconMap = map
         return map
     }
 
-    /// ノード ID → プリミティブクラスに基づく色（キャッシュ済み）
+    /// ノード ID → 色（キャッシュ済み）
+    /// rootClassColors 辞書（22ルートクラスのみ）で BFS 解決。ドメイン色を継承。
     private var cachedNodeColorMap: [String: Color]?
     var nodeColorMap: [String: Color] {
         if let cached = cachedNodeColorMap { return cached }
-        var map: [String: Color] = [:]
-        for (nodeID, primitive) in nodePrimitiveClassMap {
-            if let color = GraphNodeStyle.color(forClassLabel: primitive) {
-                map[nodeID] = color
+        let scMap = subClassOfMap
+        var typeMap: [String: Color] = [:]
+
+        for node in document.nodes where node.role == .type {
+            if let label = resolveAncestor(for: node.id, subClassOfMap: scMap, matching: {
+                GraphNodeStyle.color(forClassLabel: $0) != nil
+            }), let color = GraphNodeStyle.color(forClassLabel: label) {
+                typeMap[node.id] = color
+            }
+        }
+
+        var map = typeMap
+        for (nodeID, typeIDs) in nodeTypeMap {
+            for typeID in typeIDs.sorted() {
+                if let color = typeMap[typeID] {
+                    map[nodeID] = color
+                    break
+                }
             }
         }
         cachedNodeColorMap = map
@@ -841,6 +1008,49 @@ final class GraphViewState {
             .sorted { $0.label < $1.label }
     }
 
+    // MARK: - ファセットフィルター操作
+
+    /// プリセットフィルターを追加
+    func addPreset(_ preset: GraphFilterPreset) {
+        filterTokens.append(preset.token)
+    }
+
+    /// ファセットカテゴリからデフォルトトークンを追加
+    func addFilterToken(for category: GraphFilterFacetCategory) {
+        filterTokens.append(category.makeDefaultToken())
+    }
+
+    /// トークンを削除
+    func removeFilterToken(_ token: GraphFilterToken) {
+        filterTokens.removeAll { $0.id == token.id }
+    }
+
+    /// トークンを更新
+    func updateFilterToken(_ token: GraphFilterToken) {
+        guard let index = filterTokens.firstIndex(where: { $0.id == token.id }) else { return }
+        filterTokens[index] = token
+    }
+
+    /// 全トークンをクリア
+    func clearAllFilterTokens() {
+        filterTokens.removeAll()
+    }
+
+    /// ドキュメント内に存在するコミュニティ ID 一覧
+    var availableCommunityIDs: [Int] {
+        let ids = Set(document.nodes.compactMap(\.communityID))
+        return ids.sorted()
+    }
+
+    /// ドキュメント内のメトリクスキー一覧
+    var availableMetricKeys: [String] {
+        var keys: Set<String> = []
+        for node in document.nodes {
+            keys.formUnion(node.metrics.keys)
+        }
+        return keys.sorted()
+    }
+
     /// 表示中ノードをロールごとにグループ化（空グループは除外）
     var visibleNodesByRole: [(role: GraphNodeRole, nodes: [GraphNode])] {
         let grouped = Dictionary(grouping: visibleNodes, by: \.role)
@@ -854,20 +1064,47 @@ final class GraphViewState {
     // MARK: - クラス階層ツリー
 
     /// クラス階層のツリーノード（サイドバー表示用）
+    /// クラスの子にはサブクラスとインスタンスの両方が含まれる
     struct ClassTreeNode: Identifiable, Hashable {
         let id: String
         let node: GraphNode
-        var children: [ClassTreeNode]?
+        var subclasses: [ClassTreeNode]?
+        var instances: [GraphNode]?
+
+        var hasChildren: Bool {
+            (subclasses != nil && !(subclasses!.isEmpty))
+                || (instances != nil && !(instances!.isEmpty))
+        }
     }
 
     /// ドキュメント全体の owlClass を subClassOf 階層でツリー化
     private var cachedClassTree: [ClassTreeNode]?
+    private var cachedOrphanClassNodes: [ClassTreeNode]?
 
     var classTree: [ClassTreeNode] {
         if let cached = cachedClassTree { return cached }
-        let result = buildClassTree()
-        cachedClassTree = result
-        return result
+        buildAndCacheClassTree()
+        return cachedClassTree ?? []
+    }
+
+    /// 階層に属さない孤立クラス（データのみで定義、オントロジーに未定義）
+    var orphanClassNodes: [ClassTreeNode] {
+        if let cached = cachedOrphanClassNodes { return cached }
+        buildAndCacheClassTree()
+        return cachedOrphanClassNodes ?? []
+    }
+
+    /// 階層クラス数（classTree に表示される数）
+    var hierarchyClassCount: Int {
+        var count = 0
+        func countAll(_ nodes: [ClassTreeNode]) {
+            for node in nodes {
+                count += 1
+                if let kids = node.subclasses { countAll(kids) }
+            }
+        }
+        countAll(classTree)
+        return count
     }
 
     /// ドキュメント内の全クラス数（type ロール + subClassOf 参加ノード）
@@ -880,89 +1117,120 @@ final class GraphViewState {
         return classIDs.count(where: { cachedNodeMap[$0] != nil })
     }
 
-    private func buildClassTree() -> [ClassTreeNode] {
-        // type ロールノード + subClassOf 関係に参加するノードをすべてクラスとして扱う
+    private func buildAndCacheClassTree() {
         var classIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
         for (childID, parentIDs) in subClassOfMap {
             classIDs.insert(childID)
             classIDs.formUnion(parentIDs)
         }
         let classIDSet = classIDs.filter { cachedNodeMap[$0] != nil }
-        guard !classIDSet.isEmpty else { return [] }
+        guard !classIDSet.isEmpty else {
+            cachedClassTree = []
+            cachedOrphanClassNodes = []
+            return
+        }
 
-        // 親 → 子 マッピング（subClassOfMap は 子 → 親）
-        var childrenMap: [String: [String]] = [:]
+        // subClassOf 階層に参加するクラス ID（子または親として登場）
+        var hierarchyParticipants = Set<String>()
         for (childID, parentIDs) in subClassOfMap {
-            guard classIDSet.contains(childID) else { continue }
+            if classIDSet.contains(childID) { hierarchyParticipants.insert(childID) }
             for parentID in parentIDs where classIDSet.contains(parentID) {
-                childrenMap[parentID, default: []].append(childID)
+                hierarchyParticipants.insert(parentID)
             }
         }
 
-        // デバッグ: subClassOf 関係の統計
-        let edgeLabels = Set(document.edges.map(\.label))
-        print("[ClassTree] edge labels: \(edgeLabels.sorted())")
-        print("[ClassTree] subClassOfMap entries: \(subClassOfMap.count), childrenMap entries: \(childrenMap.count)")
-        print("[ClassTree] total classes: \(classIDSet.count), type nodes: \(document.nodes.filter { $0.role == .type }.count)")
+        // 親 → 子クラス マッピング（subClassOfMap は 子 → 親）
+        var subclassMap: [String: [String]] = [:]
+        for (childID, parentIDs) in subClassOfMap {
+            guard classIDSet.contains(childID) else { continue }
+            for parentID in parentIDs where classIDSet.contains(parentID) {
+                subclassMap[parentID, default: []].append(childID)
+            }
+        }
 
-        // 表示中クラスに親を持つクラスを特定
+        // クラス → インスタンス マッピング
+        var instancesMap: [String: [GraphNode]] = [:]
+        for (instanceID, typeIDs) in nodeTypeMap {
+            guard let node = cachedNodeMap[instanceID], node.role == .instance else { continue }
+            for typeID in typeIDs where classIDSet.contains(typeID) {
+                instancesMap[typeID, default: []].append(node)
+            }
+        }
+        for (key, nodes) in instancesMap {
+            instancesMap[key] = nodes.sorted { $0.label < $1.label }
+        }
+
+        // ルートクラスを特定（階層参加クラスの中で親を持たないもの）
         let nodesWithParents = Set(subClassOfMap.keys.filter { childID in
             classIDSet.contains(childID) &&
             subClassOfMap[childID]?.contains(where: { classIDSet.contains($0) }) == true
         })
-        let rootIDs = classIDSet.subtracting(nodesWithParents)
+        let rootIDs = hierarchyParticipants.subtracting(nodesWithParents)
 
-        print("[ClassTree] roots: \(rootIDs.count), nodesWithParents: \(nodesWithParents.count)")
-
-        // 再帰的にツリー構築（循環参照対策で visited を管理）
+        // 再帰的にツリー構築
         func buildNode(id: String, visited: inout Set<String>) -> ClassTreeNode? {
             guard let node = cachedNodeMap[id], !visited.contains(id) else { return nil }
             visited.insert(id)
-            let kids = childrenMap[id]?
+            let kids = subclassMap[id]?
                 .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
                 .compactMap { buildNode(id: $0, visited: &visited) }
+            let instances = instancesMap[id]
             return ClassTreeNode(
                 id: id,
                 node: node,
-                children: kids?.isEmpty == true ? nil : kids
+                subclasses: kids?.isEmpty == true ? nil : kids,
+                instances: instances?.isEmpty == true ? nil : instances
             )
         }
 
         var visited: Set<String> = []
 
-        // Thing 等の最上位ルートはスキップし、その子をトップレベルに昇格
+        // Thing をスキップし子をルートに昇格
         var promotedRootIDs: Set<String> = []
         for id in rootIDs {
             let label = cachedNodeMap[id]?.label ?? localName(id)
             if label == "Thing" {
                 visited.insert(id)
-                if let kids = childrenMap[id] {
+                if let kids = subclassMap[id] {
                     promotedRootIDs.formUnion(kids)
                 }
             }
         }
         let effectiveRootIDs = rootIDs
-            .subtracting(visited)       // Thing 自体を除外
-            .union(promotedRootIDs)     // Thing の子を追加
+            .subtracting(visited)
+            .union(promotedRootIDs)
 
         let roots = effectiveRootIDs
             .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
             .compactMap { buildNode(id: $0, visited: &visited) }
 
-        // 循環参照で未訪問のクラスをルートに追加
-        let remaining = classIDSet.subtracting(visited)
+        // 循環参照で未訪問の階層クラスをルートに追加
+        let remaining = hierarchyParticipants.subtracting(visited)
         let extras = remaining
             .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
             .compactMap { id -> ClassTreeNode? in
                 guard let node = cachedNodeMap[id] else { return nil }
-                return ClassTreeNode(id: id, node: node, children: nil)
+                let instances = instancesMap[id]
+                return ClassTreeNode(
+                    id: id, node: node, subclasses: nil,
+                    instances: instances?.isEmpty == true ? nil : instances
+                )
             }
 
-        let result = roots + extras
-        let withChildren = result.filter { $0.children != nil }.count
-        print("[ClassTree] result: \(result.count) nodes, \(withChildren) with children, \(extras.count) orphans")
+        cachedClassTree = roots + extras
 
-        return result
+        // 孤立クラス（階層に属さないが .type ロールのノード）
+        let orphanIDs = classIDSet.subtracting(hierarchyParticipants)
+        cachedOrphanClassNodes = orphanIDs
+            .sorted { (cachedNodeMap[$0]?.label ?? $0) < (cachedNodeMap[$1]?.label ?? $1) }
+            .compactMap { id -> ClassTreeNode? in
+                guard let node = cachedNodeMap[id] else { return nil }
+                let instances = instancesMap[id]
+                return ClassTreeNode(
+                    id: id, node: node, subclasses: nil,
+                    instances: instances?.isEmpty == true ? nil : instances
+                )
+            }
     }
 
     // MARK: - インタラクション
@@ -1093,14 +1361,25 @@ final class GraphViewState {
 
     // MARK: - プリミティブクラス分類による関連ノード検出
 
-    /// ノードが指定プリミティブクラスに属するか判定
+    /// ノードが指定ルートクラスに属するか判定
     func nodeMatchesPrimitiveClass(_ nodeID: String, className: String) -> Bool {
-        if let primitive = nodePrimitiveClassMap[nodeID], primitive == className {
-            return true
+        let scMap = subClassOfMap
+        // type ノード自身をチェック
+        if cachedNodeMap[nodeID]?.role == .type {
+            if let label = resolveAncestor(for: nodeID, subClassOfMap: scMap, matching: {
+                GraphNodeStyle.isPrimitiveClass($0)
+            }), label == className {
+                return true
+            }
         }
         // rdf:type で直接チェック
         if let types = nodeTypeMap[nodeID] {
             for typeID in types {
+                if let label = resolveAncestor(for: typeID, subClassOfMap: scMap, matching: {
+                    GraphNodeStyle.isPrimitiveClass($0)
+                }), label == className {
+                    return true
+                }
                 let name = cachedNodeMap[typeID]?.label ?? localName(typeID)
                 if name.contains(className) { return true }
             }

@@ -36,12 +36,7 @@ public struct GraphView: View {
                 showInspector = true
             }
         }
-        .onChange(of: GraphWindowState.shared.document?.nodes.count) { _, _ in
-            if let newDoc = GraphWindowState.shared.document {
-                state.updateDocument(newDoc)
-            }
-        }
-        .onChange(of: GraphWindowState.shared.document?.edges.count) { _, _ in
+        .onChange(of: graphDocumentFingerprint) { _, _ in
             if let newDoc = GraphWindowState.shared.document {
                 state.updateDocument(newDoc)
             }
@@ -54,6 +49,15 @@ public struct GraphView: View {
                 state.focusOnNode(id)
             }
         }
+    }
+
+    // MARK: - Document Fingerprint
+
+    private var graphDocumentFingerprint: Int? {
+        guard let doc = GraphWindowState.shared.document else { return nil }
+        let n = doc.nodes.count
+        let e = doc.edges.count
+        return (n + e) * (n + e + 1) / 2 + e
     }
 
     // MARK: - Detail Content
@@ -82,56 +86,64 @@ public struct GraphView: View {
                 .opacity(state.visibleNodes.count > 20 ? 1.0 : 0.0)
         }
         .overlay(alignment: .top) {
-            if let node = state.selectedNode {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(GraphNodeStyle.style(for: node.role).color)
-                        .frame(width: 8, height: 8)
+            VStack(spacing: 4) {
+                if let node = state.selectedNode {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(GraphNodeStyle.style(for: node.role).color)
+                            .frame(width: 8, height: 8)
 
-                    Text(node.label)
-                        .font(.callout.weight(.medium))
-                        .lineLimit(1)
+                        Text(node.label)
+                            .font(.callout.weight(.medium))
+                            .lineLimit(1)
 
-                    Divider()
-                        .frame(height: 16)
+                        Divider()
+                            .frame(height: 16)
 
-                    ForEach(1...5, id: \.self) { hop in
+                        ForEach(1...5, id: \.self) { hop in
+                            Button {
+                                state.focusHops = hop
+                            } label: {
+                                Text("\(hop)")
+                                    .font(.caption.weight(state.focusHops == hop ? .bold : .regular).monospacedDigit())
+                                    .frame(width: 22, height: 22)
+                                    .background(
+                                        state.focusHops == hop
+                                            ? AnyShapeStyle(Color.accentColor)
+                                            : AnyShapeStyle(Color.clear),
+                                        in: Circle()
+                                    )
+                                    .foregroundStyle(state.focusHops == hop ? .white : .primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Divider()
+                            .frame(height: 16)
+
                         Button {
-                            state.focusHops = hop
+                            state.selectNode(nil)
                         } label: {
-                            Text("\(hop)")
-                                .font(.caption.weight(state.focusHops == hop ? .bold : .regular).monospacedDigit())
-                                .frame(width: 22, height: 22)
-                                .background(
-                                    state.focusHops == hop
-                                        ? AnyShapeStyle(Color.accentColor)
-                                        : AnyShapeStyle(Color.clear),
-                                    in: Circle()
-                                )
-                                .foregroundStyle(state.focusHops == hop ? .white : .primary)
+                            Image(systemName: "xmark")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
                     }
-
-                    Divider()
-                        .frame(height: 16)
-
-                    Button {
-                        state.selectNode(nil)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.regularMaterial, in: Capsule())
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.regularMaterial, in: Capsule())
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: state.selectedNodeID)
+
+                if !state.filterTokens.isEmpty {
+                    GraphFilterBar(state: state)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
+            .padding(.top, 8)
+            .animation(.easeInOut(duration: 0.2), value: state.selectedNodeID)
+            .animation(.easeInOut(duration: 0.2), value: state.filterTokens.count)
         }
         .clipped()
         .frame(minHeight: 200)
@@ -144,6 +156,7 @@ public struct GraphView: View {
         if let node = state.selectedNode {
             GraphInspectorView(
                 node: node,
+                state: state,
                 incomingEdges: state.allIncomingEdges(for: node.id),
                 outgoingEdges: state.allOutgoingEdges(for: node.id),
                 allNodes: state.document.nodes,
@@ -151,6 +164,8 @@ public struct GraphView: View {
                 relatedEvents: state.relatedEvents(for: node.id),
                 relatedPeople: state.relatedNodes(for: node.id, className: "Person"),
                 relatedPlaces: state.relatedNodes(for: node.id, className: "Place"),
+                superclassNodes: state.superclasses(of: node.id),
+                subclassNodes: state.subclasses(of: node.id),
                 onSelectNode: { nodeID in
                     state.focusOnNode(nodeID)
                 }
@@ -167,6 +182,13 @@ public struct GraphView: View {
     // MARK: - Toolbar Subtitle
 
     private var toolbarSubtitle: String {
+        if state.isBackboneActive && !state.isFocusMode && !state.isSearchActive {
+            let shown = state.visibleNodes.count
+            let total = state.document.nodes.count
+            let edgeCount = state.visibleEdges.count
+            return "\(shown)/\(total) nodes (backbone) · \(edgeCount) edges"
+        }
+
         let classCount = state.visibleNodes.filter { $0.role == .type }.count
         let individualCount = state.visibleNodes.filter { $0.role == .instance }.count
         let edgeCount = state.visibleEdges.count
@@ -177,49 +199,55 @@ public struct GraphView: View {
             "\(edgeCount) edges"
         ]
 
-        if let typeFilter = state.individualTypeFilter,
-           let label = state.availableIndividualTypes.first(where: { $0.id == typeFilter })?.label {
-            parts.append("Type: \(label)")
+        if !state.filterTokens.isEmpty {
+            parts.append("\(state.filterTokens.count) filters")
         }
 
         return parts.joined(separator: " · ")
     }
 
-    // MARK: - Type Filter Menu
+    // MARK: - Filter Menu
 
     @ViewBuilder
-    private var typeFilterMenu: some View {
-        let types = state.availableIndividualTypes
-        if !types.isEmpty {
-            Menu {
-                Button {
-                    state.individualTypeFilter = nil
-                } label: {
-                    if state.individualTypeFilter == nil {
-                        Label("All Types", systemImage: "checkmark")
-                    } else {
-                        Text("All Types")
-                    }
-                }
-                Divider()
-                ForEach(types, id: \.id) { type in
+    private var filterMenu: some View {
+        Menu {
+            Section("Quick Filters") {
+                ForEach(GraphFilterPreset.allCases, id: \.label) { preset in
                     Button {
-                        state.individualTypeFilter = type.id
+                        state.addPreset(preset)
                     } label: {
-                        if state.individualTypeFilter == type.id {
-                            Label(type.label, systemImage: "checkmark")
-                        } else {
-                            Text(type.label)
-                        }
+                        Label(preset.label, systemImage: preset.systemImage)
                     }
                 }
-            } label: {
-                Image(systemName: state.individualTypeFilter != nil
-                      ? "line.3.horizontal.decrease.circle.fill"
-                      : "line.3.horizontal.decrease.circle")
             }
-            .help("Filter by Type")
+
+            Divider()
+
+            Section("Add Filter") {
+                ForEach(GraphFilterFacetCategory.allCases, id: \.label) { category in
+                    Button {
+                        state.addFilterToken(for: category)
+                    } label: {
+                        Label(category.label, systemImage: category.systemImage)
+                    }
+                }
+            }
+
+            if !state.filterTokens.isEmpty {
+                Divider()
+                Button(role: .destructive) {
+                    state.clearAllFilterTokens()
+                } label: {
+                    Label("Clear All Filters", systemImage: "xmark.circle")
+                }
+            }
+        } label: {
+            Image(systemName: state.filterTokens.isEmpty
+                  ? "line.3.horizontal.decrease.circle"
+                  : "line.3.horizontal.decrease.circle.fill")
         }
+        .help("Filters")
+
     }
 
     // MARK: - Toolbar Actions
@@ -247,7 +275,19 @@ public struct GraphView: View {
         .help("Zoom to Fit")
         .keyboardShortcut("0", modifiers: .command)
 
-        typeFilterMenu
+        if state.isBackboneAvailable {
+            Button {
+                state.isBackboneActive.toggle()
+            } label: {
+                Image(systemName: state.isBackboneActive
+                      ? "circle.hexagongrid.fill"
+                      : "circle.hexagongrid")
+            }
+            .help(state.isBackboneActive ? "Show All Nodes" : "Show Backbone")
+            .keyboardShortcut("b", modifiers: .command)
+        }
+
+        filterMenu
 
         Menu {
             Section("Node Size") {
