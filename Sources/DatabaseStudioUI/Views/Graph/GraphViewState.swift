@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum TimelineOrientation: String, CaseIterable, Sendable {
+    case off = "Off"
+    case horizontal = "Horizontal"
+    case vertical = "Vertical"
+}
+
 /// グラフ可視化の状態管理
 @Observable @MainActor
 final class GraphViewState {
@@ -37,6 +43,26 @@ final class GraphViewState {
         didSet { invalidateVisibleCache() }
     }
 
+    // MARK: - タイムラインレイアウト
+
+    /// タイムライン配置モード（off / horizontal / vertical）
+    var timelineOrientation: TimelineOrientation = .off {
+        didSet {
+            guard oldValue != timelineOrientation else { return }
+            applyTimelineLayout()
+        }
+    }
+
+    /// タイムライン上の Event ノード目標位置キャッシュ
+    private var cachedTimelinePositions: [String: CGPoint]?
+
+    /// タイムライン上に配置された Event ノード ID（Canvas のラベル表示用）
+    var timelineEventNodeIDs: Set<String> {
+        guard timelineOrientation != .off else { return [] }
+        guard let cached = cachedTimelinePositions else { return [] }
+        return Set(cached.keys)
+    }
+
     // MARK: - Backbone
 
     /// Backbone モードが有効か（大規模グラフの初期表示で代表ノードのみ表示）
@@ -71,6 +97,9 @@ final class GraphViewState {
 
     var selectedNodeID: String? {
         didSet {
+            if timelineOrientation != .off {
+                timelineOrientation = .off
+            }
             invalidateVisibleCache()
             updateFocusLayout()
         }
@@ -812,6 +841,9 @@ final class GraphViewState {
         let layout = activeLayout
         layout.reheat()
 
+        // タイムラインモード中は Event ノードを再 pin
+        pinTimelineNodes()
+
         let nodeIDs: [String]
         let simEdges: [GraphEdge]
         if isFocusMode {
@@ -1484,5 +1516,121 @@ final class GraphViewState {
         }
 
         return entries.sorted { $0.node.label < $1.node.label }
+    }
+
+    // MARK: - タイムラインレイアウト制御
+
+    /// 可視 Event ノードを日付順にソートし、タイムライン上の等間隔位置を計算
+    private func computeTimelinePositions() -> [String: CGPoint] {
+        guard timelineOrientation != .off else { return [:] }
+
+        // Event ノード + 日付を収集
+        var eventEntries: [(id: String, date: Date)] = []
+        for id in visibleNodeIDs {
+            guard isEventNode(id),
+                  let node = cachedNodeMap[id],
+                  let date = Self.parseEventDate(from: node.metadata) else { continue }
+            eventEntries.append((id: id, date: date))
+        }
+
+        guard !eventEntries.isEmpty else { return [:] }
+
+        // 日付順ソート
+        eventEntries.sort { $0.date < $1.date }
+
+        let spacing = activeLayout.idealLength * 1.5
+        let count = eventEntries.count
+        let totalSpan = spacing * Double(count - 1)
+        let startOffset = -totalSpan / 2
+
+        // viewport 中心
+        let cx = Double(viewportSize.width / 2 - cameraOffset.width) / Double(cameraScale)
+        let cy = Double(viewportSize.height / 2 - cameraOffset.height) / Double(cameraScale)
+
+        var positions: [String: CGPoint] = [:]
+        for (i, entry) in eventEntries.enumerated() {
+            let offset = startOffset + spacing * Double(i)
+            switch timelineOrientation {
+            case .horizontal:
+                positions[entry.id] = CGPoint(x: cx + offset, y: cy)
+            case .vertical:
+                positions[entry.id] = CGPoint(x: cx, y: cy + offset)
+            case .off:
+                break
+            }
+        }
+        return positions
+    }
+
+    /// タイムラインレイアウトを適用（ON/OFF 切り替え時に呼ばれる）
+    private func applyTimelineLayout() {
+        guard viewportSize.width > 0 else { return }
+
+        if timelineOrientation == .off {
+            // タイムライン解除: Event ノードの pin を外す + 軸反発を無効化
+            activeLayout.timelineAxis = nil
+            if let cached = cachedTimelinePositions {
+                for nodeID in cached.keys {
+                    activeLayout.unpin(nodeID)
+                }
+            }
+            cachedTimelinePositions = nil
+            resumeSimulation(size: viewportSize)
+            return
+        }
+
+        // タイムライン位置を計算
+        let targetPositions = computeTimelinePositions()
+        guard !targetPositions.isEmpty else { return }
+        cachedTimelinePositions = targetPositions
+
+        // タイムライン軸反発力を設定（非Eventノードを軸から押し離す）
+        let layout = activeLayout
+        let cx = Double(viewportSize.width / 2 - cameraOffset.width) / Double(cameraScale)
+        let cy = Double(viewportSize.height / 2 - cameraOffset.height) / Double(cameraScale)
+        switch timelineOrientation {
+        case .vertical:
+            layout.timelineAxis = (isVertical: true, position: cx)
+        case .horizontal:
+            layout.timelineAxis = (isVertical: false, position: cy)
+        case .off:
+            break
+        }
+
+        // 現在位置をキャプチャ
+        let startPositions: [String: NodePosition] = layout.positions
+
+        // 目標: タイムライン Event ノードを目標位置、他ノードは現在位置のまま
+        var targetNodePositions: [String: NodePosition] = startPositions
+        for (nodeID, point) in targetPositions {
+            targetNodePositions[nodeID] = NodePosition(x: Double(point.x), y: Double(point.y))
+        }
+
+        // 補間アニメーションで遷移
+        animateLayoutTransition(
+            from: startPositions,
+            to: targetNodePositions,
+            layout: layout
+        )
+    }
+
+    /// タイムラインモード中に Event ノードをキャッシュ位置に pin する
+    private func pinTimelineNodes() {
+        guard timelineOrientation != .off, let cached = cachedTimelinePositions else { return }
+        for (nodeID, point) in cached {
+            activeLayout.pin(nodeID, at: point)
+        }
+    }
+
+    /// ドラッグ終了時の処理（タイムラインモード対応）
+    func handleDragEnd(nodeID: String, size: CGSize) {
+        if timelineOrientation != .off, isEventNode(nodeID),
+           let cached = cachedTimelinePositions, let point = cached[nodeID] {
+            // タイムラインモード中の Event ノード: タイムライン位置に再 pin
+            activeLayout.pin(nodeID, at: point)
+        } else {
+            activeLayout.unpin(nodeID)
+        }
+        resumeSimulation(size: size)
     }
 }

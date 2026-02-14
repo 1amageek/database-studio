@@ -44,6 +44,10 @@ final class ForceDirectedLayout {
     /// class ノード ID（外部から設定）
     var classNodeIDs: Set<String> = []
 
+    /// タイムライン軸反発（非ピンノードをタイムライン軸から押し離す）
+    /// isVertical: true = 縦タイムライン（x 方向に反発）, false = 横タイムライン（y 方向に反発）
+    var timelineAxis: (isVertical: Bool, position: Double)?
+
     private(set) var alpha: Double = 1.0
     var alphaDecay: Double = 0.95
     var alphaMin: Double = 0.01
@@ -322,6 +326,34 @@ final class ForceDirectedLayout {
                 minDistance: collisionDistance,
                 strength: collisionStrength
             )
+        }
+
+        // タイムライン軸反発力（非ピンノードをタイムライン直線から押し離す）
+        if let axis = timelineAxis {
+            let repulsionDist = baseLength * 2.0
+            for i in 0..<n {
+                let id = nodeIDs[i]
+                guard let pos = positions[id], !pos.pinned else { continue }
+
+                let distFromAxis: Double
+                if axis.isVertical {
+                    distFromAxis = bodyXs[i] - axis.position
+                } else {
+                    distFromAxis = bodyYs[i] - axis.position
+                }
+
+                let absDist = abs(distFromAxis)
+                if absDist < repulsionDist {
+                    let sign = distFromAxis >= 0 ? 1.0 : -1.0
+                    let penetration = repulsionDist - absDist
+                    let force = penetration * 0.8 * alpha
+                    if axis.isVertical {
+                        forcesX[i] += sign * force
+                    } else {
+                        forcesY[i] += sign * force
+                    }
+                }
+            }
         }
 
         // 速度・位置更新

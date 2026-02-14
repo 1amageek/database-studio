@@ -180,6 +180,11 @@ struct ItemsTableView: View {
                         TableColumn("ID", value: \.id) { item in
                             Text(item.id)
                                 .font(.system(.body, design: .monospaced))
+                                .onAppear {
+                                    if item.id == filteredItems.last?.id {
+                                        Task { await viewModel.loadMoreItems() }
+                                    }
+                                }
                         }
                         .width(min: 100, ideal: 150, max: 250)
                     }
@@ -244,8 +249,20 @@ struct ItemsTableView: View {
                     viewModel.selectItems(ids: newValue)
                 }
 
-                // ページネーションフッター
-                paginationFooter
+                // 追加読み込みインジケーター
+                if viewModel.isLoadingMoreItems {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
+                    .background(.bar)
+                }
             }
             .searchable(text: $searchText, prompt: searchMode == .id ? "Search by ID" : "Search all fields")
             .searchScopes($searchMode) {
@@ -559,41 +576,6 @@ struct ItemsTableView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Pagination Footer
-
-    @ViewBuilder
-    private var paginationFooter: some View {
-        HStack(spacing: 12) {
-            Button {
-                Task {
-                    await viewModel.loadPreviousPage()
-                }
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!viewModel.hasPreviousPage || viewModel.isLoadingItems)
-
-            Text(viewModel.pageInfoText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-
-            Button {
-                Task {
-                    await viewModel.loadNextPage()
-                }
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!viewModel.hasMoreItems || viewModel.isLoadingItems)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
-        .background(.bar)
     }
 
     // MARK: - Export

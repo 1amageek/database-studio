@@ -22,7 +22,6 @@ public struct GraphView: View {
             detailContent
                 .inspector(isPresented: $showInspector) {
                     inspectorContent
-                        .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
                 }
         }
         .navigationSubtitle(toolbarSubtitle)

@@ -84,7 +84,8 @@ struct GraphInspectorView: View {
                 EventTimelineView(
                     events: relatedEvents,
                     allEdges: documentEdges,
-                    allNodes: allNodes
+                    allNodes: allNodes,
+                    state: state
                 )
             case .people:
                 RelatedNodesListView(

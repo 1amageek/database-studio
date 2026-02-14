@@ -5,6 +5,7 @@ struct EventTimelineView: View {
     let events: [(node: GraphNode, date: Date?, role: String)]
     let allEdges: [GraphEdge]
     let allNodes: [GraphNode]
+    @Bindable var state: GraphViewState
 
     @Environment(\.openWindow) private var openWindow
     @State private var expandedEventID: String?
@@ -34,6 +35,15 @@ struct EventTimelineView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
+                Section {
+                    Picker("Timeline", selection: $state.timelineOrientation) {
+                        ForEach(TimelineOrientation.allCases, id: \.self) { orientation in
+                            Text(orientation.rawValue).tag(orientation)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 ForEach(Array(events.enumerated()), id: \.element.node.id) { _, event in
                     eventItem(event: event)
                 }

@@ -53,6 +53,7 @@ struct GraphCanvas: View {
                 let mapping = state.mapping
                 let nodeIconMap = state.nodeIconMap
                 let nodeColorMap = state.nodeColorMap
+                let timelineEventIDs = state.timelineEventNodeIDs
 
                 // ノード半径キャッシュ（GraphViewState のキャッシュ版を利用）
                 let nodeRadiusMap = state.nodeRadiusMap
@@ -234,8 +235,11 @@ struct GraphCanvas: View {
                             let style = GraphNodeStyle.style(for: node.role)
                             let radius = (nodeRadiusMap[node.id] ?? style.radius) * nodeScale
 
+                            let isTimelineEvent = timelineEventIDs.contains(node.id)
+
                             // Viewport cull（ラベル分の余白を考慮）
-                            let cullMargin = radius + (lod >= 3 ? 30 : 0)
+                            let showLabel = lod >= 3 || isTimelineEvent
+                            let cullMargin = radius + (showLabel ? 30 : 0)
                             if center.x + cullMargin < viewMinX || center.x - cullMargin > viewMaxX ||
                                center.y + cullMargin < viewMinY || center.y - cullMargin > viewMaxY { continue }
 
@@ -266,8 +270,8 @@ struct GraphCanvas: View {
                                 context.stroke(nodePath, with: .color(strokeColor.opacity(nodeOpacity)), lineWidth: strokeWidth)
                             }
 
-                            // アイコン（LOD 3 のみ — 白色・太ウェイトで描画）
-                            if lod >= 3 {
+                            // アイコン（LOD 3 またはタイムラインEventノード）
+                            if lod >= 3 || isTimelineEvent {
                                 let icon = nodeIconMap[node.id] ?? style.iconName
                                 let iconText = Text(Image(systemName: icon))
                                     .font(.system(size: radius * 0.7, weight: .bold))
@@ -275,8 +279,8 @@ struct GraphCanvas: View {
                                 context.draw(iconText, at: center)
                             }
 
-                            // ラベル（LOD 3 のみ、選択ノードは太字・大きめ）
-                            if lod >= 3 {
+                            // ラベル（LOD 3 またはタイムラインEventノード）
+                            if showLabel {
                                 let labelColor: Color = isMatched ? .yellow : .primary
                                 let fontSize: CGFloat = isSelected ? 13 : 11
                                 let fontWeight: Font.Weight = isSelected ? .bold : .regular
@@ -308,8 +312,7 @@ struct GraphCanvas: View {
                         }
                         .onEnded { _ in
                             if let nodeID = draggingNodeID {
-                                state.activeLayout.unpin(nodeID)
-                                state.resumeSimulation(size: size)
+                                state.handleDragEnd(nodeID: nodeID, size: size)
                             }
                             draggingNodeID = nil
                         }

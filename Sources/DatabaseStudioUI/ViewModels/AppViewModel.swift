@@ -52,26 +52,10 @@ public final class AppViewModel {
     @ObservationIgnored
     public internal(set) var currentItemPage: DecodedItemPage?
     public var pageSize: Int = 100
-
-    public var currentOffset: Int {
-        currentItemPage?.offset ?? 0
-    }
+    public private(set) var isLoadingMoreItems = false
 
     public var hasMoreItems: Bool {
         currentItemPage?.hasMore ?? false
-    }
-
-    public var hasPreviousPage: Bool {
-        currentOffset > 0
-    }
-
-    public var pageInfoText: String {
-        guard let page = currentItemPage, !currentItems.isEmpty else {
-            return ""
-        }
-        let start = page.offset + 1
-        let end = page.offset + currentItems.count
-        return "Items \(start)-\(end)"
     }
 
     // MARK: - Query State
@@ -305,24 +289,45 @@ public final class AppViewModel {
         }
     }
 
-    public func loadNextPage() async {
-        guard hasMoreItems,
-              let entityName = selectedEntityName,
-              let nextOffset = currentItemPage?.nextOffset else { return }
-        await loadItems(for: entityName, offset: nextOffset)
-    }
-
-    public func loadPreviousPage() async {
-        guard hasPreviousPage,
+    /// スクロール末尾到達時に次ページを追加読み込み
+    public func loadMoreItems() async {
+        guard hasMoreItems, !isLoadingMoreItems, !isLoadingItems,
               let entityName = selectedEntityName else { return }
-        let prevOffset = max(0, currentOffset - pageSize)
-        await loadItems(for: entityName, offset: prevOffset)
-    }
 
-    public func changePageSize(_ newSize: Int) async {
-        pageSize = newSize
-        guard let entityName = selectedEntityName else { return }
-        await loadItems(for: entityName, offset: 0)
+        isLoadingMoreItems = true
+
+        let newLimit = currentItems.count + pageSize
+
+        do {
+            let allItems = try await dataService.findAll(typeName: entityName, limit: newLimit + 1)
+
+            let hasMore = allItems.count > newLimit
+            let pageItems = hasMore ? Array(allItems.prefix(newLimit)) : allItems
+
+            let decodedItems = pageItems.enumerated().map { index, dict -> DecodedItem in
+                let id = dict["id"] as? String ?? "item_\(index)"
+                let data = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
+                return DecodedItem(
+                    id: id,
+                    typeName: entityName,
+                    fields: dict,
+                    rawSize: data.count
+                )
+            }
+
+            currentItemPage = DecodedItemPage(
+                items: decodedItems,
+                hasMore: hasMore,
+                offset: 0,
+                limit: newLimit
+            )
+            currentItems = decodedItems
+            updateDiscoveredFields()
+        } catch {
+            print("Failed to load more items: \(error)")
+        }
+
+        isLoadingMoreItems = false
     }
 
     public func selectItem(id: String?) {
@@ -414,7 +419,7 @@ public final class AppViewModel {
             try await dataService.insertItem(typeName: entityName, dict: sendableJson)
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsService.recordSuccess(duration: duration, description: "Update item: \(id)", typeName: entityName, operationType: .write)
-            await loadItems(for: entityName, offset: currentOffset)
+            await loadItems(for: entityName)
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsService.recordFailure(duration: duration, description: "Update item: \(id)", typeName: entityName, operationType: .write)
@@ -436,7 +441,7 @@ public final class AppViewModel {
                 selectedItemID = nil
             }
             selectedItemIDs.remove(id)
-            await loadItems(for: entityName, offset: currentOffset)
+            await loadItems(for: entityName)
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsService.recordFailure(duration: duration, description: "Delete item: \(id)", typeName: entityName, operationType: .write)
@@ -462,7 +467,7 @@ public final class AppViewModel {
             if let selectedID = selectedItemID, ids.contains(selectedID) {
                 selectedItemID = nil
             }
-            await loadItems(for: entityName, offset: currentOffset)
+            await loadItems(for: entityName)
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsService.recordFailure(duration: duration, description: "Delete \(ids.count) items", typeName: entityName, operationType: .write)
