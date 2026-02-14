@@ -65,8 +65,6 @@ struct GraphFilterEditorPopover: View {
             edgeKindEditor
         case .edgeLabel:
             edgeLabelEditor
-        case .community:
-            communityEditor
         case .metricThreshold:
             metricThresholdEditor
         case .metadataContains:
@@ -238,55 +236,11 @@ struct GraphFilterEditorPopover: View {
         }
     }
 
-    // MARK: - Community Editor
-
-    private var currentCommunityIDs: Set<Int> {
-        if case .community(let s) = token.facet { return s }
-        return []
-    }
-
-    @ViewBuilder
-    private var communityEditor: some View {
-        let availableIDs = state.availableCommunityIDs
-
-        if availableIDs.isEmpty {
-            Text("No communities detected")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(availableIDs, id: \.self) { cid in
-                        Toggle(isOn: Binding(
-                            get: { currentCommunityIDs.contains(cid) },
-                            set: { isOn in
-                                var ids = currentCommunityIDs
-                                if isOn { ids.insert(cid) } else { ids.remove(cid) }
-                                token.facet = .community(ids)
-                            }
-                        )) {
-                            HStack {
-                                let count = GraphVisualMapping.communityPalette.count
-                                Circle()
-                                    .fill(GraphVisualMapping.communityPalette[((cid % count) + count) % count])
-                                    .frame(width: 10, height: 10)
-                                Text("Community \(cid)")
-                                    .font(.callout)
-                            }
-                        }
-                        .toggleStyle(.checkbox)
-                    }
-                }
-            }
-            .frame(maxHeight: 200)
-        }
-    }
-
     // MARK: - Metric Threshold Editor
 
     private var currentMetric: String {
         if case .metricThreshold(let m, _, _) = token.facet { return m }
-        return "pageRank"
+        return "degree"
     }
 
     private var currentOp: GraphFilterComparisonOp {

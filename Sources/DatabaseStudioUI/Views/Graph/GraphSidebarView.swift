@@ -137,51 +137,7 @@ struct GraphSidebarView: View {
 
     @ViewBuilder
     private func algorithmResultsSection(mapping: GraphVisualMapping) -> some View {
-        if mapping.sizeMode == .byPageRank {
-            Section("PageRank Top 10") {
-                let ranked = state.visibleNodes
-                    .filter { ($0.metrics["pageRank"] ?? 0) > 0 }
-                    .sorted { ($0.metrics["pageRank"] ?? 0) > ($1.metrics["pageRank"] ?? 0) }
-                    .prefix(10)
-
-                ForEach(Array(ranked)) { node in
-                    HStack {
-                        Text(node.label)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(String(format: "%.4f", node.metrics["pageRank"] ?? 0))
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                            .monospacedDigit()
-                    }
-                    .tag(node.id)
-                }
-            }
-        }
-
-        if mapping.colorMode == .byCommunity {
-            let communities = Dictionary(grouping: state.visibleNodes.filter { $0.communityID != nil }, by: { $0.communityID! })
-            if !communities.isEmpty {
-                Section("Communities (\(communities.count))") {
-                    ForEach(communities.keys.sorted(), id: \.self) { cid in
-                        let count = communities[cid]?.count ?? 0
-                        let paletteCount = GraphVisualMapping.communityPalette.count
-                        let color = GraphVisualMapping.communityPalette[((cid % paletteCount) + paletteCount) % paletteCount]
-                        HStack {
-                            Circle()
-                                .fill(color)
-                                .frame(width: 10, height: 10)
-                            Text("Community \(cid)")
-                            Spacer()
-                            Text("\(count)")
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                                .monospacedDigit()
-                        }
-                    }
-                }
-            }
-        }
+        EmptyView()
     }
 }
 

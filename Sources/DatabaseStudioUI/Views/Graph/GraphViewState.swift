@@ -660,8 +660,6 @@ final class GraphViewState {
         for i in enriched.nodes.indices {
             let id = enriched.nodes[i].id
             enriched.nodes[i].metrics["degree"] = metrics.degree[id] ?? 0
-            if let pr = metrics.pageRank[id] { enriched.nodes[i].metrics["pageRank"] = pr }
-            if let cid = metrics.communityID[id] { enriched.nodes[i].communityID = cid }
         }
         self.document = enriched
         self.cachedMetrics = metrics
@@ -682,8 +680,6 @@ final class GraphViewState {
         for i in enriched.nodes.indices {
             let id = enriched.nodes[i].id
             enriched.nodes[i].metrics["degree"] = metrics.degree[id] ?? 0
-            if let pr = metrics.pageRank[id] { enriched.nodes[i].metrics["pageRank"] = pr }
-            if let cid = metrics.communityID[id] { enriched.nodes[i].communityID = cid }
         }
         cachedMetrics = metrics
         cachedBackboneNodeIDs = nil
@@ -723,8 +719,8 @@ final class GraphViewState {
         viewportSize = newSize
         guard newSize.width > 0, newSize.height > 0 else { return }
 
-        // 初回有効サイズ: シミュレーション開始
-        if !hasInitialFit || oldSize.width <= 0 || oldSize.height <= 0 {
+        // 初回のみシミュレーション開始（レイアウト済みなら再実行しない）
+        if !hasInitialFit {
             startSimulation(size: newSize)
             return
         }
@@ -734,20 +730,10 @@ final class GraphViewState {
         let dh = abs(newSize.height - oldSize.height)
         guard dw > 8 || dh > 8 else { return }
 
-        // ユーザー操作前にサイズが大幅変化した場合は再初期化
-        // （NavigationSplitView のサイドバー出現、GeometryReader の初回プレースホルダー値等）
-        if !hasUserAdjustedCamera && (dw > 80 || dh > 80) {
-            startSimulation(size: newSize)
-            return
-        }
-
         // ユーザーがカメラ未操作ならサイズ変化後に再フィット
         if !hasUserAdjustedCamera {
             zoomToFit()
         }
-
-        // サイズ変化後の緩和
-        resumeSimulation(size: newSize)
     }
 
     // MARK: - シミュレーション制御
@@ -1100,12 +1086,6 @@ final class GraphViewState {
     /// 全トークンをクリア
     func clearAllFilterTokens() {
         filterTokens.removeAll()
-    }
-
-    /// ドキュメント内に存在するコミュニティ ID 一覧
-    var availableCommunityIDs: [Int] {
-        let ids = Set(document.nodes.compactMap(\.communityID))
-        return ids.sorted()
     }
 
     /// ドキュメント内のメトリクスキー一覧

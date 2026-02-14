@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
     ],
     dependencies: [
-        .package(path: "../database-framework"),
+        .package(url: "https://github.com/1amageek/database-framework.git", branch: "main"),
         .package(url: "https://github.com/1amageek/database-kit.git", branch: "main"),
     ],
     targets: [

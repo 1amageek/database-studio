@@ -54,7 +54,6 @@ enum GraphFilterFacet: Hashable, Sendable {
     case nodeSource(Set<GraphNodeSource>)
     case edgeKind(Set<GraphEdgeKind>)
     case edgeLabel(Set<String>)
-    case community(Set<Int>)
     case metricThreshold(metric: String, op: GraphFilterComparisonOp, value: Double)
     case metadataContains(key: String?, value: String)
 
@@ -80,10 +79,6 @@ enum GraphFilterFacet: Hashable, Sendable {
 
         case .nodeSource(let sources):
             return sources.contains(node.source)
-
-        case .community(let ids):
-            guard let cid = node.communityID else { return false }
-            return ids.contains(cid)
 
         case .metricThreshold(let metric, let op, let threshold):
             guard let value = node.metrics[metric] else { return false }
@@ -113,7 +108,7 @@ enum GraphFilterFacet: Hashable, Sendable {
         case .edgeLabel(let labels):
             return labels.contains(edge.label)
 
-        case .nodeRole, .nodeType, .nodeSource, .community, .metricThreshold, .metadataContains:
+        case .nodeRole, .nodeType, .nodeSource, .metricThreshold, .metadataContains:
             // ノードファセットはエッジ判定に関与しない
             return true
         }
@@ -124,7 +119,7 @@ enum GraphFilterFacet: Hashable, Sendable {
     /// このファセットがノード属性を対象とするか
     var isNodeFacet: Bool {
         switch self {
-        case .nodeRole, .nodeType, .nodeSource, .community, .metricThreshold, .metadataContains:
+        case .nodeRole, .nodeType, .nodeSource, .metricThreshold, .metadataContains:
             return true
         case .edgeKind, .edgeLabel:
             return false
@@ -136,7 +131,7 @@ enum GraphFilterFacet: Hashable, Sendable {
         switch self {
         case .edgeKind, .edgeLabel:
             return true
-        case .nodeRole, .nodeType, .nodeSource, .community, .metricThreshold, .metadataContains:
+        case .nodeRole, .nodeType, .nodeSource, .metricThreshold, .metadataContains:
             return false
         }
     }
@@ -151,7 +146,6 @@ enum GraphFilterFacet: Hashable, Sendable {
         case .nodeSource: "Source"
         case .edgeKind: "Edge Kind"
         case .edgeLabel: "Edge Label"
-        case .community: "Community"
         case .metricThreshold: "Metric"
         case .metadataContains: "Metadata"
         }
@@ -182,9 +176,6 @@ enum GraphFilterFacet: Hashable, Sendable {
                 return sorted.joined(separator: ", ")
             }
             return "\(sorted[0]), \(sorted[1]) +\(sorted.count - 2)"
-
-        case .community(let ids):
-            return ids.sorted().map(String.init).joined(separator: ", ")
 
         case .metricThreshold(let metric, let op, let value):
             return "\(metric) \(op.rawValue) \(String(format: "%.4f", value))"
@@ -268,7 +259,6 @@ enum GraphFilterFacetCategory: CaseIterable, Sendable {
     case nodeSource
     case edgeKind
     case edgeLabel
-    case community
     case metricThreshold
     case metadataContains
 
@@ -279,7 +269,6 @@ enum GraphFilterFacetCategory: CaseIterable, Sendable {
         case .nodeSource: "Node Source"
         case .edgeKind: "Edge Kind"
         case .edgeLabel: "Edge Label"
-        case .community: "Community"
         case .metricThreshold: "Metric Threshold"
         case .metadataContains: "Metadata"
         }
@@ -292,7 +281,6 @@ enum GraphFilterFacetCategory: CaseIterable, Sendable {
         case .nodeSource: "tray.full"
         case .edgeKind: "arrow.triangle.branch"
         case .edgeLabel: "text.badge.star"
-        case .community: "person.3.sequence"
         case .metricThreshold: "chart.bar"
         case .metadataContains: "doc.text.magnifyingglass"
         }
@@ -311,10 +299,8 @@ enum GraphFilterFacetCategory: CaseIterable, Sendable {
             GraphFilterToken(facet: .edgeKind(Set(GraphEdgeKind.allCases)))
         case .edgeLabel:
             GraphFilterToken(facet: .edgeLabel([]))
-        case .community:
-            GraphFilterToken(facet: .community([]))
         case .metricThreshold:
-            GraphFilterToken(facet: .metricThreshold(metric: "pageRank", op: .greaterThan, value: 0.0))
+            GraphFilterToken(facet: .metricThreshold(metric: "degree", op: .greaterThan, value: 0.0))
         case .metadataContains:
             GraphFilterToken(facet: .metadataContains(key: nil, value: ""))
         }

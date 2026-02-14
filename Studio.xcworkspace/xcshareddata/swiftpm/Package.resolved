@@ -2,6 +2,15 @@
   "originHash" : "b98542385ccadc337ac6d3018976e88c973a198f80316ddae935cb7972634f85",
   "pins" : [
     {
+      "identity" : "database-framework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/1amageek/database-framework.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "ad47047a3cbcfe463b4bbd77baf8626583737b40"
+      }
+    },
+    {
       "identity" : "database-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/1amageek/database-kit.git",

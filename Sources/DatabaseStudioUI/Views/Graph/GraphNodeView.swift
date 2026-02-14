@@ -73,13 +73,13 @@ struct GraphNodeView: View {
         )
         GraphNodeView(
             node: GraphNode(
-                id: "5", label: "PageRank High", role: .instance,
-                metrics: ["pageRank": 0.85]
+                id: "5", label: "High Degree", role: .instance,
+                metrics: ["degree": 12]
             ),
             isSelected: false,
             mapping: {
                 let m = GraphVisualMapping()
-                m.sizeMode = .byPageRank
+                m.sizeMode = .byDegree
                 return m
             }()
         )

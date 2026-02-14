@@ -55,7 +55,6 @@ public struct GraphNode: Identifiable, Hashable, Sendable {
     public var source: GraphNodeSource
     public var metadata: [String: String]
     public var metrics: [String: Double]
-    public var communityID: Int?
     public var isHighlighted: Bool
 
     public init(
@@ -66,7 +65,6 @@ public struct GraphNode: Identifiable, Hashable, Sendable {
         source: GraphNodeSource = .graphIndex,
         metadata: [String: String] = [:],
         metrics: [String: Double] = [:],
-        communityID: Int? = nil,
         isHighlighted: Bool = false
     ) {
         self.id = id
@@ -76,7 +74,6 @@ public struct GraphNode: Identifiable, Hashable, Sendable {
         self.source = source
         self.metadata = metadata
         self.metrics = metrics
-        self.communityID = communityID
         self.isHighlighted = isHighlighted
     }
 }

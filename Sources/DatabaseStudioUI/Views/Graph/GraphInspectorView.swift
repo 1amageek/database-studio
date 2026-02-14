@@ -225,23 +225,8 @@ struct GraphInspectorView: View {
             }
 
             // Metrics
-            if !node.metrics.isEmpty || node.communityID != nil {
+            if !node.metrics.isEmpty {
                 Section("Metrics") {
-                    if let communityID = node.communityID {
-                        HStack {
-                            Text("Community")
-                            Spacer()
-                            Circle()
-                                .fill({
-                                let count = GraphVisualMapping.communityPalette.count
-                                return GraphVisualMapping.communityPalette[((communityID % count) + count) % count]
-                            }())
-                                .frame(width: 10, height: 10)
-                            Text("\(communityID)")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
                     ForEach(node.metrics.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
                         LabeledContent(metricDisplayName(key)) {
                             Text(formatMetric(key: key, value: value))
@@ -344,7 +329,6 @@ struct GraphInspectorView: View {
 
     private func metricDisplayName(_ key: String) -> String {
         switch key {
-        case "pageRank": return "PageRank"
         case "degree": return "Degree"
         case "betweenness": return "Betweenness"
         case "closeness": return "Closeness"
