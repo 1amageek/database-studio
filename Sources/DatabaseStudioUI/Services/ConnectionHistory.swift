@@ -1,27 +1,52 @@
 import Foundation
 
-/// 接続情報
+/// Backend type auto-detected from file extension.
+public enum BackendType: String, Codable, Sendable {
+    case foundationDB
+    case sqlite
+
+    /// Detect backend from file path extension.
+    ///
+    /// - `.sqlite`, `.db` → SQLite
+    /// - Everything else (`.cluster`, no extension) → FoundationDB
+    public static func detect(from filePath: String) -> BackendType {
+        let ext = (filePath as NSString).pathExtension.lowercased()
+        switch ext {
+        case "sqlite", "db":
+            return .sqlite
+        default:
+            return .foundationDB
+        }
+    }
+}
+
+/// Connection information.
 public struct ConnectionInfo: Identifiable, Codable, Sendable, Hashable {
     public let id: UUID
     public var name: String
-    public var clusterFilePath: String
+    public var filePath: String
     public var rootDirectoryPath: String
     public var isFavorite: Bool
     public var lastUsed: Date
     public var useCount: Int
 
+    /// Auto-detected backend type based on file extension.
+    public var backendType: BackendType {
+        BackendType.detect(from: filePath)
+    }
+
     public init(
         id: UUID = UUID(),
         name: String = "",
-        clusterFilePath: String,
+        filePath: String,
         rootDirectoryPath: String = "",
         isFavorite: Bool = false,
         lastUsed: Date = Date(),
         useCount: Int = 1
     ) {
         self.id = id
-        self.name = name.isEmpty ? Self.defaultName(from: clusterFilePath) : name
-        self.clusterFilePath = clusterFilePath
+        self.name = name.isEmpty ? Self.defaultName(from: filePath) : name
+        self.filePath = filePath
         self.rootDirectoryPath = rootDirectoryPath
         self.isFavorite = isFavorite
         self.lastUsed = lastUsed
@@ -34,16 +59,25 @@ public struct ConnectionInfo: Identifiable, Codable, Sendable, Hashable {
         return name.isEmpty ? "Connection" : name
     }
 
-    /// 表示用の簡易説明
+    /// Display description for UI.
     public var displayDescription: String {
         if rootDirectoryPath.isEmpty {
-            return clusterFilePath
+            return filePath
         }
-        return "\(clusterFilePath) → /\(rootDirectoryPath)"
+        return "\(filePath) → /\(rootDirectoryPath)"
+    }
+
+    // MARK: - Backward Compatibility
+
+    /// Map legacy `clusterFilePath` key to `filePath` property.
+    private enum CodingKeys: String, CodingKey {
+        case id, name
+        case filePath = "clusterFilePath"
+        case rootDirectoryPath, isFavorite, lastUsed, useCount
     }
 }
 
-/// 接続履歴管理
+/// Connection history manager.
 public final class ConnectionHistoryService: @unchecked Sendable {
     public static let shared = ConnectionHistoryService()
 
@@ -55,38 +89,38 @@ public final class ConnectionHistoryService: @unchecked Sendable {
         loadFromStorage()
     }
 
-    /// 全接続履歴
+    /// All connections.
     public var connections: [ConnectionInfo] {
         _connections
     }
 
-    /// 最後に使用した接続
+    /// Most recently used connection.
     public var mostRecent: ConnectionInfo? {
         _connections.max { $0.lastUsed < $1.lastUsed }
     }
 
-    /// お気に入り接続
+    /// Favorite connections.
     public var favorites: [ConnectionInfo] {
         _connections.filter { $0.isFavorite }
     }
 
-    /// 最近使用した接続（お気に入り以外）
+    /// Recent non-favorite connections sorted by last used.
     public var recents: [ConnectionInfo] {
         _connections
             .filter { !$0.isFavorite }
             .sorted { $0.lastUsed > $1.lastUsed }
     }
 
-    /// 接続を追加または更新
-    public func addOrUpdate(clusterFilePath: String, rootDirectoryPath: String) {
+    /// Add or update a connection entry.
+    public func addOrUpdate(filePath: String, rootDirectoryPath: String) {
         if let index = _connections.firstIndex(where: {
-            $0.clusterFilePath == clusterFilePath && $0.rootDirectoryPath == rootDirectoryPath
+            $0.filePath == filePath && $0.rootDirectoryPath == rootDirectoryPath
         }) {
             _connections[index].lastUsed = Date()
             _connections[index].useCount += 1
         } else {
             let connection = ConnectionInfo(
-                clusterFilePath: clusterFilePath,
+                filePath: filePath,
                 rootDirectoryPath: rootDirectoryPath
             )
             _connections.insert(connection, at: 0)
@@ -95,7 +129,7 @@ public final class ConnectionHistoryService: @unchecked Sendable {
         saveToStorage()
     }
 
-    /// お気に入りをトグル
+    /// Toggle favorite status.
     public func toggleFavorite(_ connection: ConnectionInfo) {
         if let index = _connections.firstIndex(where: { $0.id == connection.id }) {
             _connections[index].isFavorite.toggle()
@@ -103,7 +137,7 @@ public final class ConnectionHistoryService: @unchecked Sendable {
         }
     }
 
-    /// 接続名を更新
+    /// Rename a connection.
     public func rename(_ connection: ConnectionInfo, to name: String) {
         if let index = _connections.firstIndex(where: { $0.id == connection.id }) {
             _connections[index].name = name
@@ -111,13 +145,13 @@ public final class ConnectionHistoryService: @unchecked Sendable {
         }
     }
 
-    /// 接続を削除
+    /// Remove a connection.
     public func remove(_ connection: ConnectionInfo) {
         _connections.removeAll { $0.id == connection.id }
         saveToStorage()
     }
 
-    /// 履歴をクリア（お気に入りは残す）
+    /// Clear history (keeps favorites).
     public func clearHistory() {
         _connections.removeAll { !$0.isFavorite }
         saveToStorage()

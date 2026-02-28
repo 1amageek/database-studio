@@ -1,31 +1,13 @@
 {
-  "originHash" : "fe252e1041ec8e75cfb1cc87ddf59794b6114067cf19709a498bf04eb1c1eff8",
+  "originHash" : "326bc59815d2d3cf721187f73b93241187a7dd9f9c6e63ad4559f6d961e01e64",
   "pins" : [
-    {
-      "identity" : "database-framework",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1amageek/database-framework.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "ad47047a3cbcfe463b4bbd77baf8626583737b40"
-      }
-    },
-    {
-      "identity" : "database-kit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1amageek/database-kit.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "19364ed445191bdf6b82fcd2738384df4146cafb"
-      }
-    },
     {
       "identity" : "fdb-swift-bindings",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/1amageek/fdb-swift-bindings.git",
       "state" : {
         "branch" : "feature/directory-layer",
-        "revision" : "4c807a939c1572884c8109d585524f43901c5206"
+        "revision" : "1eb8ba65fcfc9be0abf48846229c49e45cacf313"
       }
     },
     {
@@ -69,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-configuration.git",
       "state" : {
-        "revision" : "b4768bd68d8a6fb356bd372cb41905046244fcae",
-        "version" : "1.0.2"
+        "revision" : "1bb939fe7bbb00b8f8bab664cc90020c035c08d9",
+        "version" : "1.1.0"
       }
     },
     {
@@ -96,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "2778fd4e5a12a8aaa30a3ee8285f4ce54c5f3181",
-        "version" : "1.9.1"
+        "revision" : "bbd81b6725ae874c69e9b8c8804d462356b55523",
+        "version" : "1.10.1"
       }
     },
     {
@@ -105,8 +87,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-metrics.git",
       "state" : {
-        "revision" : "0743a9364382629da3bf5677b46a2c4b1ce5d2a6",
-        "version" : "2.7.1"
+        "revision" : "f17c111cec972c2a4922cef38cf64f76f7e87886",
+        "version" : "2.8.0"
       }
     },
     {
@@ -114,8 +96,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/swift-service-lifecycle",
       "state" : {
-        "revision" : "1de37290c0ab3c5a96028e0f02911b672fd42348",
-        "version" : "2.9.1"
+        "revision" : "89888196dd79c61c50bca9a103d8114f32e1e598",
+        "version" : "2.10.1"
       }
     },
     {

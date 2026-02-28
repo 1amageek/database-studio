@@ -10,8 +10,9 @@ let package = Package(
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/1amageek/database-framework.git", branch: "main"),
-        .package(url: "https://github.com/1amageek/database-kit.git", branch: "main"),
+        .package(path: "../database-framework"),
+        .package(path: "../database-kit"),
+        .package(path: "../storage-kit"),
     ],
     targets: [
         // UI - UI層（SwiftUI・macOS専用）+ ロジック層統合
@@ -22,6 +23,9 @@ let package = Package(
                 .product(name: "DatabaseCLICore", package: "database-framework"),
                 .product(name: "GraphIndex", package: "database-framework"),
                 .product(name: "Graph", package: "database-kit"),
+                .product(name: "StorageKit", package: "storage-kit"),
+                .product(name: "FDBStorage", package: "storage-kit"),
+                .product(name: "SQLiteStorage", package: "storage-kit"),
             ],
             path: "Sources/DatabaseStudioUI",
             linkerSettings: [

@@ -17,7 +17,7 @@ public final class AppViewModel {
 
     // MARK: - Connection
 
-    public var clusterFilePath: String = "/etc/foundationdb/fdb.cluster"
+    public var filePath: String = "/etc/foundationdb/fdb.cluster"
     public var rootDirectoryPath: String = ""
 
     public var connectionState: StudioDataService.ConnectionState {
@@ -89,7 +89,7 @@ public final class AppViewModel {
     // MARK: - Connection
 
     public func connect() async {
-        await dataService.connect(clusterFilePath: clusterFilePath)
+        await dataService.connect(filePath: filePath)
         if case .connected = dataService.connectionState {
             buildEntityTree()
         }

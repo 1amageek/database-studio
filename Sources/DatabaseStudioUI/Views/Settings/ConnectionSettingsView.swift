@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// 接続設定ビュー
+/// Connection settings view.
 struct ConnectionSettingsView: View {
     @Bindable var viewModel: AppViewModel
+    var isRequired: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var historyService = ConnectionHistoryService.shared
     @State private var refreshTrigger = false
@@ -11,7 +12,7 @@ struct ConnectionSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // お気に入り
+                // Favorites
                 if !historyService.favorites.isEmpty {
                     Section("Favorites") {
                         ForEach(historyService.favorites) { connection in
@@ -25,7 +26,7 @@ struct ConnectionSettingsView: View {
                     }
                 }
 
-                // 最近使用
+                // Recent
                 if !historyService.recents.isEmpty {
                     Section("Recent") {
                         ForEach(historyService.recents.prefix(5)) { connection in
@@ -39,32 +40,45 @@ struct ConnectionSettingsView: View {
                     }
                 }
 
-                // 新規接続
+                // Connection
                 Section("Connection") {
-                    LabeledContent("Cluster File") {
+                    LabeledContent("Database File") {
                         HStack {
-                            TextField("Path", text: $viewModel.clusterFilePath)
+                            TextField("Path", text: $viewModel.filePath)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.body, design: .monospaced))
 
                             Button("Browse...") {
-                                browseForClusterFile()
+                                browseForDatabaseFile()
                             }
                         }
                     }
 
-                    LabeledContent("Root Path") {
-                        TextField("例: app/production", text: $viewModel.rootDirectoryPath)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
+                    // Show Root Path only for FoundationDB
+                    if BackendType.detect(from: viewModel.filePath) == .foundationDB {
+                        LabeledContent("Root Path") {
+                            TextField("e.g. app/production", text: $viewModel.rootDirectoryPath)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                        }
+
+                        Text("Empty shows all from root")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
-                    Text("空の場合はルートから表示します")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // Detected backend indicator
+                    HStack {
+                        let detected = BackendType.detect(from: viewModel.filePath)
+                        Image(systemName: detected == .sqlite ? "cylinder" : "server.rack")
+                            .foregroundStyle(.secondary)
+                        Text(detected == .sqlite ? "SQLite" : "FoundationDB")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                // エラー表示
+                // Error display
                 if case .error(let message) = viewModel.connectionState {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -75,9 +89,11 @@ struct ConnectionSettingsView: View {
             .formStyle(.grouped)
             .navigationTitle("Connection")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
+                if !isRequired {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -92,7 +108,7 @@ struct ConnectionSettingsView: View {
                                 await connectAndSaveHistory()
                             }
                         }
-                        .disabled(viewModel.clusterFilePath.isEmpty)
+                        .disabled(viewModel.filePath.isEmpty)
                     }
                 }
             }
@@ -101,22 +117,21 @@ struct ConnectionSettingsView: View {
         .id(refreshTrigger)
     }
 
-    private func browseForClusterFile() {
+    private func browseForDatabaseFile() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.data]
-        panel.directoryURL = URL(fileURLWithPath: "/etc/foundationdb")
-        panel.message = "Select FDB cluster file"
+        panel.message = "Select database file (.cluster, .sqlite, or .db)"
 
         if panel.runModal() == .OK, let url = panel.url {
-            viewModel.clusterFilePath = url.path
+            viewModel.filePath = url.path
         }
     }
 
     private func selectConnection(_ connection: ConnectionInfo) {
-        viewModel.clusterFilePath = connection.clusterFilePath
+        viewModel.filePath = connection.filePath
         viewModel.rootDirectoryPath = connection.rootDirectoryPath
     }
 
@@ -124,7 +139,7 @@ struct ConnectionSettingsView: View {
         await viewModel.connect()
         if case .connected = viewModel.connectionState {
             historyService.addOrUpdate(
-                clusterFilePath: viewModel.clusterFilePath,
+                filePath: viewModel.filePath,
                 rootDirectoryPath: viewModel.rootDirectoryPath
             )
             dismiss()
@@ -142,7 +157,7 @@ struct ConnectionSettingsView: View {
     }
 }
 
-/// 接続行ビュー
+/// Connection row view.
 private struct ConnectionRowView: View {
     let connection: ConnectionInfo
     let onSelect: () -> Void
@@ -151,6 +166,11 @@ private struct ConnectionRowView: View {
 
     var body: some View {
         HStack {
+            // Backend icon
+            Image(systemName: connection.backendType == .sqlite ? "cylinder" : "server.rack")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(connection.name)
                     .font(.headline)

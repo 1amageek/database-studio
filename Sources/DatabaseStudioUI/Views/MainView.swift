@@ -10,6 +10,11 @@ public struct MainView: View {
     @State private var showingConnectionSettings = false
     @State private var showInspector = false
 
+    private var isConnectionRequired: Bool {
+        if case .connected = viewModel.connectionState { return false }
+        return true
+    }
+
     public init() {
         let vm = AppViewModel()
         _viewModel = State(initialValue: vm)
@@ -19,12 +24,12 @@ public struct MainView: View {
     private func restoreLastConnection() async {
         let historyService = ConnectionHistoryService.shared
         if let last = historyService.mostRecent {
-            viewModel.clusterFilePath = last.clusterFilePath
+            viewModel.filePath = last.filePath
             viewModel.rootDirectoryPath = last.rootDirectoryPath
             await viewModel.connect()
             if case .connected = viewModel.connectionState {
                 historyService.addOrUpdate(
-                    clusterFilePath: last.clusterFilePath,
+                    filePath: last.filePath,
                     rootDirectoryPath: last.rootDirectoryPath
                 )
                 return
@@ -72,8 +77,9 @@ public struct MainView: View {
             await restoreLastConnection()
         }
         .sheet(isPresented: $showingConnectionSettings) {
-            ConnectionSettingsView(viewModel: viewModel)
+            ConnectionSettingsView(viewModel: viewModel, isRequired: isConnectionRequired)
         }
+        .interactiveDismissDisabled(isConnectionRequired)
     }
 }
 
@@ -600,7 +606,7 @@ struct ConnectionStatusBar: View {
                 case .connected:
                     Image(systemName: "circle.fill")
                         .foregroundStyle(.green)
-                    Text((viewModel.clusterFilePath as NSString).lastPathComponent)
+                    Text((viewModel.filePath as NSString).lastPathComponent)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)

@@ -4,9 +4,15 @@ import DatabaseCLICore
 import GraphIndex
 import Core
 import Graph
+import StorageKit
+import SQLiteStorage
+import FDBStorage
 import FoundationDB
 
-/// SchemaRegistry + CatalogDataAccess をラップする統合データサービス
+/// Unified data service wrapping SchemaRegistry + CatalogDataAccess.
+///
+/// Supports both FoundationDB and SQLite backends.
+/// Backend is auto-detected from the file extension.
 @MainActor
 @Observable
 public final class StudioDataService {
@@ -23,7 +29,7 @@ public final class StudioDataService {
     public private(set) var entities: [Schema.Entity] = []
 
     @ObservationIgnored
-    nonisolated(unsafe) private var database: (any DatabaseProtocol)?
+    nonisolated(unsafe) private var engine: (any StorageEngine)?
 
     @ObservationIgnored
     private var schemaRegistry: SchemaRegistry?
@@ -35,15 +41,27 @@ public final class StudioDataService {
 
     // MARK: - Connection
 
-    public func connect(clusterFilePath: String) async {
+    /// Connect to a database by file path.
+    ///
+    /// Backend is auto-detected from the file extension:
+    /// - `.sqlite`, `.db` → SQLite
+    /// - `.cluster`, no extension → FoundationDB
+    public func connect(filePath: String) async {
         connectionState = .connecting
         do {
-            if !FDBClient.isInitialized {
-                try await FDBClient.initialize()
+            let backendType = BackendType.detect(from: filePath)
+            switch backendType {
+            case .foundationDB:
+                if !FDBClient.isInitialized {
+                    try await FDBClient.initialize()
+                }
+                let db = try FDBClient.openDatabase(clusterFilePath: filePath)
+                self.engine = FDBStorageEngine(database: db)
+            case .sqlite:
+                self.engine = try SQLiteStorageEngine(path: filePath)
             }
-            let db = try FDBClient.openDatabase(clusterFilePath: clusterFilePath)
-            self.database = db
-            self.schemaRegistry = SchemaRegistry(database: db)
+            guard let engine else { return }
+            self.schemaRegistry = SchemaRegistry(database: engine)
             connectionState = .connected
             try await loadEntities()
         } catch {
@@ -52,7 +70,7 @@ public final class StudioDataService {
     }
 
     public func disconnect() {
-        database = nil
+        engine = nil
         schemaRegistry = nil
         catalogAccess = nil
         entities = []
@@ -65,8 +83,8 @@ public final class StudioDataService {
         guard let registry = schemaRegistry else { return }
         let loaded = try await registry.loadAll()
         self.entities = loaded.sorted { $0.name < $1.name }
-        guard let db = database else { return }
-        self.catalogAccess = CatalogDataAccess(database: db, entities: loaded)
+        guard let engine else { return }
+        self.catalogAccess = CatalogDataAccess(database: engine, entities: loaded)
     }
 
     // MARK: - Data Access
@@ -113,13 +131,13 @@ public final class StudioDataService {
     // MARK: - Ontology
 
     public nonisolated func loadOntology() async throws -> OWLOntology? {
-        guard let db = database else { return nil }
+        guard let engine else { return nil }
         let store = OntologyStore.default()
-        let iris = try await db.withTransaction { tx in
+        let iris = try await engine.withTransaction { tx in
             try await store.listOntologies(transaction: tx)
         }
         guard let firstIRI = iris.first else { return nil }
-        return try await db.withTransaction { tx in
+        return try await engine.withTransaction { tx in
             try await store.reconstruct(iri: firstIRI, transaction: tx)
         }
     }
