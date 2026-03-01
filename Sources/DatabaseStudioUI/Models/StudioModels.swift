@@ -17,11 +17,12 @@ public struct DecodedItem: Identifiable {
 
     /// JSON としてのプレティプリント
     public var prettyJSON: String {
-        guard let data = try? JSONSerialization.data(withJSONObject: fields, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: data, encoding: .utf8) else {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: fields, options: [.prettyPrinted, .sortedKeys])
+            return String(data: data, encoding: .utf8) ?? "{}"
+        } catch {
             return "{}"
         }
-        return str
     }
 
     /// フォーマットされたサイズ

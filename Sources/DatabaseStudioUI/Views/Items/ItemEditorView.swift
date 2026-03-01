@@ -193,13 +193,16 @@ public struct ItemEditorView: View {
     }
 
     private func formatJSON() {
-        guard let data = jsonText.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data, options: []),
-              let formatted = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-              let formattedString = String(data: formatted, encoding: .utf8) else {
-            return
+        guard let data = jsonText.data(using: .utf8) else { return }
+        do {
+            let json = try JSONSerialization.jsonObject(with: data, options: [])
+            let formatted = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
+            if let formattedString = String(data: formatted, encoding: .utf8) {
+                jsonText = formattedString
+            }
+        } catch {
+            // JSON is invalid — leave text unchanged, validation will show the error
         }
-        jsonText = formattedString
     }
 
     // MARK: - Save

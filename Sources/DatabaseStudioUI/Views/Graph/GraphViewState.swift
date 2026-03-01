@@ -380,7 +380,9 @@ final class GraphViewState {
             }
         }
 
-        return (xs.first!, xs.last!, ys.first!, ys.last!)
+        guard let xFirst = xs.first, let xLast = xs.last,
+              let yFirst = ys.first, let yLast = ys.last else { return nil }
+        return (xFirst, xLast, yFirst, yLast)
     }
 
     /// 指定位置群に対する zoomToFit カメラ状態を計算（適用はしない）

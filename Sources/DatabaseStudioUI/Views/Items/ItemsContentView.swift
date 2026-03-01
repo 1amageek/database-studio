@@ -367,19 +367,8 @@ struct ItemsTableView: View {
                                     items: items,
                                     graphIndex: graphIndex
                                 )
-                                let typeNodeCount = doc.nodes.filter { $0.role == .type }.count
-                                print("[Graph] Built document: \(doc.nodes.count) nodes, \(doc.edges.count) edges, \(typeNodeCount) type nodes")
                                 if let ontology = await viewModel.loadOntology() {
-                                    let subClassOfCount = ontology.axioms.filter {
-                                        if case .subClassOf = $0 { return true }
-                                        return false
-                                    }.count
-                                    print("[Graph] Ontology has \(subClassOfCount) subClassOf axioms")
                                     doc.mergeOntology(ontology)
-                                    let subClassOfEdges = doc.edges.filter { $0.label.lowercased() == "subclassof" }.count
-                                    print("[Graph] After merge: \(doc.nodes.count) nodes, \(doc.edges.count) edges, \(subClassOfEdges) subClassOf edges")
-                                } else {
-                                    print("[Graph] WARNING: No ontology loaded - class hierarchy will be flat")
                                 }
                                 return doc
                             }
@@ -581,28 +570,22 @@ struct ItemsTableView: View {
     // MARK: - Export
 
     private func exportItems(format: ExportFormat) {
-        let success = ExportService.exportAndSave(
+        _ = ExportService.exportAndSave(
             items: filteredItems,
             typeName: typeName,
             format: format,
             fields: viewModel.discoveredFields
         )
-        if success {
-            print("Export completed successfully")
-        }
     }
 
     private func exportSelectedItems(format: ExportFormat) {
         guard !selectedItems.isEmpty else { return }
-        let success = ExportService.exportAndSave(
+        _ = ExportService.exportAndSave(
             items: selectedItems,
             typeName: "\(typeName)_selected",
             format: format,
             fields: viewModel.discoveredFields
         )
-        if success {
-            print("Export \(selectedItems.count) selected items completed")
-        }
     }
 
     private func copySelectedIDs() {

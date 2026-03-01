@@ -43,14 +43,14 @@ public struct ExportService {
             jsonArray.append(record)
         }
 
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: jsonArray,
-            options: [.prettyPrinted, .sortedKeys]
-        ) else {
+        do {
+            return try JSONSerialization.data(
+                withJSONObject: jsonArray,
+                options: [.prettyPrinted, .sortedKeys]
+            )
+        } catch {
             return Data()
         }
-
-        return data
     }
 
     /// ItemsをJSONL形式でエクスポート（1行1JSON）
@@ -62,9 +62,13 @@ public struct ExportService {
             record["_id"] = item.id
             record["_type"] = item.typeName
 
-            if let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
-               let line = String(data: data, encoding: .utf8) {
-                lines.append(line)
+            do {
+                let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+                if let line = String(data: data, encoding: .utf8) {
+                    lines.append(line)
+                }
+            } catch {
+                // Skip records that cannot be serialized
             }
         }
 
@@ -157,7 +161,6 @@ public struct ExportService {
             try data.write(to: url)
             return true
         } catch {
-            print("Failed to export: \(error)")
             return false
         }
     }

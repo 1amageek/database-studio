@@ -165,7 +165,6 @@ public final class ConnectionHistoryService {
         do {
             _connections = try JSONDecoder().decode([ConnectionInfo].self, from: data)
         } catch {
-            print("[ConnectionHistory] Failed to decode: \(error)")
             _connections = []
         }
     }

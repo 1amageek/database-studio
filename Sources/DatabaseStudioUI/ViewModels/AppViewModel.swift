@@ -266,7 +266,6 @@ public final class AppViewModel {
             guard currentItemsLoadID == operationID else { return }
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsService.recordFailure(duration: duration, description: "Load items: \(entityName)", typeName: entityName, operationType: .read)
-            print("Failed to load items: \(error)")
             currentItemPage = nil
             currentItems = []
         }
@@ -274,46 +273,56 @@ public final class AppViewModel {
         isLoadingItems = false
     }
 
-    /// グラフ表示用に全件ロードする（ページングなし）
+    /// Load all items for graph display (no pagination).
     public func loadAllItems(for entityName: String) async -> [DecodedItem] {
         if isPreviewMode {
             return currentItems
         }
+        let startTime = CFAbsoluteTimeGetCurrent()
         do {
             let allItems = try await dataService.findAll(typeName: entityName)
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordSuccess(duration: duration, description: "Load all items: \(entityName)", typeName: entityName, operationType: .scan)
             return decodeItems(from: allItems, typeName: entityName)
         } catch {
-            print("Failed to load all items for graph: \(error)")
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordFailure(duration: duration, description: "Load all items: \(entityName)", typeName: entityName, operationType: .scan)
             return []
         }
     }
 
-    /// OntologyStore から OWLOntology をロードする
+    /// Load OWL ontology from the OntologyStore.
     public func loadOntology() async -> OWLOntology? {
         if isPreviewMode { return nil }
+        let startTime = CFAbsoluteTimeGetCurrent()
         do {
             let ontology = try await dataService.loadOntology()
-            if let ontology {
-                print("[Ontology] Loaded: \(ontology.classes.count) classes, \(ontology.axioms.count) axioms")
-            }
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordSuccess(duration: duration, description: "Load ontology", operationType: .read)
             return ontology
         } catch {
-            print("[Ontology] Failed to load: \(error)")
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordFailure(duration: duration, description: "Load ontology", operationType: .read)
             return nil
         }
     }
 
-    /// スクロール末尾到達時に次ページを追加読み込み
+    /// Load next page when scrolling reaches the end.
     public func loadMoreItems() async {
         guard hasMoreItems, !isLoadingMoreItems, !isLoadingItems,
               let entityName = selectedEntityName else { return }
 
+        let operationID = currentItemsLoadID
         isLoadingMoreItems = true
 
         let newLimit = currentItems.count + pageSize
+        let startTime = CFAbsoluteTimeGetCurrent()
 
         do {
             let allItems = try await dataService.findAll(typeName: entityName, limit: newLimit + 1)
+
+            // Staleness check: entity may have changed during await
+            guard currentItemsLoadID == operationID, selectedEntityName == entityName else { return }
 
             let hasMore = allItems.count > newLimit
             let pageItems = hasMore ? Array(allItems.prefix(newLimit)) : allItems
@@ -327,8 +336,12 @@ public final class AppViewModel {
             )
             currentItems = decodedItems
             updateDiscoveredFields()
+
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordSuccess(duration: duration, description: "Load more items: \(entityName)", typeName: entityName, operationType: .read)
         } catch {
-            print("Failed to load more items: \(error)")
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordFailure(duration: duration, description: "Load more items: \(entityName)", typeName: entityName, operationType: .read)
         }
 
         isLoadingMoreItems = false
@@ -372,7 +385,6 @@ public final class AppViewModel {
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsService.recordFailure(duration: duration, description: "Load stats: \(entityName)", typeName: entityName, operationType: .read)
-            print("Failed to load collection stats: \(error)")
             currentCollectionStats = nil
         }
     }

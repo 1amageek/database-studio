@@ -151,10 +151,8 @@ final class VectorViewState {
         let xs = projectedPoints.map { $0.projected.x }
         let ys = projectedPoints.map { $0.projected.y }
 
-        let minX = xs.min()!
-        let maxX = xs.max()!
-        let minY = ys.min()!
-        let maxY = ys.max()!
+        guard let minX = xs.min(), let maxX = xs.max(),
+              let minY = ys.min(), let maxY = ys.max() else { return }
 
         let graphWidth = maxX - minX
         let graphHeight = maxY - minY

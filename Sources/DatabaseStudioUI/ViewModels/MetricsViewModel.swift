@@ -51,7 +51,11 @@ public final class MetricsViewModel {
 
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(self?.refreshInterval ?? 5.0))
+                do {
+                    try await Task.sleep(for: .seconds(self?.refreshInterval ?? 5.0))
+                } catch {
+                    break
+                }
                 guard !Task.isCancelled else { break }
                 self?.refreshMetrics()
             }

@@ -18,10 +18,8 @@ struct MinimapView: View {
 
             let xs = positions.map(\.pos.x)
             let ys = positions.map(\.pos.y)
-            let minX = xs.min()!
-            let maxX = xs.max()!
-            let minY = ys.min()!
-            let maxY = ys.max()!
+            guard let minX = xs.min(), let maxX = xs.max(),
+                  let minY = ys.min(), let maxY = ys.max() else { return }
 
             let graphWidth = max(maxX - minX, 1)
             let graphHeight = max(maxY - minY, 1)

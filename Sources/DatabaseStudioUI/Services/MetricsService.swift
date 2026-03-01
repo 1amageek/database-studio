@@ -269,7 +269,7 @@ public final class MetricsService: Sendable {
         guard !samples.isEmpty else { return (0, 0) }
         let sorted = samples.sorted()
         let count = sorted.count
-        let p50Index = Int(Double(count) * 0.50)
+        let p50Index = min(Int(Double(count) * 0.50), count - 1)
         let p99Index = min(Int(Double(count) * 0.99), count - 1)
         return (sorted[p50Index], sorted[p99Index])
     }

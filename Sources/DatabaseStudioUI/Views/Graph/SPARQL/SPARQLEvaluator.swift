@@ -457,9 +457,9 @@ struct SPARQLEvaluator: Sendable {
             var groupMap: [String: [SPARQLBinding]] = [:]
             var keyOrder: [String] = []
             for binding in bindings {
-                let key = groupExprs.map { expr -> String in
-                    let val = (try? evaluateFilterExpr(expr, binding: binding))?.stringValue ?? ""
-                    return val
+                let key = try groupExprs.map { expr -> String in
+                    let val = try evaluateFilterExpr(expr, binding: binding)
+                    return val.stringValue
                 }.joined(separator: "\0")
 
                 if groupMap[key] == nil {
@@ -608,16 +608,31 @@ struct SPARQLEvaluator: Sendable {
     // MARK: - ORDER BY
 
     private func sortBindings(_ bindings: [SPARQLBinding], by keys: [ParsedOrderKey]) -> [SPARQLBinding] {
-        bindings.sorted { a, b in
-            for key in keys {
-                let av = (try? evaluateFilterExpr(key.expression, binding: a)) ?? .unbound
-                let bv = (try? evaluateFilterExpr(key.expression, binding: b)) ?? .unbound
+        // Pre-evaluate sort keys to avoid try? inside the sort comparator.
+        // Each binding gets a cached array of FilterValues per key.
+        let cached: [(binding: SPARQLBinding, values: [FilterValue])] = bindings.map { binding in
+            let values = keys.map { key -> FilterValue in
+                do {
+                    return try evaluateFilterExpr(key.expression, binding: binding)
+                } catch {
+                    return .unbound
+                }
+            }
+            return (binding, values)
+        }
+
+        let sorted = cached.sorted { a, b in
+            for (i, key) in keys.enumerated() {
+                let av = a.values[i]
+                let bv = b.values[i]
                 if av.compareEqual(to: bv) { continue }
                 let less = av.compareLessThan(bv)
                 return key.ascending ? less : !less
             }
             return false
         }
+
+        return sorted.map(\.binding)
     }
 
     // MARK: - DISTINCT

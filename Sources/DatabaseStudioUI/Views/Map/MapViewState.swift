@@ -208,10 +208,13 @@ final class MapViewState {
         let lats = coordinates.map(\.latitude)
         let lngs = coordinates.map(\.longitude)
 
-        let minLat = lats.min()!
-        let maxLat = lats.max()!
-        let minLng = lngs.min()!
-        let maxLng = lngs.max()!
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLng = lngs.min(), let maxLng = lngs.max() else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 35.68, longitude: 139.77),
+                span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
+            )
+        }
 
         let center = CLLocationCoordinate2D(
             latitude: (minLat + maxLat) / 2,

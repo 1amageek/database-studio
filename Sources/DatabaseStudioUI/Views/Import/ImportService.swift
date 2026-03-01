@@ -26,10 +26,14 @@ public struct ImportResult {
     }
 
     public func getRecords() -> [[String: Any]] {
-        guard let records = try? JSONSerialization.jsonObject(with: recordsData) as? [[String: Any]] else {
+        do {
+            guard let records = try JSONSerialization.jsonObject(with: recordsData) as? [[String: Any]] else {
+                return []
+            }
+            return records
+        } catch {
             return []
         }
-        return records
     }
 }
 
@@ -133,12 +137,20 @@ public struct ImportService {
         var records: [[String: Any]] = []
 
         for (index, line) in lines.enumerated() {
-            guard let lineData = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData, options: []),
-                  let record = json as? [String: Any] else {
-                throw ImportError.parseError("Line \(index + 1) is not a valid JSON object")
+            guard let lineData = line.data(using: .utf8) else {
+                throw ImportError.parseError("Line \(index + 1) has invalid UTF-8 encoding")
             }
-            records.append(record)
+            do {
+                let json = try JSONSerialization.jsonObject(with: lineData, options: [])
+                guard let record = json as? [String: Any] else {
+                    throw ImportError.parseError("Line \(index + 1) is not a valid JSON object")
+                }
+                records.append(record)
+            } catch let importError as ImportError {
+                throw importError
+            } catch {
+                throw ImportError.parseError("Line \(index + 1): \(error.localizedDescription)")
+            }
         }
 
         return try ImportResult(records: records, format: .jsonl, sourceURL: sourceURL)

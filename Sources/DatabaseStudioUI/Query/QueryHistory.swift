@@ -110,7 +110,6 @@ public final class QueryHistoryService {
         do {
             _queries = try JSONDecoder().decode([SavedQuery].self, from: data)
         } catch {
-            print("[QueryHistory] Failed to decode: \(error)")
             _queries = []
         }
     }

@@ -29,12 +29,18 @@ public final class ItemBrowserViewModel {
             let allItems = try await dataService.findAll(typeName: typeName, limit: limit)
             currentItems = allItems.enumerated().map { index, dict -> DecodedItem in
                 let id = dict["id"] as? String ?? "item_\(offset + index)"
-                let data = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
+                let rawSize: Int
+                do {
+                    let data = try JSONSerialization.data(withJSONObject: dict, options: [])
+                    rawSize = data.count
+                } catch {
+                    rawSize = 0
+                }
                 return DecodedItem(
                     id: id,
                     typeName: typeName,
                     fields: dict,
-                    rawSize: data.count
+                    rawSize: rawSize
                 )
             }
         } catch {
