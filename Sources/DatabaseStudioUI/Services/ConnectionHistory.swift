@@ -78,7 +78,8 @@ public struct ConnectionInfo: Identifiable, Codable, Sendable, Hashable {
 }
 
 /// Connection history manager.
-public final class ConnectionHistoryService: @unchecked Sendable {
+@MainActor
+public final class ConnectionHistoryService {
     public static let shared = ConnectionHistoryService()
 
     private let userDefaultsKey = "ConnectionHistory"
@@ -160,16 +161,22 @@ public final class ConnectionHistoryService: @unchecked Sendable {
     // MARK: - Persistence
 
     private func loadFromStorage() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-              let connections = try? JSONDecoder().decode([ConnectionInfo].self, from: data) else {
-            return
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else { return }
+        do {
+            _connections = try JSONDecoder().decode([ConnectionInfo].self, from: data)
+        } catch {
+            print("[ConnectionHistory] Failed to decode: \(error)")
+            _connections = []
         }
-        _connections = connections
     }
 
     private func saveToStorage() {
-        guard let data = try? JSONEncoder().encode(_connections) else { return }
-        UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        do {
+            let data = try JSONEncoder().encode(_connections)
+            UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        } catch {
+            assertionFailure("[ConnectionHistory] Failed to encode: \(error)")
+        }
     }
 
     private func trimHistory() {

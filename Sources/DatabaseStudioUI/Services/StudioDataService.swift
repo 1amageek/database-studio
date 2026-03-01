@@ -29,7 +29,7 @@ public final class StudioDataService {
     public private(set) var entities: [Schema.Entity] = []
 
     @ObservationIgnored
-    nonisolated(unsafe) private var engine: (any StorageEngine)?
+    private var engine: (any StorageEngine)?
 
     @ObservationIgnored
     private var schemaRegistry: SchemaRegistry?
@@ -47,6 +47,7 @@ public final class StudioDataService {
     /// - `.sqlite`, `.db` → SQLite
     /// - `.cluster`, no extension → FoundationDB
     public func connect(filePath: String) async {
+        disconnect()
         connectionState = .connecting
         do {
             let backendType = BackendType.detect(from: filePath)
@@ -60,7 +61,10 @@ public final class StudioDataService {
             case .sqlite:
                 self.engine = try SQLiteStorageEngine(path: filePath)
             }
-            guard let engine else { return }
+            guard let engine else {
+                connectionState = .error("Failed to create storage engine")
+                return
+            }
             self.schemaRegistry = SchemaRegistry(database: engine)
             connectionState = .connected
             try await loadEntities()
@@ -70,6 +74,7 @@ public final class StudioDataService {
     }
 
     public func disconnect() {
+        engine?.shutdown()
         engine = nil
         schemaRegistry = nil
         catalogAccess = nil
@@ -80,41 +85,39 @@ public final class StudioDataService {
     // MARK: - Schema
 
     public func loadEntities() async throws {
-        guard let registry = schemaRegistry else { return }
+        guard let registry = schemaRegistry else { throw StudioError.notConnected }
         let loaded = try await registry.loadAll()
         self.entities = loaded.sorted { $0.name < $1.name }
-        guard let engine else { return }
+        guard let engine else { throw StudioError.notConnected }
         self.catalogAccess = CatalogDataAccess(database: engine, entities: loaded)
     }
 
     // MARK: - Data Access
 
     public func findAll(typeName: String, limit: Int? = nil, partitionValues: [String: String] = [:]) async throws -> [[String: Any]] {
-        guard let access = catalogAccess else { return [] }
+        guard let access = catalogAccess else { throw StudioError.notConnected }
         return try await access.findAll(typeName: typeName, limit: limit, partitionValues: partitionValues)
     }
 
     public func getItem(typeName: String, id: String, partitionValues: [String: String] = [:]) async throws -> [String: Any]? {
-        guard let access = catalogAccess else { return nil }
+        guard let access = catalogAccess else { throw StudioError.notConnected }
         return try await access.get(typeName: typeName, id: id, partitionValues: partitionValues)
     }
 
     public func insertItem(typeName: String, dict: sending [String: Any], partitionValues: [String: String] = [:]) async throws {
-        guard let access = catalogAccess else { return }
+        guard let access = catalogAccess else { throw StudioError.notConnected }
         try await access.insert(typeName: typeName, dict: dict, partitionValues: partitionValues)
     }
 
     public func deleteItem(typeName: String, id: String, partitionValues: [String: String] = [:]) async throws {
-        guard let access = catalogAccess else { return }
+        guard let access = catalogAccess else { throw StudioError.notConnected }
         try await access.delete(typeName: typeName, id: id, partitionValues: partitionValues)
     }
 
     // MARK: - Statistics
 
     public func collectionStats(typeName: String, partitionValues: [String: String] = [:]) async throws -> CollectionStats {
-        guard let access = catalogAccess else {
-            return CollectionStats(typeName: typeName, documentCount: 0, storageSize: 0)
-        }
+        guard let access = catalogAccess else { throw StudioError.notConnected }
         let items = try await access.findAll(typeName: typeName, limit: nil, partitionValues: partitionValues)
         var totalSize = 0
         for item in items {
@@ -130,8 +133,16 @@ public final class StudioDataService {
 
     // MARK: - Ontology
 
-    public nonisolated func loadOntology() async throws -> OWLOntology? {
-        guard let engine else { return nil }
+    public func loadOntology() async throws -> OWLOntology? {
+        guard let engine else { throw StudioError.notConnected }
+        return try await Self.performLoadOntology(engine: engine)
+    }
+
+    /// Perform ontology loading outside MainActor isolation.
+    ///
+    /// Separated to avoid Sendable closure issues when passing closures
+    /// from @MainActor context to StorageEngine.withTransaction().
+    private static nonisolated func performLoadOntology(engine: any StorageEngine) async throws -> OWLOntology? {
         let store = OntologyStore.default()
         let iris = try await engine.withTransaction { tx in
             try await store.listOntologies(transaction: tx)

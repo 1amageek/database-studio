@@ -40,8 +40,9 @@ public struct SavedQuery: Identifiable, Codable, Sendable {
     }
 }
 
-/// クエリ履歴管理
-public final class QueryHistoryService: @unchecked Sendable {
+/// Query history manager.
+@MainActor
+public final class QueryHistoryService {
     public static let shared = QueryHistoryService()
 
     private let userDefaultsKey = "QueryHistory"
@@ -105,16 +106,22 @@ public final class QueryHistoryService: @unchecked Sendable {
     }
 
     private func loadFromStorage() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-              let queries = try? JSONDecoder().decode([SavedQuery].self, from: data) else {
-            return
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else { return }
+        do {
+            _queries = try JSONDecoder().decode([SavedQuery].self, from: data)
+        } catch {
+            print("[QueryHistory] Failed to decode: \(error)")
+            _queries = []
         }
-        _queries = queries
     }
 
     private func saveToStorage() {
-        guard let data = try? JSONEncoder().encode(_queries) else { return }
-        UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        do {
+            let data = try JSONEncoder().encode(_queries)
+            UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        } catch {
+            assertionFailure("[QueryHistory] Failed to encode: \(error)")
+        }
     }
 
     private func trimHistory() {

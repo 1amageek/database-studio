@@ -15,80 +15,93 @@ public final class AppViewModel {
     @ObservationIgnored
     public let metricsService: MetricsService = MetricsService()
 
-    // MARK: - Connection
+    // MARK: - Configuration State (persists across connections)
 
     public var filePath: String = "/etc/foundationdb/fdb.cluster"
     public var rootDirectoryPath: String = ""
+    public var pageSize: Int = 100
 
     public var connectionState: StudioDataService.ConnectionState {
         dataService.connectionState
     }
 
-    // MARK: - Navigation State
-
-    public var selectedEntityName: String?
-    public var selectedIndexName: String?
-
-    /// 選択されている Schema.Entity
-    public var selectedEntity: Schema.Entity? {
-        guard let name = selectedEntityName else { return nil }
-        return dataService.entity(for: name)
-    }
-
-    // MARK: - Data
+    // MARK: - Session State (reset on connect/disconnect)
 
     public internal(set) var entityTree: [EntityTreeNode] = []
     public internal(set) var currentItems: [DecodedItem] = []
     public var selectedItemID: String?
     public var selectedItemIDs: Set<String> = []
-
-    /// 選択されている複数アイテム
-    public var selectedItems: [DecodedItem] {
-        currentItems.filter { selectedItemIDs.contains($0.id) }
-    }
-
-    // MARK: - Pagination State
+    public var selectedEntityName: String?
+    public var selectedIndexName: String?
 
     @ObservationIgnored
     public internal(set) var currentItemPage: DecodedItemPage?
-    public var pageSize: Int = 100
+
+    public var currentQuery: ItemQuery = ItemQuery()
+    public internal(set) var discoveredFields: [DiscoveredField] = []
+    public internal(set) var currentCollectionStats: CollectionStats?
+
+    public private(set) var isLoadingEntities = false
+    public private(set) var isLoadingItems = false
+    public private(set) var isLoadingStats = false
     public private(set) var isLoadingMoreItems = false
+
+    @ObservationIgnored
+    private var currentItemsLoadID: UUID?
+
+    // MARK: - Computed Properties
+
+    /// Selected Schema.Entity
+    public var selectedEntity: Schema.Entity? {
+        guard let name = selectedEntityName else { return nil }
+        return dataService.entity(for: name)
+    }
+
+    /// Selected items (multi-selection)
+    public var selectedItems: [DecodedItem] {
+        currentItems.filter { selectedItemIDs.contains($0.id) }
+    }
 
     public var hasMoreItems: Bool {
         currentItemPage?.hasMore ?? false
     }
 
-    // MARK: - Query State
-
-    public var currentQuery: ItemQuery = ItemQuery()
-    public internal(set) var discoveredFields: [DiscoveredField] = []
-
-    /// 選択されているItem
+    /// Selected item (single selection)
     public var selectedItem: DecodedItem? {
         guard let id = selectedItemID else { return nil }
         return currentItems.first { $0.id == id }
     }
 
-    // MARK: - Statistics
-
-    public internal(set) var currentCollectionStats: CollectionStats?
-
-    // MARK: - Loading State
-
-    public private(set) var isLoadingEntities = false
-    public private(set) var isLoadingItems = false
-    public private(set) var isLoadingStats = false
-
-    // MARK: - Operation Tracking
-
-    @ObservationIgnored
-    private var currentItemsLoadID: UUID?
-
     public init() {}
+
+    // MARK: - Session State Management
+
+    /// Single source of truth for resetting all session-bound state.
+    ///
+    /// Called by both `connect()` and `disconnect()`. Any new session state
+    /// property added to this class MUST be reset here.
+    private func resetSessionState() {
+        selectedEntityName = nil
+        selectedIndexName = nil
+        selectedItemID = nil
+        selectedItemIDs = []
+        entityTree = []
+        currentItems = []
+        currentItemPage = nil
+        currentCollectionStats = nil
+        currentQuery = ItemQuery()
+        discoveredFields = []
+        isLoadingEntities = false
+        isLoadingItems = false
+        isLoadingStats = false
+        isLoadingMoreItems = false
+        currentItemsLoadID = nil
+    }
 
     // MARK: - Connection
 
     public func connect() async {
+        resetSessionState()
         await dataService.connect(filePath: filePath)
         if case .connected = dataService.connectionState {
             buildEntityTree()
@@ -97,12 +110,7 @@ public final class AppViewModel {
 
     public func disconnect() {
         dataService.disconnect()
-        entityTree = []
-        currentItems = []
-        currentCollectionStats = nil
-        selectedEntityName = nil
-        selectedItemID = nil
-        selectedIndexName = nil
+        resetSessionState()
     }
 
     // MARK: - Entity Tree
@@ -165,11 +173,15 @@ public final class AppViewModel {
         isLoadingEntities = true
         defer { isLoadingEntities = false }
 
+        let startTime = CFAbsoluteTimeGetCurrent()
         do {
             try await dataService.loadEntities()
             buildEntityTree()
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordSuccess(duration: duration, description: "Refresh entities", operationType: .read)
         } catch {
-            print("Failed to refresh entities: \(error)")
+            let duration = CFAbsoluteTimeGetCurrent() - startTime
+            metricsService.recordFailure(duration: duration, description: "Refresh entities", operationType: .read)
         }
     }
 
@@ -191,6 +203,27 @@ public final class AppViewModel {
         if entityName != previousName {
             await loadItems(for: entityName)
             await loadCollectionStats(for: entityName)
+        }
+    }
+
+    // MARK: - Item Decoding
+
+    private func decodeItems(from dicts: [[String: Any]], typeName: String, offset: Int = 0) -> [DecodedItem] {
+        dicts.enumerated().map { index, dict in
+            let id = dict["id"] as? String ?? "item_\(offset + index)"
+            let rawSize: Int
+            do {
+                let data = try JSONSerialization.data(withJSONObject: dict, options: [])
+                rawSize = data.count
+            } catch {
+                rawSize = 0
+            }
+            return DecodedItem(
+                id: id,
+                typeName: typeName,
+                fields: dict,
+                rawSize: rawSize
+            )
         }
     }
 
@@ -216,17 +249,7 @@ public final class AppViewModel {
 
             let hasMore = allItems.count > pageSize
             let pageItems = hasMore ? Array(allItems.prefix(pageSize)) : allItems
-
-            let decodedItems = pageItems.enumerated().map { index, dict -> DecodedItem in
-                let id = dict["id"] as? String ?? "item_\(offset + index)"
-                let data = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
-                return DecodedItem(
-                    id: id,
-                    typeName: entityName,
-                    fields: dict,
-                    rawSize: data.count
-                )
-            }
+            let decodedItems = decodeItems(from: pageItems, typeName: entityName, offset: offset)
 
             currentItemPage = DecodedItemPage(
                 items: decodedItems,
@@ -258,16 +281,7 @@ public final class AppViewModel {
         }
         do {
             let allItems = try await dataService.findAll(typeName: entityName)
-            return allItems.enumerated().map { index, dict -> DecodedItem in
-                let id = dict["id"] as? String ?? "item_\(index)"
-                let data = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
-                return DecodedItem(
-                    id: id,
-                    typeName: entityName,
-                    fields: dict,
-                    rawSize: data.count
-                )
-            }
+            return decodeItems(from: allItems, typeName: entityName)
         } catch {
             print("Failed to load all items for graph: \(error)")
             return []
@@ -303,17 +317,7 @@ public final class AppViewModel {
 
             let hasMore = allItems.count > newLimit
             let pageItems = hasMore ? Array(allItems.prefix(newLimit)) : allItems
-
-            let decodedItems = pageItems.enumerated().map { index, dict -> DecodedItem in
-                let id = dict["id"] as? String ?? "item_\(index)"
-                let data = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
-                return DecodedItem(
-                    id: id,
-                    typeName: entityName,
-                    fields: dict,
-                    rawSize: data.count
-                )
-            }
+            let decodedItems = decodeItems(from: pageItems, typeName: entityName)
 
             currentItemPage = DecodedItemPage(
                 items: decodedItems,
@@ -542,11 +546,13 @@ public final class AppViewModel {
 // MARK: - Errors
 
 public enum StudioError: Error, LocalizedError {
+    case notConnected
     case noTypeSelected
     case invalidJSON(String)
 
     public var errorDescription: String? {
         switch self {
+        case .notConnected: return "Not connected to a database"
         case .noTypeSelected: return "No type selected"
         case .invalidJSON(let msg): return msg
         }
