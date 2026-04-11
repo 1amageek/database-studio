@@ -614,8 +614,15 @@ struct ConnectionStatusBar: View {
                 case .error:
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundStyle(.red)
-                    Text("Connection Error")
-                        .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(viewModel.connectionErrorPresentation?.title ?? "Connection Error")
+                            .foregroundStyle(.red)
+                        Text((viewModel.connectionErrorPresentation?.message ?? "Open connection settings for details."))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
 
                 Spacer()
@@ -629,6 +636,7 @@ struct ConnectionStatusBar: View {
             .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
+        .help(viewModel.connectionErrorPresentation?.message ?? "")
     }
 }
 

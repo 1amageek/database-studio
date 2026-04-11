@@ -121,4 +121,5 @@ struct StudioDataServiceTests {
         service.disconnect()
         try? FileManager.default.removeItem(atPath: tmpPath)
     }
+
 }

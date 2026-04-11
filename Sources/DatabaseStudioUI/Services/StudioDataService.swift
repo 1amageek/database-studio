@@ -1,4 +1,5 @@
 import Foundation
+import os
 import DatabaseEngine
 import DatabaseCLICore
 import GraphIndex
@@ -9,6 +10,8 @@ import SQLiteStorage
 import FDBStorage
 import FoundationDB
 
+private let logger = Logger(subsystem: "DatabaseStudio", category: "Connection")
+
 /// Unified data service wrapping SchemaRegistry + CatalogDataAccess.
 ///
 /// Supports both FoundationDB and SQLite backends.
@@ -16,6 +19,7 @@ import FoundationDB
 @MainActor
 @Observable
 public final class StudioDataService {
+
     // MARK: - Connection State
 
     public enum ConnectionState: Equatable {
@@ -50,16 +54,13 @@ public final class StudioDataService {
         disconnect()
         connectionState = .connecting
         do {
+            try Task.checkCancellation()
             let backendType = BackendType.detect(from: filePath)
             switch backendType {
             case .foundationDB:
-                if !FDBClient.isInitialized {
-                    try await FDBClient.initialize()
-                }
-                let db = try FDBClient.openDatabase(clusterFilePath: filePath)
-                self.engine = FDBStorageEngine(database: db)
+                try await connectToFDB(clusterFilePath: filePath)
             case .sqlite:
-                self.engine = try SQLiteStorageEngine(path: filePath)
+                self.engine = try SQLiteStorageEngine(configuration: .file(filePath))
             }
             guard let engine else {
                 connectionState = .error("Failed to create storage engine")
@@ -68,9 +69,47 @@ public final class StudioDataService {
             self.schemaRegistry = SchemaRegistry(database: engine)
             connectionState = .connected
             try await loadEntities()
+        } catch is CancellationError {
+            disconnect()
         } catch {
             connectionState = .error(error.localizedDescription)
         }
+    }
+
+    /// Connect to a running FDB cluster.
+    private func connectToFDB(clusterFilePath: String) async throws {
+        logger.info("Connecting to FDB: \(clusterFilePath)")
+        try Task.checkCancellation()
+
+        if !FDBClient.isInitialized {
+            try await FDBClient.initialize()
+        }
+
+        let db = try FDBClient.openDatabase(clusterFilePath: clusterFilePath)
+        let engine = try await FDBStorageEngine(configuration: .init(database: db))
+
+        do {
+            try await Self.probeConnection(engine: engine)
+            logger.info("Connection succeeded")
+            self.engine = engine
+        } catch is CancellationError {
+            engine.shutdown()
+            throw CancellationError()
+        } catch {
+            engine.shutdown()
+            throw FDBConnectionError.cannotConnect(clusterFilePath)
+        }
+    }
+
+    /// Lightweight probe to verify the FDB connection is alive.
+    private static nonisolated func probeConnection(
+        engine: FDBStorageEngine,
+        timeoutMilliseconds: Int = 2000
+    ) async throws {
+        let tx = try engine.createTransaction()
+        try tx.setOption(forOption: .timeout(milliseconds: timeoutMilliseconds))
+        _ = try await tx.getReadVersion()
+        tx.cancel()
     }
 
     public func disconnect() {
@@ -80,6 +119,11 @@ public final class StudioDataService {
         catalogAccess = nil
         entities = []
         connectionState = .disconnected
+    }
+
+    public func cancelConnectionAttempt() {
+        guard case .connecting = connectionState else { return }
+        disconnect()
     }
 
     // MARK: - Schema
@@ -157,5 +201,18 @@ public final class StudioDataService {
 
     public func entity(for typeName: String) -> Schema.Entity? {
         entities.first { $0.name == typeName }
+    }
+}
+
+// MARK: - FDB Connection Errors
+
+enum FDBConnectionError: Error, LocalizedError {
+    case cannotConnect(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .cannotConnect(let path):
+            return "Cannot connect to FDB server specified in \(path). Ensure the server is running."
+        }
     }
 }

@@ -22,7 +22,15 @@ public final class AppViewModel {
     public var pageSize: Int = 100
 
     public var connectionState: StudioDataService.ConnectionState {
-        dataService.connectionState
+        if let previewConnectionStateOverride {
+            return previewConnectionStateOverride
+        }
+        return dataService.connectionState
+    }
+
+    public var connectionErrorPresentation: ConnectionErrorPresentation? {
+        guard case .error(let message) = connectionState else { return nil }
+        return Self.makeConnectionErrorPresentation(message: message)
     }
 
     // MARK: - Session State (reset on connect/disconnect)
@@ -110,6 +118,11 @@ public final class AppViewModel {
 
     public func disconnect() {
         dataService.disconnect()
+        resetSessionState()
+    }
+
+    public func cancelConnectionAttempt() {
+        dataService.cancelConnectionAttempt()
         resetSessionState()
     }
 
@@ -527,6 +540,9 @@ public final class AppViewModel {
     @ObservationIgnored
     private var previewItemsProvider: (@MainActor (String) -> [DecodedItem])?
 
+    @ObservationIgnored
+    private var previewConnectionStateOverride: StudioDataService.ConnectionState?
+
     public static func preview(
         connectionState: StudioDataService.ConnectionState = .connected,
         entityTree: [EntityTreeNode] = [],
@@ -539,6 +555,7 @@ public final class AppViewModel {
     ) -> AppViewModel {
         let vm = AppViewModel()
         vm.isPreviewMode = true
+        vm.previewConnectionStateOverride = connectionState
         vm.previewItemsProvider = itemsProvider
         vm.entityTree = entityTree
         vm.currentItems = items
@@ -553,9 +570,31 @@ public final class AppViewModel {
             currentItems = provider(entityName)
         }
     }
+
+    private static func makeConnectionErrorPresentation(message: String) -> ConnectionErrorPresentation {
+        if message.contains("Cannot connect to FDB server specified") {
+            return ConnectionErrorPresentation(
+                title: "Cluster Unreachable",
+                message: message,
+                recoverySuggestion: "Check that the selected .cluster file exists and points to a running FoundationDB server."
+            )
+        }
+
+        return ConnectionErrorPresentation(
+            title: "Connection Failed",
+            message: message,
+            recoverySuggestion: nil
+        )
+    }
 }
 
 // MARK: - Errors
+
+public struct ConnectionErrorPresentation: Sendable, Equatable {
+    public let title: String
+    public let message: String
+    public let recoverySuggestion: String?
+}
 
 public enum StudioError: Error, LocalizedError {
     case notConnected
