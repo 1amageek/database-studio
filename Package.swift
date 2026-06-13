@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "DatabaseStudio",
     platforms: [
-        .macOS(.v15)
+        .macOS(.v26)
     ],
     products: [
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
@@ -22,6 +22,7 @@ let package = Package(
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseCLICore", package: "database-framework"),
                 .product(name: "GraphIndex", package: "database-framework"),
+                .product(name: "OntologyIndex", package: "database-framework"),
                 .product(name: "Graph", package: "database-kit"),
                 .product(name: "StorageKit", package: "storage-kit"),
                 .product(name: "FDBStorage", package: "storage-kit"),

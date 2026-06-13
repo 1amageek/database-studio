@@ -3,6 +3,7 @@ import os
 import DatabaseEngine
 import DatabaseCLICore
 import GraphIndex
+import OntologyIndex
 import Core
 import Graph
 import StorageKit
