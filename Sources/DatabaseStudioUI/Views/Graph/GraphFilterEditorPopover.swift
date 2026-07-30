@@ -244,7 +244,7 @@ struct GraphFilterEditorPopover: View {
     }
 
     private var currentOp: GraphFilterComparisonOp {
-        if case .metricThreshold(_, let op, _) = token.facet { return op }
+        if case .metricThreshold(_, let comparison, _) = token.facet { return comparison }
         return .greaterThan
     }
 

@@ -44,7 +44,7 @@ public struct HexFormatter {
         return bytes.map { String(format: "%02x", $0) }.joined()
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Byte Formatting
 
     private static func formatLine(_ bytes: [UInt8], offset: Int, bytesPerLine: Int) -> String {
         let offsetStr = String(format: "%08x", offset)

@@ -8,7 +8,7 @@ extension GraphDocument {
     /// - `rdf:type` トリプル → object ノードを `.type` ロールに昇格
     /// - リテラル（`"` で始まる object）→ subject の metadata に格納（ノード化しない）
     /// - その他の object property トリプル → エッジ
-    public init(triples: [RDFTripleData]) {
+    public init(triples: [RDFTripleData]) throws {
         var nodeMap: [String: GraphNode] = [:]
         var edges: [GraphEdge] = []
         var literalMetadata: [String: [String: String]] = [:]
@@ -66,7 +66,7 @@ extension GraphDocument {
 
             // リテラル判定: `"` で始まる値は OWLLiteral としてパースし metadata に格納
             if triple.object.hasPrefix("\"") {
-                let literal = Self.parseRDFLiteral(triple.object)
+                let literal = try Self.parseRDFLiteral(triple.object)
                 literalMetadata[triple.subject, default: [:]][predicateLocal] = literal.lexicalForm
                 continue
             }
@@ -121,7 +121,7 @@ extension GraphDocument {
     }
 
     /// RDF リテラル文字列を `OWLLiteral` にパースする
-    static func parseRDFLiteral(_ raw: String) -> OWLLiteral {
+    static func parseRDFLiteral(_ raw: String) throws -> OWLLiteral {
         guard raw.hasPrefix("\"") else {
             return .string(raw)
         }
@@ -131,12 +131,12 @@ extension GraphDocument {
             while datatype.hasPrefix("<") && datatype.hasSuffix(">") {
                 datatype = String(datatype.dropFirst().dropLast())
             }
-            return OWLLiteral(lexicalForm: text, datatype: datatype)
+            return try OWLLiteral(lexicalForm: text, datatype: datatype)
         }
         if let atRange = raw.range(of: "\"@", options: .backwards) {
             let text = String(raw[raw.index(after: raw.startIndex)..<atRange.lowerBound])
             let lang = String(raw[atRange.upperBound...])
-            return .langString(text, language: lang)
+            return try .langString(text, language: lang)
         }
         if raw.hasSuffix("\"") {
             let text = String(raw.dropFirst().dropLast())

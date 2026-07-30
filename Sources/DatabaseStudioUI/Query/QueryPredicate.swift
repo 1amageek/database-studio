@@ -61,12 +61,12 @@ public enum QueryValue: Codable, Sendable, Hashable {
     case boolean(Bool)
     case null
 
-    public init?(from any: Any?) {
-        guard let any = any else {
+    public init?(from value: Any?) {
+        guard let value else {
             self = .null
             return
         }
-        switch any {
+        switch value {
         case let s as String:
             self = .string(s)
         case let n as NSNumber:

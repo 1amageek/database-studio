@@ -1,23 +1,23 @@
 import SwiftUI
 
-/// Search Console の状態管理
+/// Owns Search Console state and search interactions.
 @Observable @MainActor
 final class SearchViewState {
 
-    // MARK: - データ
+    // MARK: - Document
 
     var document: SearchDocument
 
-    // MARK: - 検索
+    // MARK: - Search Input
 
     var queryText: String = "" {
-        didSet { executeSearchDebounced() }
+        didSet { scheduleSearchAfterQueryChange() }
     }
     var matchMode: SearchMatchMode = .all {
         didSet { executeSearch() }
     }
 
-    // MARK: - 結果
+    // MARK: - Results
 
     private(set) var results: [SearchResult] = []
     private(set) var facets: [Facet] = []
@@ -29,9 +29,9 @@ final class SearchViewState {
         return results.first { $0.id == id }
     }
 
-    // MARK: - ファセットフィルタ
+    // MARK: - Facet Filters
 
-    /// ファセットの選択状態を変更
+    /// Toggles a facet value and reapplies the active filters.
     func toggleFacetValue(fieldName: String, value: String) {
         guard let facetIndex = facets.firstIndex(where: { $0.fieldName == fieldName }),
               let valueIndex = facets[facetIndex].values.firstIndex(where: { $0.value == value }) else {
@@ -41,42 +41,44 @@ final class SearchViewState {
         applyFacetFilters()
     }
 
-    // MARK: - 内部
+    // MARK: - Search State
 
-    private let engine = BM25Engine()
-    private var debounceTask: Task<Void, Never>?
+    private let searchIndex = BM25SearchIndex()
+    private var pendingSearchTask: Task<Void, Never>?
     private var unfilteredResults: [SearchResult] = []
 
-    // MARK: - 初期化
+    // MARK: - Initialization
 
     init(document: SearchDocument, initialQuery: String = "") {
         self.document = document
-        engine.buildIndex(from: document.items)
+        searchIndex.replaceItems(with: document.items)
         if !initialQuery.isEmpty {
             self.queryText = initialQuery
             executeSearch()
         }
     }
 
-    // MARK: - ドキュメント更新
+    // MARK: - Document Updates
 
     func updateDocument(_ newDocument: SearchDocument) {
         document = newDocument
-        engine.buildIndex(from: newDocument.items)
+        searchIndex.replaceItems(with: newDocument.items)
         if !queryText.isEmpty {
             executeSearch()
         }
     }
 
-    // MARK: - 検索実行
+    // MARK: - Search Execution
 
-    private func executeSearchDebounced() {
-        debounceTask?.cancel()
-        debounceTask = Task {
+    private func scheduleSearchAfterQueryChange() {
+        pendingSearchTask?.cancel()
+        pendingSearchTask = Task {
             do {
                 try await Task.sleep(for: .milliseconds(200))
-            } catch {
+            } catch is CancellationError {
                 return
+            } catch {
+                preconditionFailure("Search scheduling failed: \(error)")
             }
             executeSearch()
         }
@@ -93,17 +95,16 @@ final class SearchViewState {
 
         let start = CFAbsoluteTimeGetCurrent()
 
-        unfilteredResults = engine.search(
+        unfilteredResults = searchIndex.search(
             query: queryText,
             mode: matchMode,
             limit: 200
         )
 
-        // ファセット計算
         let facetFieldNames = document.allFieldNames.filter { name in
             !document.searchFieldNames.contains(name) && name != "id" && name != "_id"
         }
-        facets = engine.computeFacets(
+        facets = searchIndex.facets(
             results: unfilteredResults,
             fieldNames: facetFieldNames,
             allItems: document.items
@@ -113,14 +114,13 @@ final class SearchViewState {
         searchDuration = CFAbsoluteTimeGetCurrent() - start
     }
 
-    // MARK: - ファセットフィルタ適用
+    // MARK: - Facet Application
 
     private func applyFacetFilters() {
         var filtered = unfilteredResults
 
         for facet in facets {
             let selectedValues = Set(facet.values.filter(\.isSelected).map(\.value))
-            // 何も選択されていない or 全て選択されている場合はフィルタしない
             guard !selectedValues.isEmpty, selectedValues.count < facet.values.count else { continue }
             filtered = filtered.filter { result in
                 guard let value = result.item.allFields[facet.fieldName] else { return false }

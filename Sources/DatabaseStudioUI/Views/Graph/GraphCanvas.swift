@@ -20,7 +20,7 @@ struct GraphCanvas: View {
         GeometryReader { geometry in
             let size = geometry.size
 
-            CanvasHostView(
+            CanvasInteractionView(
                 onScroll: { dx, dy in
                     state.markUserAdjustedCamera()
                     state.cameraOffset.width += dx
@@ -209,7 +209,7 @@ struct GraphCanvas: View {
 
                             let style = GraphNodeStyle.style(for: node.role)
                             let baseColor = nodeColorMap[node.id] ?? style.color
-                            let color = mapping.nodeColor(for: node, defaultColor: baseColor)
+                            let color = mapping.nodeColor(for: node, baseColor: baseColor)
                             let isHL = node.isHighlighted || highlightedPath.contains(node.id)
                             let isDimmed = isSearchActive && !searchMatched.contains(node.id)
                             let opacity: Double = isDimmed ? 0.15 : 1.0
@@ -244,7 +244,7 @@ struct GraphCanvas: View {
                                center.y + cullMargin < viewMinY || center.y - cullMargin > viewMaxY { continue }
 
                             let baseColor = nodeColorMap[node.id] ?? style.color
-                            let color = mapping.nodeColor(for: node, defaultColor: baseColor)
+                            let color = mapping.nodeColor(for: node, baseColor: baseColor)
                             let isSelected = selectedNodeID == node.id
                             let isHighlighted = node.isHighlighted || highlightedPath.contains(node.id)
                             let isMatched = searchMatched.contains(node.id)

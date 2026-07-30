@@ -72,7 +72,7 @@ final class ForceDirectedLayout {
 
     // MARK: - tick キャッシュ（prepareForSimulation で事前計算）
 
-    private var cachedIdToIndex: [String: Int] = [:]
+    private var cachedNodeIndexByIdentifier: [String: Int] = [:]
     private var cachedDegree: [Int] = []
     private var cachedClassIndices: [Int] = []
     private var isCachePrepared = false
@@ -125,9 +125,11 @@ final class ForceDirectedLayout {
     /// tick() で毎回再構築していた idToIndex, degree, classIndices を事前計算
     func prepareForSimulation(nodeIDs: [String], edges: [GraphEdge]) {
         let n = nodeIDs.count
-        cachedIdToIndex.removeAll(keepingCapacity: true)
-        cachedIdToIndex.reserveCapacity(n)
-        for i in 0..<n { cachedIdToIndex[nodeIDs[i]] = i }
+        cachedNodeIndexByIdentifier.removeAll(keepingCapacity: true)
+        cachedNodeIndexByIdentifier.reserveCapacity(n)
+        for index in 0..<n {
+            cachedNodeIndexByIdentifier[nodeIDs[index]] = index
+        }
 
         if cachedDegree.count < n {
             cachedDegree = [Int](repeating: 0, count: n)
@@ -135,8 +137,12 @@ final class ForceDirectedLayout {
             for i in 0..<n { cachedDegree[i] = 0 }
         }
         for edge in edges {
-            if let si = cachedIdToIndex[edge.sourceID] { cachedDegree[si] += 1 }
-            if let ti = cachedIdToIndex[edge.targetID] { cachedDegree[ti] += 1 }
+            if let sourceIndex = cachedNodeIndexByIdentifier[edge.sourceID] {
+                cachedDegree[sourceIndex] += 1
+            }
+            if let targetIndex = cachedNodeIndexByIdentifier[edge.targetID] {
+                cachedDegree[targetIndex] += 1
+            }
         }
 
         cachedClassIndices.removeAll(keepingCapacity: true)
@@ -262,36 +268,42 @@ final class ForceDirectedLayout {
         }
 
         // Spring 引力（エッジ接続ノード間）
-        let idToIndex: [String: Int]
+        let nodeIndexByIdentifier: [String: Int]
         let degree: [Int]
         if isCachePrepared {
-            idToIndex = cachedIdToIndex
+            nodeIndexByIdentifier = cachedNodeIndexByIdentifier
             degree = cachedDegree
         } else {
-            var idx: [String: Int] = [:]
-            idx.reserveCapacity(n)
-            for i in 0..<n { idx[nodeIDs[i]] = i }
-            idToIndex = idx
-
-            var deg = [Int](repeating: 0, count: n)
-            for edge in edges {
-                if let si = idx[edge.sourceID] { deg[si] += 1 }
-                if let ti = idx[edge.targetID] { deg[ti] += 1 }
+            var computedNodeIndexByIdentifier: [String: Int] = [:]
+            computedNodeIndexByIdentifier.reserveCapacity(n)
+            for index in 0..<n {
+                computedNodeIndexByIdentifier[nodeIDs[index]] = index
             }
-            degree = deg
+            nodeIndexByIdentifier = computedNodeIndexByIdentifier
+
+            var nodeDegrees = [Int](repeating: 0, count: n)
+            for edge in edges {
+                if let sourceIndex = computedNodeIndexByIdentifier[edge.sourceID] {
+                    nodeDegrees[sourceIndex] += 1
+                }
+                if let targetIndex = computedNodeIndexByIdentifier[edge.targetID] {
+                    nodeDegrees[targetIndex] += 1
+                }
+            }
+            degree = nodeDegrees
         }
 
         for edge in edges {
-            guard let si = idToIndex[edge.sourceID],
-                  let ti = idToIndex[edge.targetID] else { continue }
+            guard let sourceIndex = nodeIndexByIdentifier[edge.sourceID],
+                  let targetIndex = nodeIndexByIdentifier[edge.targetID] else { continue }
 
-            let dx = bodyXs[ti] - bodyXs[si]
-            let dy = bodyYs[ti] - bodyYs[si]
+            let dx = bodyXs[targetIndex] - bodyXs[sourceIndex]
+            let dy = bodyYs[targetIndex] - bodyYs[sourceIndex]
             let dist = sqrt(dx * dx + dy * dy)
             guard dist > 0 else { continue }
 
             // 両端の最大次数に応じて理想距離をスケール: sqrt(maxDegree) で緩やかに伸ばす
-            let maxDeg = Double(max(degree[si], degree[ti]))
+            let maxDeg = Double(max(degree[sourceIndex], degree[targetIndex]))
             let scaledLength = min(
                 baseLength * (1.0 + degreeScaleFactor * sqrt(maxDeg)),
                 maxScaledLength
@@ -302,10 +314,10 @@ final class ForceDirectedLayout {
             let fx = force * dx / dist
             let fy = force * dy / dist
 
-            forcesX[si] += fx
-            forcesY[si] += fy
-            forcesX[ti] -= fx
-            forcesY[ti] -= fy
+            forcesX[sourceIndex] += fx
+            forcesY[sourceIndex] += fy
+            forcesX[targetIndex] -= fx
+            forcesY[targetIndex] -= fy
         }
 
         // 中心引力（アスペクト比考慮: 短い軸方向に強く引くことで矩形に広がる）
@@ -491,13 +503,13 @@ final class ForceDirectedLayout {
     }
 
     private func allocQTNode(minX: Double, maxX: Double, minY: Double, maxY: Double) -> Int {
-        let idx = qtCount
+        let allocatedIndex = qtCount
         qtCount += 1
-        if idx >= qtNodes.count {
+        if allocatedIndex >= qtNodes.count {
             qtNodes.append(QTNode())
         }
-        qtNodes[idx] = QTNode(minX: minX, maxX: maxX, minY: minY, maxY: maxY)
-        return idx
+        qtNodes[allocatedIndex] = QTNode(minX: minX, maxX: maxX, minY: minY, maxY: maxY)
+        return allocatedIndex
     }
 
     private func buildQuadTree(count n: Int) {

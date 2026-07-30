@@ -5,6 +5,7 @@ struct MapContentView: View {
     @State private var state: MapViewState
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
+    @State private var refreshFailureMessage: String?
 
     init(document: MapDocument) {
         _state = State(initialValue: MapViewState(document: document))
@@ -32,12 +33,27 @@ struct MapContentView: View {
             }
         }
         .onChange(of: MapWindowState.shared.document?.points.count) { _, _ in
-            if let newDoc = MapWindowState.shared.document {
-                state.updateDocument(newDoc)
+            if let updatedDocument = MapWindowState.shared.document {
+                state.updateDocument(updatedDocument)
             }
         }
         .onAppear {
             state.zoomToFit()
+        }
+        .alert(
+            "Unable to Refresh Map",
+            isPresented: Binding(
+                get: { refreshFailureMessage != nil },
+                set: { isPresented in
+                    if !isPresented { refreshFailureMessage = nil }
+                }
+            )
+        ) {
+            Button("OK") { refreshFailureMessage = nil }
+        } message: {
+            if let refreshFailureMessage {
+                Text(refreshFailureMessage)
+            }
         }
     }
 
@@ -71,9 +87,13 @@ struct MapContentView: View {
 
         Button {
             Task {
-                if let refresh = MapWindowState.shared.refreshAction,
-                   let newDoc = await refresh() {
-                    state.updateDocument(newDoc)
+                do {
+                    if let refreshDocument = MapWindowState.shared.refreshDocument,
+                       let refreshedDocument = try await refreshDocument() {
+                        state.updateDocument(refreshedDocument)
+                    }
+                } catch {
+                    refreshFailureMessage = error.localizedDescription
                 }
             }
         } label: {
@@ -123,6 +143,6 @@ struct MapContentView: View {
 // MARK: - Preview
 
 #Preview("Map View") {
-    MapContentView(document: MapPreviewData.document)
+    MapContentView(document: MapSampleData.document)
         .frame(width: 1100, height: 700)
 }

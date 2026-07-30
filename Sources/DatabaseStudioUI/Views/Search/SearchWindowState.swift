@@ -9,7 +9,7 @@ public final class SearchWindowState {
     public var entityName: String = ""
 
     /// データソースからドキュメントを再取得するクロージャ
-    public var refreshAction: (@MainActor () async -> SearchDocument?)?
+    public var refreshDocument: (@MainActor () async throws -> SearchDocument?)?
 
     public init() {}
 }

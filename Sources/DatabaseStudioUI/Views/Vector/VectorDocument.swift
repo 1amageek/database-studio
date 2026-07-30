@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-/// ベクトル空間上の単一ポイント
+/// A record represented as a point in vector space.
 public struct VectorPoint: Identifiable, Sendable {
     public let id: String
     public var embedding: [Float]
@@ -24,7 +24,7 @@ public struct VectorPoint: Identifiable, Sendable {
     }
 }
 
-/// ベクトルドキュメント
+/// A validated vector snapshot presented by Vector Explorer.
 public struct VectorDocument: Sendable {
     public var points: [VectorPoint]
     public var entityName: String
@@ -46,42 +46,62 @@ public struct VectorDocument: Sendable {
         self.fieldNames = fieldNames
     }
 
-    /// CatalogDataAccess の結果から構築
+    /// Creates a vector snapshot from database records.
     public init(
-        items: [[String: Any]],
+        records: [StudioRecord],
         entityName: String,
         embeddingField: String,
         labelField: String? = nil
-    ) {
+    ) throws {
         self.entityName = entityName
         self.embeddingField = embeddingField
 
         var allFields: Set<String> = []
         var points: [VectorPoint] = []
-        var dims = 0
+        points.reserveCapacity(records.count)
+        var dimensionCount: Int?
 
-        for item in items {
-            guard let embedding = Self.extractEmbedding(item[embeddingField]) else { continue }
+        for record in records {
+            let identifier = record.id
+            let recordFields = record.fields
 
-            if dims == 0 { dims = embedding.count }
+            guard let embeddingValue = recordFields[embeddingField] else {
+                throw VectorDocumentError.missingEmbedding(identifier: identifier, field: embeddingField)
+            }
+            guard let embedding = Self.embedding(from: embeddingValue), !embedding.isEmpty else {
+                throw VectorDocumentError.invalidEmbedding(identifier: identifier, field: embeddingField)
+            }
+            guard embedding.allSatisfy(\.isFinite) else {
+                throw VectorDocumentError.nonFiniteEmbedding(identifier: identifier, field: embeddingField)
+            }
 
-            let id: String
-            if let sid = item["id"] as? String { id = sid }
-            else if let sid = item["_id"] as? String { id = sid }
-            else { id = UUID().uuidString }
+            if let expectedDimensionCount = dimensionCount {
+                guard embedding.count == expectedDimensionCount else {
+                    throw VectorDocumentError.inconsistentDimensions(
+                        identifier: identifier,
+                        expected: expectedDimensionCount,
+                        actual: embedding.count
+                    )
+                }
+            } else {
+                dimensionCount = embedding.count
+            }
 
             let label: String
-            if let lf = labelField, let v = item[lf] { label = String(describing: v) }
-            else { label = id }
+            if let labelField, let labelValue = recordFields[labelField] {
+                label = String(describing: labelValue)
+            } else {
+                label = identifier
+            }
 
             var fields: [String: String] = [:]
-            for (key, value) in item where key != embeddingField {
+            for (key, value) in recordFields where key != embeddingField {
                 fields[key] = String(describing: value)
                 allFields.insert(key)
             }
 
             points.append(VectorPoint(
-                id: id,
+                id: identifier,
                 embedding: embedding,
                 fields: fields,
                 label: label
@@ -89,24 +109,51 @@ public struct VectorDocument: Sendable {
         }
 
         self.points = points
-        self.dimensions = dims
+        self.dimensions = dimensionCount ?? 0
         self.fieldNames = allFields.sorted()
     }
 
-    private static func extractEmbedding(_ value: Any?) -> [Float]? {
-        guard let value else { return nil }
-        if let arr = value as? [Float] { return arr }
-        if let arr = value as? [Double] { return arr.map { Float($0) } }
-        if let arr = value as? [Int] { return arr.map { Float($0) } }
-        if let arr = value as? [Any] {
-            let floats = arr.compactMap { elem -> Float? in
-                if let d = elem as? Double { return Float(d) }
-                if let f = elem as? Float { return f }
-                if let i = elem as? Int { return Float(i) }
-                return nil
+    private static func embedding(from value: Any) -> [Float]? {
+        if let values = value as? [Float] { return values }
+        if let values = value as? [Double] { return values.map { Float($0) } }
+        if let values = value as? [Int] { return values.map { Float($0) } }
+        if let values = value as? [Any] {
+            var embedding: [Float] = []
+            embedding.reserveCapacity(values.count)
+            for element in values {
+                if let doubleValue = element as? Double {
+                    embedding.append(Float(doubleValue))
+                } else if let floatValue = element as? Float {
+                    embedding.append(floatValue)
+                } else if let integerValue = element as? Int {
+                    embedding.append(Float(integerValue))
+                } else {
+                    return nil
+                }
             }
-            return floats.count == arr.count ? floats : nil
+            return embedding
         }
         return nil
+    }
+}
+
+/// A deterministic vector snapshot validation failure.
+public enum VectorDocumentError: LocalizedError, Sendable {
+    case missingEmbedding(identifier: String, field: String)
+    case invalidEmbedding(identifier: String, field: String)
+    case nonFiniteEmbedding(identifier: String, field: String)
+    case inconsistentDimensions(identifier: String, expected: Int, actual: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingEmbedding(let identifier, let field):
+            return "Record \(identifier) has no \(field) embedding"
+        case .invalidEmbedding(let identifier, let field):
+            return "Record \(identifier) has an invalid \(field) embedding"
+        case .nonFiniteEmbedding(let identifier, let field):
+            return "Record \(identifier) has a non-finite value in its \(field) embedding"
+        case .inconsistentDimensions(let identifier, let expected, let actual):
+            return "Record \(identifier) has \(actual) embedding dimensions; expected \(expected)"
+        }
     }
 }

@@ -103,7 +103,7 @@ public struct AnalyticsPanel: Identifiable, Sendable {
 }
 
 /// Analytics ドキュメント
-public struct AnalyticsDocument: @unchecked Sendable {
+public struct AnalyticsDocument {
     public var items: [[String: Any]]
     public var entityName: String
     public var fieldNames: [String]

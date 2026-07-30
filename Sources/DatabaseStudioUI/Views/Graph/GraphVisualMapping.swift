@@ -38,10 +38,10 @@ final class GraphVisualMapping {
 
     // MARK: - カラー計算
 
-    func nodeColor(for node: GraphNode, defaultColor: Color) -> Color {
+    func nodeColor(for node: GraphNode, baseColor: Color) -> Color {
         switch colorMode {
         case .byRole:
-            return defaultColor
+            return baseColor
         }
     }
 }

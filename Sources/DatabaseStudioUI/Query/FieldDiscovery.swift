@@ -48,11 +48,11 @@ public struct DiscoveredField: Identifiable, Hashable, Sendable {
     }
 }
 
-/// Discovers fields from a collection of DecodedItem objects
+/// Discovers fields from a collection of StudioRecord objects
 public struct FieldDiscovery {
 
     /// Discover all fields from items, with sample values
-    public static func discoverFields(from items: [DecodedItem], maxSamples: Int = 5) -> [DiscoveredField] {
+    public static func discoverFields(from items: [StudioRecord], maxSamples: Int = 5) -> [DiscoveredField] {
         var fieldMap: [String: FieldInfo] = [:]
 
         for item in items {

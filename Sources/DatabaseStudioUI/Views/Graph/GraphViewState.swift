@@ -652,21 +652,21 @@ final class GraphViewState {
         return lines.joined(separator: "\n")
     }
 
-    /// GraphDocument のインメモリデータに対して SPARQL クエリを実行
+    /// Executes the current SPARQL query against the displayed graph document.
     func executeQuery() {
         isQueryExecuting = true
         queryError = nil
         queryResults = []
         queryResultColumns = []
 
-        let doc = document
+        let documentSnapshot = document
         let text = queryText
 
         Task {
             do {
-                let store = InMemoryTripleStore(document: doc)
+                let dataset = SPARQLDataset(document: documentSnapshot)
                 let parsed = try SPARQLParser.parse(text)
-                let evaluator = SPARQLEvaluator(store: store, prefixes: parsed.prefixes)
+                let evaluator = SPARQLEvaluator(dataset: dataset, prefixes: parsed.prefixes)
                 let (columns, rows) = try evaluator.evaluate(parsed)
                 self.queryResultColumns = columns
                 self.queryResults = rows.map { QueryResultRow(bindings: $0) }
@@ -1103,7 +1103,7 @@ final class GraphViewState {
 
     /// ファセットカテゴリからデフォルトトークンを追加
     func addFilterToken(for category: GraphFilterFacetCategory) {
-        filterTokens.append(category.makeDefaultToken())
+        filterTokens.append(category.makeInitialToken())
     }
 
     /// トークンを削除

@@ -32,8 +32,8 @@ struct VersionView: View {
             }
         }
         .onChange(of: VersionWindowState.shared.document?.versions.count) { _, _ in
-            if let newDoc = VersionWindowState.shared.document {
-                state.updateDocument(newDoc)
+            if let updatedDocument = VersionWindowState.shared.document {
+                state.updateDocument(updatedDocument)
             }
         }
     }
@@ -95,9 +95,9 @@ struct VersionView: View {
 
         Button {
             Task {
-                if let refresh = VersionWindowState.shared.refreshAction,
-                   let newDoc = await refresh() {
-                    state.updateDocument(newDoc)
+                if let refreshDocument = VersionWindowState.shared.refreshDocument,
+                   let refreshedDocument = await refreshDocument() {
+                    state.updateDocument(refreshedDocument)
                 }
             }
         } label: {
@@ -120,6 +120,6 @@ struct VersionView: View {
 // MARK: - Preview
 
 #Preview("Version History") {
-    VersionView(document: VersionPreviewData.document)
+    VersionView(document: VersionSampleData.document)
         .frame(width: 1000, height: 700)
 }

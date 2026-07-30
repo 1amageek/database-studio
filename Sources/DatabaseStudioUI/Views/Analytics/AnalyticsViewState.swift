@@ -25,7 +25,7 @@ final class AnalyticsViewState {
 
         // デフォルトパネルを生成: Count
         let countQuery = AggregationQuery(function: .count, label: "Total Count")
-        let countResults = AggregationEngine.execute(query: countQuery, items: document.items)
+        let countResults = AggregationEvaluator.evaluate(countQuery, over: document.items)
         panels.append(AnalyticsPanel(
             query: countQuery,
             chartType: .kpi,
@@ -39,7 +39,7 @@ final class AnalyticsViewState {
                 fieldName: firstNumeric,
                 label: "Sum of \(firstNumeric)"
             )
-            let sumResults = AggregationEngine.execute(query: sumQuery, items: document.items)
+            let sumResults = AggregationEvaluator.evaluate(sumQuery, over: document.items)
             panels.append(AnalyticsPanel(
                 query: sumQuery,
                 chartType: .kpi,
@@ -59,7 +59,7 @@ final class AnalyticsViewState {
                 groupByField: groupField,
                 label: "Count by \(groupField)"
             )
-            let barResults = AggregationEngine.execute(query: barQuery, items: document.items)
+            let barResults = AggregationEvaluator.evaluate(barQuery, over: document.items)
             panels.append(AnalyticsPanel(
                 query: barQuery,
                 chartType: .bar,
@@ -76,7 +76,7 @@ final class AnalyticsViewState {
                 groupByField: categoricalFields[1],
                 label: "\(firstNumeric) by \(categoricalFields[1])"
             )
-            let pieResults = AggregationEngine.execute(query: pieQuery, items: document.items)
+            let pieResults = AggregationEvaluator.evaluate(pieQuery, over: document.items)
             panels.append(AnalyticsPanel(
                 query: pieQuery,
                 chartType: .pie,
@@ -96,7 +96,7 @@ final class AnalyticsViewState {
 
     func addPanel() {
         let query = editingQuery
-        let results = AggregationEngine.execute(query: query, items: document.items)
+        let results = AggregationEvaluator.evaluate(query, over: document.items)
 
         // チャートタイプの自動判定
         let chartType: ChartType
@@ -123,9 +123,9 @@ final class AnalyticsViewState {
 
     func recalculateAllPanels() {
         for i in panels.indices {
-            panels[i].results = AggregationEngine.execute(
-                query: panels[i].query,
-                items: document.items
+            panels[i].results = AggregationEvaluator.evaluate(
+                panels[i].query,
+                over: document.items
             )
         }
     }

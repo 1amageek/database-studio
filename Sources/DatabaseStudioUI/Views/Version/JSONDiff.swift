@@ -78,8 +78,8 @@ enum JSONDiff {
                 changes.append(.modified(key: key, oldValue: old, newValue: new))
                 modified += 1
 
-            case (let val?, _):
-                changes.append(.unchanged(key: key, value: val))
+            case (let existingValue?, _):
+                changes.append(.unchanged(key: key, value: existingValue))
 
             default:
                 break

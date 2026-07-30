@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Vector Explorer のメインビュー
+/// Presents the Vector Explorer workspace.
 struct VectorView: View {
     @State private var state: VectorViewState
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
+    @State private var refreshFailureMessage: String?
 
     init(document: VectorDocument) {
         _state = State(initialValue: VectorViewState(document: document))
@@ -15,11 +16,21 @@ struct VectorView: View {
             VectorSidebarView(state: state)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
         } detail: {
-            VectorCanvas(state: state)
-                .inspector(isPresented: $showInspector) {
-                    inspectorContent
-                        .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
+            Group {
+                if let vectorFailureMessage = state.vectorFailureMessage {
+                    ContentUnavailableView(
+                        "Unable to Process Vectors",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(vectorFailureMessage)
+                    )
+                } else {
+                    VectorCanvas(state: state)
                 }
+            }
+            .inspector(isPresented: $showInspector) {
+                inspectorContent
+                    .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -32,8 +43,23 @@ struct VectorView: View {
             }
         }
         .onChange(of: VectorWindowState.shared.document?.points.count) { _, _ in
-            if let newDoc = VectorWindowState.shared.document {
-                state.updateDocument(newDoc)
+            if let updatedDocument = VectorWindowState.shared.document {
+                state.updateDocument(updatedDocument)
+            }
+        }
+        .alert(
+            "Unable to Refresh Vector Data",
+            isPresented: Binding(
+                get: { refreshFailureMessage != nil },
+                set: { isPresented in
+                    if !isPresented { refreshFailureMessage = nil }
+                }
+            )
+        ) {
+            Button("OK") { refreshFailureMessage = nil }
+        } message: {
+            if let refreshFailureMessage {
+                Text(refreshFailureMessage)
             }
         }
     }
@@ -45,8 +71,8 @@ struct VectorView: View {
         if let point = state.selectedPoint {
             VectorInspectorView(
                 point: point,
-                knnResults: state.knnResults,
-                metric: state.metric
+                nearestNeighbors: state.nearestNeighbors,
+                comparisonMetric: state.comparisonMetric
             )
         } else {
             ContentUnavailableView(
@@ -68,9 +94,13 @@ struct VectorView: View {
 
         Button {
             Task {
-                if let refresh = VectorWindowState.shared.refreshAction,
-                   let newDoc = await refresh() {
-                    state.updateDocument(newDoc)
+                do {
+                    if let refreshDocument = VectorWindowState.shared.refreshDocument,
+                       let refreshedDocument = try await refreshDocument() {
+                        state.updateDocument(refreshedDocument)
+                    }
+                } catch {
+                    refreshFailureMessage = error.localizedDescription
                 }
             }
         } label: {
@@ -101,6 +131,6 @@ struct VectorView: View {
 // MARK: - Preview
 
 #Preview("Vector Explorer") {
-    VectorView(document: VectorPreviewData.document)
+    VectorView(document: VectorSampleData.document)
         .frame(width: 1200, height: 800)
 }

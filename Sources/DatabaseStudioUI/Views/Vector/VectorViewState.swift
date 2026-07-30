@@ -1,67 +1,65 @@
 import SwiftUI
 
-/// 距離メトリック
-enum VectorMetric: String, CaseIterable, Identifiable {
-    case cosine = "Cosine"
-    case l2 = "L2"
+/// The scoring metric selected for nearest-neighbor comparisons.
+enum VectorComparisonMetric: String, CaseIterable, Identifiable {
+    case cosineSimilarity = "Cosine"
+    case euclideanDistance = "Euclidean"
 
     var id: String { rawValue }
 }
 
-/// KNN 検索結果
-struct VectorSearchResult: Identifiable {
+/// A vector point ranked as a nearest neighbor.
+struct NearestNeighborResult: Identifiable {
     let id: String
     let point: VectorPoint
-    let similarity: Float
+    let score: Float
 
-    var formattedSimilarity: String {
-        String(format: "%.4f", similarity)
+    var formattedScore: String {
+        String(format: "%.4f", score)
     }
 }
 
-/// Vector Explorer の状態管理
+/// Owns Vector Explorer state and vector interactions.
 @Observable @MainActor
 final class VectorViewState {
 
-    // MARK: - データ
+    // MARK: - Document
 
     var document: VectorDocument {
-        didSet { reproject() }
+        didSet { updateProjection() }
     }
 
-    // MARK: - 投影済みポイント
+    // MARK: - Projection
 
     private(set) var projectedPoints: [VectorPoint] = []
+    private(set) var vectorFailureMessage: String?
 
-    // MARK: - 選択
+    // MARK: - Selection
 
     var selectedPointID: String? {
-        didSet { computeKNN() }
+        didSet { updateNearestNeighbors() }
     }
 
     var selectedPoint: VectorPoint? {
         guard let id = selectedPointID else { return nil }
-        return pointMap[id]
+        return pointByIdentifier[id]
     }
 
-    // MARK: - KNN
+    // MARK: - Nearest Neighbors
 
-    var kValue: Int = 5 {
-        didSet { computeKNN() }
+    var neighborLimit: Int = 5 {
+        didSet { updateNearestNeighbors() }
     }
-    var metric: VectorMetric = .cosine {
-        didSet { computeKNN() }
+    var comparisonMetric: VectorComparisonMetric = .cosineSimilarity {
+        didSet { updateNearestNeighbors() }
     }
-    private(set) var knnResults: [VectorSearchResult] = [] {
-        didSet { cachedKNNResultIDs = Set(knnResults.map(\.id)) }
+    private(set) var nearestNeighbors: [NearestNeighborResult] = [] {
+        didSet { nearestNeighborIdentifiers = Set(nearestNeighbors.map(\.id)) }
     }
 
-    /// KNN 結果に含まれる ID（キャッシュ済み）
-    private(set) var cachedKNNResultIDs: Set<String> = []
+    private(set) var nearestNeighborIdentifiers: Set<String> = []
 
-    var knnResultIDs: Set<String> { cachedKNNResultIDs }
-
-    // MARK: - ビジュアルマッピング
+    // MARK: - Visual Mapping
 
     var colorByField: String? {
         didSet { colorAssignments = nil }
@@ -69,23 +67,22 @@ final class VectorViewState {
     var sizeByField: String?
     var showLabels: Bool = true
 
-    // MARK: - カメラ
+    // MARK: - Camera
 
     var cameraOffset: CGSize = .zero
     var cameraScale: CGFloat = 1.0
     var viewportSize: CGSize = .zero
 
-    // MARK: - キャッシュ
+    // MARK: - Lookup State
 
-    private var pointMap: [String: VectorPoint] = [:]
+    private var pointByIdentifier: [String: VectorPoint] = [:]
     private var colorAssignments: [String: Color]?
 
-    // MARK: - 初期化
+    // MARK: - Initialization
 
     init(document: VectorDocument) {
         self.document = document
-        reproject()
-        // カテゴリカルフィールドがあれば自動で色分け
+        updateProjection()
         if let firstField = document.fieldNames.first(where: { name in
             let uniqueValues = Set(document.points.compactMap { $0.fields[name] })
             return uniqueValues.count >= 2 && uniqueValues.count <= 12
@@ -94,78 +91,100 @@ final class VectorViewState {
         }
     }
 
-    // MARK: - 投影
+    // MARK: - Projection
 
-    private func reproject() {
-        let embeddings = document.points.map(\.embedding)
-        let projected = PCAProjection.project(vectors: embeddings)
-
-        projectedPoints = zip(document.points, projected).map { point, coords in
-            var p = point
-            p.projected = coords
-            return p
+    private func updateProjection() {
+        do {
+            let projectedCoordinates = try PrincipalComponentProjection.project(
+                document.points.lazy.map(\.embedding)
+            )
+            projectedPoints = zip(document.points, projectedCoordinates).map { point, coordinates in
+                var projectedPoint = point
+                projectedPoint.projected = coordinates
+                return projectedPoint
+            }
+            pointByIdentifier = Dictionary(uniqueKeysWithValues: projectedPoints.map { ($0.id, $0) })
+            colorAssignments = nil
+            vectorFailureMessage = nil
+        } catch {
+            projectedPoints = []
+            pointByIdentifier = [:]
+            colorAssignments = nil
+            vectorFailureMessage = error.localizedDescription
         }
-
-        pointMap = Dictionary(uniqueKeysWithValues: projectedPoints.map { ($0.id, $0) })
-        colorAssignments = nil
     }
 
-    // MARK: - ドキュメント更新
+    // MARK: - Document Updates
 
     func updateDocument(_ newDocument: VectorDocument) {
         document = newDocument
     }
 
-    // MARK: - KNN
+    // MARK: - Nearest Neighbors
 
-    private func computeKNN() {
+    private func updateNearestNeighbors() {
         guard let selected = selectedPoint else {
-            knnResults = []
+            nearestNeighbors = []
             return
         }
 
-        let results: [VectorSearchResult] = document.points
-            .filter { $0.id != selected.id }
-            .map { point in
-                let similarity: Float
-                switch metric {
-                case .cosine:
-                    similarity = PCAProjection.cosineSimilarity(selected.embedding, point.embedding)
-                case .l2:
-                    // L2 を類似度に変換（小さい距離 = 高い類似度）
-                    let dist = PCAProjection.l2Distance(selected.embedding, point.embedding)
-                    similarity = 1.0 / (1.0 + dist)
-                }
-                return VectorSearchResult(id: point.id, point: point, similarity: similarity)
-            }
-            .sorted { $0.similarity > $1.similarity }
+        do {
+            var results: [NearestNeighborResult] = []
+            results.reserveCapacity(max(document.points.count - 1, 0))
 
-        knnResults = Array(results.prefix(kValue))
+            for point in document.points where point.id != selected.id {
+                let score: Float
+                switch comparisonMetric {
+                case .cosineSimilarity:
+                    score = try PrincipalComponentProjection.cosineSimilarity(
+                        selected.embedding,
+                        point.embedding
+                    )
+                case .euclideanDistance:
+                    let distance = try PrincipalComponentProjection.euclideanDistance(
+                        selected.embedding,
+                        point.embedding
+                    )
+                    score = 1 / (1 + distance)
+                }
+                results.append(NearestNeighborResult(id: point.id, point: point, score: score))
+            }
+
+            results.sort { $0.score > $1.score }
+            if results.count > neighborLimit {
+                results.removeSubrange(neighborLimit..<results.endIndex)
+            }
+            nearestNeighbors = results
+            vectorFailureMessage = nil
+        } catch {
+            nearestNeighbors = []
+            vectorFailureMessage = error.localizedDescription
+        }
     }
 
-    // MARK: - カメラ
+    // MARK: - Camera
 
     func zoomToFit(padding: CGFloat = 60) {
         guard !projectedPoints.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
 
-        let xs = projectedPoints.map { $0.projected.x }
-        let ys = projectedPoints.map { $0.projected.y }
+        let xCoordinates = projectedPoints.map { $0.projected.x }
+        let yCoordinates = projectedPoints.map { $0.projected.y }
 
-        guard let minX = xs.min(), let maxX = xs.max(),
-              let minY = ys.min(), let maxY = ys.max() else { return }
+        guard let minimumX = xCoordinates.min(), let maximumX = xCoordinates.max(),
+              let minimumY = yCoordinates.min(), let maximumY = yCoordinates.max() else { return }
 
-        let graphWidth = maxX - minX
-        let graphHeight = maxY - minY
+        let graphWidth = maximumX - minimumX
+        let graphHeight = maximumY - minimumY
 
-        let availW = viewportSize.width - padding * 2
-        let availH = viewportSize.height - padding * 2
+        let availableWidth = viewportSize.width - padding * 2
+        let availableHeight = viewportSize.height - padding * 2
 
-        let scaleX = graphWidth > 0 ? availW / graphWidth : 2.0
-        let scaleY = graphHeight > 0 ? availH / graphHeight : 2.0
-        cameraScale = min(scaleX, scaleY, 3.0)
+        let horizontalScale = graphWidth > 0 ? availableWidth / graphWidth : 2
+        let verticalScale = graphHeight > 0 ? availableHeight / graphHeight : 2
+        cameraScale = min(horizontalScale, verticalScale, 3)
 
-        let centerX = (minX + maxX) / 2
-        let centerY = (minY + maxY) / 2
+        let centerX = (minimumX + maximumX) / 2
+        let centerY = (minimumY + maximumY) / 2
 
         cameraOffset = CGSize(
             width: viewportSize.width / 2 - centerX * cameraScale,
@@ -173,13 +192,13 @@ final class VectorViewState {
         )
     }
 
-    // MARK: - カラーマッピング
+    // MARK: - Color Mapping
 
     func color(for point: VectorPoint) -> Color {
         guard let field = colorByField else { return .blue }
 
         if colorAssignments == nil {
-            buildColorAssignments(field: field)
+            updateColorAssignments(for: field)
         }
 
         guard let value = point.fields[field],
@@ -189,27 +208,27 @@ final class VectorViewState {
         return color
     }
 
-    private func buildColorAssignments(field: String) {
+    private func updateColorAssignments(for field: String) {
         let uniqueValues = Set(projectedPoints.compactMap { $0.fields[field] }).sorted()
         let palette: [Color] = [
             .blue, .green, .orange, .purple, .red, .cyan,
             .pink, .yellow, .mint, .indigo, .brown, .teal
         ]
         var assignments: [String: Color] = [:]
-        for (i, value) in uniqueValues.enumerated() {
-            assignments[value] = palette[i % palette.count]
+        for (colorIndex, value) in uniqueValues.enumerated() {
+            assignments[value] = palette[colorIndex % palette.count]
         }
         colorAssignments = assignments
     }
 
-    // MARK: - サイズマッピング
+    // MARK: - Size Mapping
 
     func radius(for point: VectorPoint, base: CGFloat = 5) -> CGFloat {
         guard let field = sizeByField,
               let value = point.fields[field],
-              let numValue = Double(value) else {
+              let numericValue = Double(value) else {
             return base
         }
-        return base * CGFloat(1.0 + log2(max(numValue, 1)) * 0.3)
+        return base * CGFloat(1 + log2(max(numericValue, 1)) * 0.3)
     }
 }

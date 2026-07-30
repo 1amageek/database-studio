@@ -9,12 +9,13 @@ public final class GraphWindowState {
     public var document: GraphDocument?
     public var entityName: String = ""
     public var isLoading: Bool = false
+    public var loadFailureMessage: String?
 
-    /// ウィンドウ表示後にドキュメントをロードするクロージャ
-    public var loadAction: (@MainActor () async -> GraphDocument?)?
+    /// Loads the document after the graph window appears.
+    public var loadDocument: (@MainActor () async throws -> GraphDocument?)?
 
-    /// データソースからドキュメントを再取得するクロージャ
-    public var refreshAction: (@MainActor () async -> GraphDocument?)?
+    /// Reloads the document from its data source.
+    public var refreshDocument: (@MainActor () async throws -> GraphDocument?)?
 
     public init() {}
 }
@@ -29,15 +30,26 @@ public struct GraphWindowView: View {
         if let document = state.document {
             GraphView(document: document)
                 .navigationTitle("\(state.entityName) – Graph")
+        } else if let loadFailureMessage = state.loadFailureMessage {
+            ContentUnavailableView(
+                "Unable to Load Graph",
+                systemImage: "exclamationmark.triangle",
+                description: Text(loadFailureMessage)
+            )
         } else if state.isLoading {
             ProgressView("Loading graph data…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .task {
-                    if let loadAction = state.loadAction {
-                        let document = await loadAction()
-                        state.document = document
+                    guard let loadDocument = state.loadDocument else {
                         state.isLoading = false
+                        return
                     }
+                    do {
+                        state.document = try await loadDocument()
+                    } catch {
+                        state.loadFailureMessage = error.localizedDescription
+                    }
+                    state.isLoading = false
                 }
         } else {
             ContentUnavailableView(

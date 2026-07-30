@@ -5,6 +5,7 @@ struct SearchView: View {
     @State private var state: SearchViewState
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
+    @State private var refreshFailureMessage: String?
 
     init(document: SearchDocument, initialQuery: String = "") {
         _state = State(initialValue: SearchViewState(document: document, initialQuery: initialQuery))
@@ -33,8 +34,23 @@ struct SearchView: View {
             }
         }
         .onChange(of: SearchWindowState.shared.document?.items.count) { _, _ in
-            if let newDoc = SearchWindowState.shared.document {
-                state.updateDocument(newDoc)
+            if let updatedDocument = SearchWindowState.shared.document {
+                state.updateDocument(updatedDocument)
+            }
+        }
+        .alert(
+            "Unable to Refresh Search Data",
+            isPresented: Binding(
+                get: { refreshFailureMessage != nil },
+                set: { isPresented in
+                    if !isPresented { refreshFailureMessage = nil }
+                }
+            )
+        ) {
+            Button("OK") { refreshFailureMessage = nil }
+        } message: {
+            if let refreshFailureMessage {
+                Text(refreshFailureMessage)
             }
         }
     }
@@ -112,9 +128,13 @@ struct SearchView: View {
 
         Button {
             Task {
-                if let refresh = SearchWindowState.shared.refreshAction,
-                   let newDoc = await refresh() {
-                    state.updateDocument(newDoc)
+                do {
+                    if let refreshDocument = SearchWindowState.shared.refreshDocument,
+                       let refreshedDocument = try await refreshDocument() {
+                        state.updateDocument(refreshedDocument)
+                    }
+                } catch {
+                    refreshFailureMessage = error.localizedDescription
                 }
             }
         } label: {
@@ -145,6 +165,6 @@ struct SearchView: View {
 // MARK: - Preview
 
 #Preview("Search Console") {
-    SearchView(document: SearchPreviewData.document, initialQuery: "machine learning")
+    SearchView(document: SearchSampleData.document, initialQuery: "machine learning")
         .frame(width: 1100, height: 700)
 }

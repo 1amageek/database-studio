@@ -39,8 +39,8 @@ public struct GraphView: View {
             }
         }
         .onChange(of: graphDocumentFingerprint) { _, _ in
-            if let newDoc = GraphWindowState.shared.document {
-                state.updateDocument(newDoc)
+            if let updatedDocument = GraphWindowState.shared.document {
+                state.updateDocument(updatedDocument)
             }
         }
         .task {
@@ -56,9 +56,9 @@ public struct GraphView: View {
     // MARK: - Document Fingerprint
 
     private var graphDocumentFingerprint: Int? {
-        guard let doc = GraphWindowState.shared.document else { return nil }
-        let n = doc.nodes.count
-        let e = doc.edges.count
+        guard let graphDocument = GraphWindowState.shared.document else { return nil }
+        let n = graphDocument.nodes.count
+        let e = graphDocument.edges.count
         return (n + e) * (n + e + 1) / 2 + e
     }
 
@@ -282,9 +282,15 @@ public struct GraphView: View {
     private var toolbarActions: some View {
         Button {
             Task {
-                if let refresh = GraphWindowState.shared.refreshAction,
-                   let newDoc = await refresh() {
-                    state.updateDocument(newDoc)
+                guard let refreshDocument = GraphWindowState.shared.refreshDocument else {
+                    return
+                }
+                do {
+                    if let refreshedDocument = try await refreshDocument() {
+                        state.updateDocument(refreshedDocument)
+                    }
+                } catch {
+                    GraphWindowState.shared.loadFailureMessage = error.localizedDescription
                 }
             }
         } label: {
@@ -382,11 +388,11 @@ public struct GraphView: View {
 // MARK: - Preview
 
 #Preview("RDF Graph") {
-    GraphView(document: GraphPreviewData.rdfDocument)
+    GraphView(document: GraphSampleData.rdfDocument)
         .frame(width: 1100, height: 600)
 }
 
 #Preview("Ontology Graph") {
-    GraphView(document: GraphPreviewData.ontologyDocument)
+    GraphView(document: GraphSampleData.ontologyDocument)
         .frame(width: 1100, height: 600)
 }

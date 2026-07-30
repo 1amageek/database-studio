@@ -43,7 +43,7 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "AppViewModelTests",
+            name: "DatabaseStudioStateTests",
             dependencies: ["DatabaseStudioUI"],
             linkerSettings: [
                 .unsafeFlags(["-L/usr/local/lib"]),

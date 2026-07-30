@@ -24,7 +24,7 @@ struct VectorCanvas: View {
                 // KNN 接続線
                 if let selected = state.selectedPoint {
                     let selectedScreen = screenPosition(selected.projected, scale: scale, offset: offset)
-                    for result in state.knnResults {
+                    for result in state.nearestNeighbors {
                         let targetScreen = screenPosition(result.point.projected, scale: scale, offset: offset)
                         var path = Path()
                         path.move(to: selectedScreen)
@@ -40,7 +40,7 @@ struct VectorCanvas: View {
 
                     let screen = screenPosition(pos, scale: scale, offset: offset)
                     let isSelected = state.selectedPointID == point.id
-                    let isKNNResult = state.knnResultIDs.contains(point.id)
+                    let isNearestNeighbor = state.nearestNeighborIdentifiers.contains(point.id)
 
                     let radius = state.radius(for: point) * (isSelected ? 1.8 : 1.0)
                     let color = state.color(for: point)
@@ -63,7 +63,7 @@ struct VectorCanvas: View {
                             height: (radius + 3) * 2
                         ))
                         context.stroke(ring, with: .color(.red), lineWidth: 2)
-                    } else if isKNNResult {
+                    } else if isNearestNeighbor {
                         context.fill(circle, with: .color(.green))
                     } else {
                         context.fill(circle, with: .color(color.opacity(0.7)))
@@ -110,9 +110,7 @@ struct VectorCanvas: View {
                 state.viewportSize = geo.size
                 if !hasInitialFit {
                     hasInitialFit = true
-                    DispatchQueue.main.async {
-                        state.zoomToFit()
-                    }
+                    state.zoomToFit()
                 }
             }
             .onChange(of: geo.size) { _, newSize in

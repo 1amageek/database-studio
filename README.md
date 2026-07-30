@@ -1,78 +1,97 @@
 # Database Studio
 
-A native macOS data browser and graph visualizer for FoundationDB.
+Database Studio is a native macOS inspector for databases built with
+[`database-framework`](https://github.com/1amageek/database-framework).
 
-Browse and manage `@Persistable` data through the `SchemaRegistry` provided by [database-framework](https://github.com/1amageek/database-framework).
+It presents schema, index, ontology, graph, and record-oriented tools while
+preserving the runtime boundary defined by database-framework.
+
+## Runtime boundary
+
+```text
+DatabaseStudioState
+        |
+        +-- StudioDatabaseSession -- direct StorageEngine
+        |                              |
+        |                              +-- DatabaseFormatCatalog validation
+        |                              +-- SchemaRegistry
+        |                              +-- OntologyStore
+        |
+        +-- authenticated DatabaseWire runtime -- record/query/mutation operations
+```
+
+Direct storage access is intentionally limited to catalog, schema, and ontology
+inspection. Record listing, lookup, mutation, and collection statistics require
+an authenticated application runtime over DatabaseWire. Until that runtime is
+configured, those operations return `StudioError.databaseRuntimeRequired` and
+the UI presents the failure. They never return placeholder records or report a
+successful mutation.
 
 ## Features
 
-### Data Browser
+- SQLite and FoundationDB connection selection
+- Canonical database-format validation
+- Schema entity and index inspection
+- OWL ontology and RDF graph visualization
+- Local SPARQL dataset exploration
+- Record query, import, export, metrics, map, search, vector, and analytics UI
+- Typed import/export failures without skipped records or empty-data fallbacks
+- Zero-copy-oriented import ownership using Swift collection copy-on-write
+- Streaming-style JSONL and CSV export assembly without whole-file line arrays
 
-- **Connection Management** — Connect to FoundationDB via cluster file
-- **Entity Tree** — Display `Schema.Entity` in a directory hierarchy
-- **Item Table** — Paginated table view for records of the selected entity
-- **CRUD** — Create, edit, and delete items
-- **Query Builder** — Build predicates with a GUI for filtering
-- **Import / Export** — CSV and JSON support
-- **Schema Visualization** — Inspect field definitions, indexes, and directory structure
-- **Performance Metrics** — Operation timing and slow query log
-
-### Graph Visualizer
-
-Visualize RDF triples, OWL ontologies, and GraphIndex data with a force-directed layout.
-
-- **Force-Directed Layout** — Barnes-Hut O(N log N) repulsion + spring attraction
-- **LOD Rendering** — 4 levels of detail based on zoom scale
-- **Viewport Culling** — Skip rendering off-screen nodes and edges
-- **N-hop Neighborhood Filter** — Show only nodes within N hops of the selected node
-- **Edge Label Filter** — Toggle which relationship types to display
-- **Node Search** — Search and highlight nodes by label
-- **Visual Mapping** — Map node size/color to PageRank, community, degree, etc.
-- **SPARQL Console** — Query panel (executable when connected to FoundationDB)
-- **Minimap** — Overview overlay of the entire graph
-- **Inspector** — View IRI, metadata, connected edges, and metrics for the selected node
+Record-dependent tools become operational only when the DatabaseWire runtime
+connection described above is installed.
 
 ## Requirements
 
-- macOS 15+
-- Swift 6
-- FoundationDB (installed locally)
+- macOS 26 or later
+- Swift 6.4 toolchain, required by the local database packages
+- FoundationDB client libraries for FoundationDB connections
 
-## Build
+## Build and test
 
 ```bash
-swift build
+xcodebuild \
+  -project "Database Studio/Database Studio.xcodeproj" \
+  -scheme "Database Studio" \
+  -destination "platform=macOS" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
 ```
 
-To open in Xcode:
-
 ```bash
-open Studio.xcworkspace
+xcodebuild \
+  -project "Database Studio/Database Studio.xcodeproj" \
+  -scheme "Database Studio" \
+  -destination "platform=macOS" \
+  CODE_SIGNING_ALLOWED=NO \
+  test
 ```
 
 ## Dependencies
 
-| Package | Role |
-|---------|------|
-| [database-framework](https://github.com/1amageek/database-framework) | DatabaseEngine, SchemaRegistry, CatalogDataAccess |
-| [database-kit](https://github.com/1amageek/database-kit) | Persistable, Schema.Entity, Graph (OWL/RDF) |
+| Package | Responsibility |
+|---|---|
+| `database-framework` | Catalog validation, schema registry, ontology and graph runtimes |
+| `database-kit` | Canonical schema, RDF, query, and value models |
+| `storage-kit` | SQLite and FoundationDB `StorageEngine` implementations |
 
-## Architecture
+## Source organization
 
+```text
+Sources/DatabaseStudioUI
+├── ApplicationState/  Application and dashboard state ownership
+├── Components/        Reusable presentation components
+├── Models/            Studio presentation and error models
+├── Query/             Local record-filter and query-history models
+├── Services/          Database session, metrics, and history stores
+└── Views/             Database inspection tools
 ```
-DatabaseStudioUI (SwiftUI)
-├── Views/          UI components
-├── ViewModels/     @Observable state management
-├── Services/       StudioDataService, MetricsService
-└── Query/          Query builder and history
 
-         ↓ async/await
-
-database-framework
-├── SchemaRegistry    Persist and load Schema.Entity
-├── CatalogDataAccess Dynamic data access (no @Persistable types needed)
-└── DatabaseEngine    FDBContainer, FDBContext
-```
+The API and declaration naming contract is defined in
+[`AGENTS.md`](AGENTS.md). Declarations are named for database responsibility,
+observable behavior, state, ownership, or lifecycle—not their implementation
+language, calling convention, or storage representation.
 
 ## License
 

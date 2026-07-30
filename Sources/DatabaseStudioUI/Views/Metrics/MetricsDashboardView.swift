@@ -2,11 +2,11 @@ import SwiftUI
 
 /// メトリクスダッシュボードビュー
 public struct MetricsDashboardView: View {
-    @Bindable public var viewModel: MetricsViewModel
+    @Bindable public var studioState: MetricsDashboardState
     @Environment(\.dismiss) private var dismiss
 
-    public init(viewModel: MetricsViewModel) {
-        self.viewModel = viewModel
+    public init(studioState: MetricsDashboardState) {
+        self.studioState = studioState
     }
 
     public var body: some View {
@@ -17,7 +17,7 @@ public struct MetricsDashboardView: View {
                     monitoringControls
 
                     // メトリクスグリッド
-                    if let metrics = viewModel.metrics {
+                    if let metrics = studioState.metrics {
                         metricsGridView(metrics: metrics)
                     } else {
                         emptyMetricsView
@@ -53,8 +53,8 @@ public struct MetricsDashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("ms", value: Binding(
-                    get: { viewModel.slowQueryThreshold * 1000 },
-                    set: { viewModel.slowQueryThreshold = $0 / 1000 }
+                    get: { studioState.slowQueryThreshold * 1000 },
+                    set: { studioState.slowQueryThreshold = $0 / 1000 }
                 ), format: .number)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 60)
@@ -66,14 +66,14 @@ public struct MetricsDashboardView: View {
             Spacer()
 
             // トグルボタン
-            Button(action: viewModel.toggleMonitoring) {
+            Button(action: studioState.toggleMonitoring) {
                 HStack {
-                    Image(systemName: viewModel.isMonitoring ? "stop.fill" : "play.fill")
-                    Text(viewModel.isMonitoring ? "Stop" : "Start")
+                    Image(systemName: studioState.isMonitoring ? "stop.fill" : "play.fill")
+                    Text(studioState.isMonitoring ? "Stop" : "Start")
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(viewModel.isMonitoring ? .red : .accentColor)
+            .tint(studioState.isMonitoring ? .red : .accentColor)
         }
     }
 
@@ -185,19 +185,19 @@ public struct MetricsDashboardView: View {
 
                 Spacer()
 
-                if !viewModel.slowQueries.isEmpty {
+                if !studioState.slowQueries.isEmpty {
                     Button("Clear") {
-                        viewModel.clearSlowQueries()
+                        studioState.clearSlowQueries()
                     }
                     .buttonStyle(.borderless)
                     .font(.caption)
                 }
             }
 
-            if viewModel.slowQueries.isEmpty {
+            if studioState.slowQueries.isEmpty {
                 emptySlowQueryView
             } else {
-                SlowQueryLogView(queries: viewModel.slowQueries)
+                SlowQueryLogView(queries: studioState.slowQueries)
             }
         }
     }
@@ -220,5 +220,5 @@ public struct MetricsDashboardView: View {
 // MARK: - Preview
 
 #Preview {
-    MetricsDashboardView(viewModel: .preview)
+    MetricsDashboardView(studioState: .preview)
 }

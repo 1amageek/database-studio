@@ -169,7 +169,7 @@ private struct FieldsCard: View {
 // MARK: - Index Card
 
 private struct IndexCard: View {
-    let index: AnyIndexDescriptor
+    let index: IndexDescriptorMetadata
 
     var body: some View {
         HStack(spacing: 12) {
@@ -238,14 +238,14 @@ private struct IndexCard: View {
         ],
         directoryComponents: [.staticPath("app"), .staticPath("users")],
         indexes: [
-            AnyIndexDescriptor(
+            IndexDescriptorMetadata(
                 name: "user_email_idx",
-                kind: AnyIndexKind(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["email"], metadata: [:]),
+                kind: IndexKindMetadata(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["email"], metadata: [:]),
                 commonMetadata: ["unique": .bool(true)]
             ),
-            AnyIndexDescriptor(
+            IndexDescriptorMetadata(
                 name: "user_age_idx",
-                kind: AnyIndexKind(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["age"], metadata: [:]),
+                kind: IndexKindMetadata(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["age"], metadata: [:]),
                 commonMetadata: [:]
             ),
         ]

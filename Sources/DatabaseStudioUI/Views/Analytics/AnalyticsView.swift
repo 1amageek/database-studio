@@ -4,6 +4,7 @@ import SwiftUI
 struct AnalyticsView: View {
     @State private var state: AnalyticsViewState
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
+    @State private var refreshFailureMessage: String?
 
     init(document: AnalyticsDocument) {
         _state = State(initialValue: AnalyticsViewState(document: document))
@@ -22,8 +23,23 @@ struct AnalyticsView: View {
             }
         }
         .onChange(of: AnalyticsWindowState.shared.document?.items.count) { _, _ in
-            if let newDoc = AnalyticsWindowState.shared.document {
-                state.updateDocument(newDoc)
+            if let updatedDocument = AnalyticsWindowState.shared.document {
+                state.updateDocument(updatedDocument)
+            }
+        }
+        .alert(
+            "Unable to Refresh Analytics Data",
+            isPresented: Binding(
+                get: { refreshFailureMessage != nil },
+                set: { isPresented in
+                    if !isPresented { refreshFailureMessage = nil }
+                }
+            )
+        ) {
+            Button("OK") { refreshFailureMessage = nil }
+        } message: {
+            if let refreshFailureMessage {
+                Text(refreshFailureMessage)
             }
         }
     }
@@ -70,9 +86,13 @@ struct AnalyticsView: View {
 
         Button {
             Task {
-                if let refresh = AnalyticsWindowState.shared.refreshAction,
-                   let newDoc = await refresh() {
-                    state.updateDocument(newDoc)
+                do {
+                    if let refreshDocument = AnalyticsWindowState.shared.refreshDocument,
+                       let refreshedDocument = try await refreshDocument() {
+                        state.updateDocument(refreshedDocument)
+                    }
+                } catch {
+                    refreshFailureMessage = error.localizedDescription
                 }
             }
         } label: {
@@ -93,6 +113,6 @@ struct AnalyticsView: View {
 // MARK: - Preview
 
 #Preview("Analytics Dashboard") {
-    AnalyticsView(document: AnalyticsPreviewData.document)
+    AnalyticsView(document: AnalyticsSampleData.document)
         .frame(width: 1200, height: 800)
 }

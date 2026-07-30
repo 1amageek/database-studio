@@ -3,26 +3,26 @@ import Core
 
 /// ディレクトリツリービュー（Entity + Indexes）
 struct DirectoryTreeView: View {
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
 
     var body: some View {
         List(selection: Binding(
-            get: { viewModel.selectedEntityName },
+            get: { studioState.selectedEntityName },
             set: { newValue in
                 if let name = newValue {
-                    viewModel.selectEntity(name)
+                    studioState.selectEntity(name)
                 }
             }
         )) {
-            if viewModel.isLoadingEntities {
+            if studioState.isLoadingEntities {
                 ProgressView()
                     .frame(maxWidth: .infinity)
-            } else if viewModel.entityTree.isEmpty {
+            } else if studioState.entityTree.isEmpty {
                 Text("エンティティがありません")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(viewModel.entityTree) { node in
-                    EntityTreeNodeView(node: node, viewModel: viewModel)
+                ForEach(studioState.entityTree) { node in
+                    EntityTreeNodeView(node: node, studioState: studioState)
                 }
             }
         }
@@ -32,7 +32,7 @@ struct DirectoryTreeView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task {
-                        await viewModel.refreshEntities()
+                        await studioState.refreshEntities()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -46,7 +46,7 @@ struct DirectoryTreeView: View {
 /// エンティティツリーノードビュー
 struct EntityTreeNodeView: View {
     let node: EntityTreeNode
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
 
     private var hasContent: Bool {
         !node.children.isEmpty || !node.entities.isEmpty
@@ -57,7 +57,7 @@ struct EntityTreeNodeView: View {
             DisclosureGroup {
                 // 子ディレクトリ
                 ForEach(node.children) { child in
-                    EntityTreeNodeView(node: child, viewModel: viewModel)
+                    EntityTreeNodeView(node: child, studioState: studioState)
                 }
                 // エンティティ
                 ForEach(node.entities, id: \.name) { entity in
@@ -91,18 +91,18 @@ struct EntityRowView: View {
 // MARK: - Previews
 
 #Preview("Directory Tree") {
-    @Previewable @State var viewModel = AppViewModel.preview(
-        entityTree: PreviewData.entityTree,
+    @Previewable @State var studioState = DatabaseStudioState.sample(
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: nil
     )
-    DirectoryTreeView(viewModel: viewModel)
+    DirectoryTreeView(studioState: studioState)
         .frame(width: 280, height: 400)
 }
 
 #Preview("Directory Tree - Empty") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         entityTree: []
     )
-    DirectoryTreeView(viewModel: viewModel)
+    DirectoryTreeView(studioState: studioState)
         .frame(width: 280, height: 400)
 }

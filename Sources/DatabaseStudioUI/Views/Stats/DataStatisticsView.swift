@@ -2,11 +2,11 @@ import SwiftUI
 
 /// データ統計ダッシュボード
 public struct DataStatisticsView: View {
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
     @Environment(\.dismiss) private var dismiss
 
-    public init(viewModel: AppViewModel) {
-        self.viewModel = viewModel
+    public init(studioState: DatabaseStudioState) {
+        self.studioState = studioState
     }
 
     private var typeStats: [TypeStatistics] {
@@ -31,7 +31,7 @@ public struct DataStatisticsView: View {
 
                     typeBreakdownSection
 
-                    if !viewModel.discoveredFields.isEmpty {
+                    if !studioState.discoveredFields.isEmpty {
                         Divider()
 
                         fieldStatsSection
@@ -113,10 +113,10 @@ public struct DataStatisticsView: View {
     @ViewBuilder
     private var fieldStatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Fields (\(viewModel.discoveredFields.count))")
+            Text("Fields (\(studioState.discoveredFields.count))")
                 .font(.headline)
 
-            let groupedFields = Dictionary(grouping: viewModel.discoveredFields) { $0.inferredType }
+            let groupedFields = Dictionary(grouping: studioState.discoveredFields) { $0.inferredType }
             let sortedKeys = groupedFields.keys.sorted { $0.rawValue < $1.rawValue }
 
             ForEach(sortedKeys, id: \.self) { type in
@@ -175,22 +175,22 @@ public struct DataStatisticsView: View {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Statistics Formatting
 
     private func computeTypeStatistics() -> [TypeStatistics] {
         var stats: [String: TypeStatistics] = [:]
 
-        for item in viewModel.currentItems {
+        for item in studioState.currentItems {
             let typeName = item.typeName
             if var existing = stats[typeName] {
                 existing.itemCount += 1
-                existing.totalSize += Int64(item.rawSize)
+                existing.totalSize += Int64(item.jsonByteCount)
                 stats[typeName] = existing
             } else {
                 stats[typeName] = TypeStatistics(
                     typeName: typeName,
                     itemCount: 1,
-                    totalSize: Int64(item.rawSize)
+                    totalSize: Int64(item.jsonByteCount)
                 )
             }
         }
@@ -318,7 +318,7 @@ private struct TypeStatRow: View {
 // MARK: - Preview
 
 #Preview {
-    DataStatisticsView(viewModel: AppViewModel.preview(
-        items: PreviewData.userItems
+    DataStatisticsView(studioState: DatabaseStudioState.sample(
+        records: StudioSampleData.userRecords
     ))
 }

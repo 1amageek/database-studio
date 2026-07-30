@@ -1,186 +1,118 @@
-# Database Studio - 仕様書
+# Database Studio 設計仕様
 
-## 概要
+## 目的
 
-FoundationDB + database-framework で構築されたデータストアを閲覧するための macOS アプリケーション。
+Database Studio は、`database-framework` で構築されたデータベースの
+スキーマ、索引、オントロジー、グラフ、およびレコード操作を検査する
+macOS アプリケーションです。
 
-**目的:** 開発者がデータの確認・デバッグを行う
+## 実行境界
 
-**対象ユーザー:** database-framework を使用する開発者
-
----
-
-## ユースケース
-
-### UC1: データのデバッグ（最重要）
-
-「アプリでデータが正しく表示されない。DBに何が保存されているか確認したい」
-
-**フロー:**
-1. FDB に接続
-2. ディレクトリを探す
-3. Type を選択
-4. Items から該当データを探す
-5. JSON の中身を確認
-
-### UC2: データ保存の確認
-
-「コードを書いた。データがちゃんと保存されたか確認したい」
-
-**フロー:**
-1. Type を開く
-2. 新しい Item を探す
-3. 値を確認
-
-### UC3: スキーマの把握
-
-「このデータストアにどんな Type があるか知りたい」
-
-**フロー:**
-1. ディレクトリツリーを展開
-2. Types を確認
-
-### UC4: Index の確認（低頻度）
-
-「Index が正しく設定されているか確認したい」
-
-**フロー:**
-1. ディレクトリを選択
-2. Index 一覧を確認
-
----
-
-## 機能要件
-
-### 必須機能
-
-| 機能 | 説明 |
-|------|------|
-| FDB 接続 | クラスタファイルを指定して接続 |
-| ディレクトリ階層表示 | ツリー形式でディレクトリを表示 |
-| Type 一覧表示 | 各ディレクトリの Types を表示（アイテム数付き） |
-| Items 一覧表示 | 選択した Type の Items をテーブル表示 |
-| Item 詳細表示 | 選択した Item の JSON を表示 |
-
-### 重要機能
-
-| 機能 | 説明 |
-|------|------|
-| JSON コピー | デバッグ用にクリップボードにコピー |
-| Items ソート | ID順、新しい順など |
-
-### オプション機能
-
-| 機能 | 説明 |
-|------|------|
-| Items 検索/フィルタ | ID や値で検索 |
-| Index 一覧表示 | 定義されている Index を表示 |
-| Index 詳細表示 | Index のエントリを表示 |
-
----
-
-## 画面構成
-
-### 3ペイン構成（推奨）
-
-```
-┌─────────────┬───────────────────┬───────────────────┐
-│  Sidebar    │     Content       │      Detail       │
-│             │                   │                   │
-│ Directory   │   Items Table     │   Item Detail     │
-│ + Types     │                   │   (JSON)          │
-│             │                   │                   │
-└─────────────┴───────────────────┴───────────────────┘
+```text
+User interaction
+      |
+DatabaseStudioState
+      |
+      +-- StudioDatabaseSession
+      |       |
+      |       +-- SQLiteStorageEngine / FDBStorageEngine
+      |       +-- DatabaseFormatCatalog validation
+      |       +-- SchemaRegistry / OntologyStore
+      |
+      +-- Authenticated DatabaseWire runtime
+              |
+              +-- query / mutation / graph / ontology / job operations
 ```
 
-### 画面一覧
+`StorageEngine` への直接接続は、canonical database format の検証と
+schema/ontology inspection に限定します。record CRUD、query、statistics は
+アプリケーション固有 runtime の意味論を必要とするため、直接 storage API
+として再実装しません。
 
-| 画面 | 役割 | 表示内容 |
-|------|------|----------|
-| Sidebar | ナビゲーション | ディレクトリ階層 + Types |
-| Content | データ一覧 | Items テーブル（ID, プレビュー, サイズ） |
-| Detail | データ詳細 | Item の JSON 表示 |
-| Inspector | メタ情報（オプション） | Index 一覧、Type 情報 |
+現在 DatabaseWire runtime が未設定の状態では、record operation は
+`StudioError.databaseRuntimeRequired` を返します。空配列、疑似レコード、成功値
+への fallback は行わず、UI がエラーを表示します。
 
-### 状態遷移
+## 状態所有
 
-```
-[未接続] → 接続設定 → [接続済み]
-                          ↓
-                    ディレクトリ選択
-                          ↓
-                      Type 選択
-                          ↓
-                     Items 読み込み
-                          ↓
-                      Item 選択
-                          ↓
-                     詳細表示
-```
+| 型 | 責務 |
+|---|---|
+| `DatabaseStudioState` | 接続、選択、record operation、UI session state |
+| `StudioDatabaseSession` | storage lifecycle、catalog validation、schema/ontology access |
+| `MetricsDashboardState` | monitoring lifecycle と dashboard state |
+| `DatabaseMetricsRecorder` | operation outcome、latency、slow-query history |
+| `ConnectionHistoryStore` | 保存済み database connection history |
+| `QueryHistoryStore` | 保存済み query history |
 
----
+## データフロー
 
-## データモデル
+### 接続と schema inspection
 
-### DirectoryNode
-
-```swift
-struct DirectoryNode {
-    let name: String           // ディレクトリ名
-    let path: [String]         // フルパス
-    var children: [DirectoryNode]  // 子ディレクトリ
-    var types: [TypeInfo]      // このディレクトリの Types
-    let isLeaf: Bool           // 子を持たないか
-}
+```text
+file path
+  -> DatabaseStorageKind detection
+  -> StorageEngine creation
+  -> DatabaseFormatCatalog validation
+  -> SchemaRegistry.loadAll()
+  -> entity navigation tree
 ```
 
-### TypeInfo
+catalog validation に失敗した接続は `.connected` のまま残しません。engine を
+shutdown して session state を破棄し、接続エラーとして扱います。
 
-```swift
-struct TypeInfo {
-    let name: String           // 型名（例: "User"）
-    let itemCount: Int         // アイテム数
-}
+### record operation
+
+```text
+UI intent
+  -> DatabaseStudioState
+  -> StudioDatabaseSession
+  -> authenticated DatabaseWire runtime required
+  -> typed result or typed failure
 ```
 
-### ItemInfo
+DatabaseWire runtime が構成されるまでは、最後の境界で決定的に失敗します。
 
-```swift
-struct ItemInfo {
-    let id: String             // アイテムID
-    let typeName: String       // 型名
-    let rawKey: [UInt8]        // FDB キー
-    let rawValue: [UInt8]      // FDB 値
-    let size: Int              // 値のサイズ
-}
+### import
+
+```text
+selected file
+  -> background Data read
+  -> MainActor parse and ParsedRecordImport ownership
+  -> Array/Dictionary copy-on-write views
+  -> record mutation operation
 ```
 
-### TreeSelection
+import preview と確定処理の間で JSON serialization round-trip を挟みません。
+ID 変換が必要な確定時だけ collection を copy-on-write で変更します。
 
-```swift
-enum TreeSelection {
-    case directory([String])           // ディレクトリパス
-    case type([String], String)        // ディレクトリパス + 型名
-}
+### export
+
+```text
+StudioRecord collection
+  -> selected encoder
+  -> owned Data output
+  -> selected file destination
 ```
 
----
+JSONL と CSV は全行の中間配列を作らず output buffer へ逐次追加します。
+serialize/write failure は `RecordExportError` として UI へ返し、record skip、
+空 `Data`、`Bool` への失敗丸めは行いません。
 
-## 設計方針
+## 不変条件
 
-### シンプルさを優先
+- database semantics を Studio の direct-storage layer に複製しない。
+- canonical database format を持たない storage を接続成功にしない。
+- 未構成の record runtime を空結果や成功として扱わない。
+- import/export の変換失敗を無視しない。
+- large payload path では、所有 buffer と COW view を維持して不要な
+  re-materialization を避ける。
+- declaration は実装言語、calling convention、ABI、memory layout ではなく、
+  domain responsibility、behavior、state、ownership、lifecycle で命名する。
 
-- 核となる機能に集中する
-- 使用頻度の低い機能（Index詳細など）は後回し
-- 4カラムより3カラムを優先
+## 検証
 
-### 一方向のデータフロー
-
-```
-User Action → ViewModel → Model → View Update
-```
-
-### 非同期処理
-
-- すべての DB 操作は async/await
-- ローディング状態を明示的に管理
+- app build: Xcode project の `Database Studio` scheme
+- app tests: `Database StudioTests`
+- package tests: `GraphDocumentTests` と `DatabaseStudioStateTests`
+- invalid catalog、disconnected operation、RDF literal validation、import/export
+  failure を成功ケースと分離して検証する。

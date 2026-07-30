@@ -9,7 +9,7 @@ public final class VectorWindowState {
     public var entityName: String = ""
 
     /// データソースからドキュメントを再取得するクロージャ
-    public var refreshAction: (@MainActor () async -> VectorDocument?)?
+    public var refreshDocument: (@MainActor () async throws -> VectorDocument?)?
 
     public init() {}
 }

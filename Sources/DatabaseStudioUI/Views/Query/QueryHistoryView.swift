@@ -6,7 +6,7 @@ public struct QueryHistoryView: View {
     let onSelect: (ItemQuery) -> Void
     let onDismiss: () -> Void
 
-    @State private var historyService = QueryHistoryService.shared
+    @State private var queryHistory = QueryHistoryStore.shared
     @State private var refreshTrigger = false
     @State private var showingDeleteConfirmation = false
 
@@ -21,7 +21,7 @@ public struct QueryHistoryView: View {
     }
 
     private var filteredQueries: [SavedQuery] {
-        historyService.queries(for: typeName)
+        queryHistory.queries(for: typeName)
     }
 
     public var body: some View {
@@ -35,11 +35,11 @@ public struct QueryHistoryView: View {
                             QueryHistoryRow(
                                 query: query,
                                 onSelect: {
-                                    historyService.use(query)
+                                    queryHistory.use(query)
                                     onSelect(query.query)
                                 },
                                 onDelete: {
-                                    historyService.remove(query)
+                                    queryHistory.remove(query)
                                     refreshTrigger.toggle()
                                 }
                             )
@@ -72,7 +72,7 @@ public struct QueryHistoryView: View {
         .alert("Clear All Queries?", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Clear", role: .destructive) {
-                historyService.clearAll()
+                queryHistory.clearAll()
                 refreshTrigger.toggle()
             }
         } message: {
@@ -158,7 +158,7 @@ public struct SaveQuerySheet: View {
     let onCancel: () -> Void
 
     @State private var queryName: String = ""
-    @State private var historyService = QueryHistoryService.shared
+    @State private var queryHistory = QueryHistoryStore.shared
 
     public init(
         query: ItemQuery,
@@ -193,7 +193,7 @@ public struct SaveQuerySheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let name = queryName.isEmpty ? "Query \(Date().formatted(date: .abbreviated, time: .shortened))" : queryName
-                        historyService.save(name: name, query: query, typeName: typeName)
+                        queryHistory.save(name: name, query: query, typeName: typeName)
                         onSave()
                     }
                     .disabled(!query.hasConditions)

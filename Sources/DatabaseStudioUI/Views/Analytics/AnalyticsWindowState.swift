@@ -9,7 +9,7 @@ public final class AnalyticsWindowState {
     public var entityName: String = ""
 
     /// データソースからドキュメントを再取得するクロージャ
-    public var refreshAction: (@MainActor () async -> AnalyticsDocument?)?
+    public var refreshDocument: (@MainActor () async throws -> AnalyticsDocument?)?
 
     public init() {}
 }

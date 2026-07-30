@@ -146,14 +146,14 @@ private func isOwlThing(_ id: String, label: String) -> Bool {
 /// - `http://example.org/onto#Person` → `Person`
 /// - `ex:Person` → `Person`
 func localName(_ iri: String) -> String {
-    if let idx = iri.lastIndex(of: "#") {
-        return String(iri[iri.index(after: idx)...])
+    if let delimiterIndex = iri.lastIndex(of: "#") {
+        return String(iri[iri.index(after: delimiterIndex)...])
     }
-    if let idx = iri.lastIndex(of: "/") {
-        return String(iri[iri.index(after: idx)...])
+    if let delimiterIndex = iri.lastIndex(of: "/") {
+        return String(iri[iri.index(after: delimiterIndex)...])
     }
-    if let idx = iri.lastIndex(of: ":") {
-        return String(iri[iri.index(after: idx)...])
+    if let delimiterIndex = iri.lastIndex(of: ":") {
+        return String(iri[iri.index(after: delimiterIndex)...])
     }
     return iri
 }

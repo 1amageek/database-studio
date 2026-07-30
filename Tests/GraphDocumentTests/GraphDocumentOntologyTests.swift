@@ -6,7 +6,7 @@ import Graph
 @Suite("GraphDocument Ontology Constructor")
 struct GraphDocumentOntologyTests {
 
-    // MARK: - Helpers
+    // MARK: - Ontology Test Data
 
     private func makeOntology(
         classes: [OWLClass] = [],
@@ -30,9 +30,9 @@ struct GraphDocumentOntologyTests {
         let ontology = makeOntology(classes: [
             OWLClass(iri: "http://example.org/Person", label: "Person"),
         ])
-        let doc = GraphDocument(ontology: ontology)
+        let graphDocument = GraphDocument(ontology: ontology)
 
-        let personNode = doc.nodes.first { $0.id == "http://example.org/Person" }
+        let personNode = graphDocument.nodes.first { $0.id == "http://example.org/Person" }
         #expect(personNode != nil)
         #expect(personNode?.role == .type)
         #expect(personNode?.source == .ontology)
@@ -56,9 +56,9 @@ struct GraphDocumentOntologyTests {
                 ),
             ]
         )
-        let doc = GraphDocument(ontology: ontology)
+        let graphDocument = GraphDocument(ontology: ontology)
 
-        let edge = doc.edges.first { $0.edgeKind == .subClassOf }
+        let edge = graphDocument.edges.first { $0.edgeKind == .subClassOf }
         #expect(edge != nil)
         #expect(edge?.sourceID == "http://example.org/Employee")
         #expect(edge?.targetID == "http://example.org/Person")
@@ -83,9 +83,9 @@ struct GraphDocumentOntologyTests {
                 ),
             ]
         )
-        let doc = GraphDocument(ontology: ontology)
+        let graphDocument = GraphDocument(ontology: ontology)
 
-        let edge = doc.edges.first { $0.edgeKind == .property }
+        let edge = graphDocument.edges.first { $0.edgeKind == .property }
         #expect(edge != nil)
         #expect(edge?.sourceID == "http://example.org/Person")
         #expect(edge?.targetID == "http://example.org/Department")
@@ -110,13 +110,13 @@ struct GraphDocumentOntologyTests {
                 ),
             ]
         )
-        let doc = GraphDocument(ontology: ontology)
+        let graphDocument = GraphDocument(ontology: ontology)
 
-        let person = doc.nodes.first { $0.id == "http://example.org/Person" }
+        let person = graphDocument.nodes.first { $0.id == "http://example.org/Person" }
         #expect(person != nil)
         #expect(person?.metadata["dp:age"] != nil)
         // DataProperty はエッジにならない
-        #expect(doc.edges.isEmpty)
+        #expect(graphDocument.edges.isEmpty)
     }
 
     // MARK: - 参照整合性
@@ -140,9 +140,9 @@ struct GraphDocumentOntologyTests {
                 ),
             ]
         )
-        let doc = GraphDocument(ontology: ontology)
-        let nodeIDs = Set(doc.nodes.map(\.id))
-        for edge in doc.edges {
+        let graphDocument = GraphDocument(ontology: ontology)
+        let nodeIDs = Set(graphDocument.nodes.map(\.id))
+        for edge in graphDocument.edges {
             #expect(nodeIDs.contains(edge.sourceID))
             #expect(nodeIDs.contains(edge.targetID))
         }
@@ -155,8 +155,8 @@ struct GraphDocumentOntologyTests {
         let ontology = makeOntology(classes: [
             OWLClass(iri: "http://example.org/onto#MyClass"),
         ])
-        let doc = GraphDocument(ontology: ontology)
-        let node = doc.nodes.first { $0.id == "http://example.org/onto#MyClass" }
+        let graphDocument = GraphDocument(ontology: ontology)
+        let node = graphDocument.nodes.first { $0.id == "http://example.org/onto#MyClass" }
         #expect(node?.label == "MyClass")
     }
 
@@ -167,8 +167,8 @@ struct GraphDocumentOntologyTests {
         let ontology = makeOntology(classes: [
             OWLClass(iri: "http://example.org/Person", comment: "A human being"),
         ])
-        let doc = GraphDocument(ontology: ontology)
-        let node = doc.nodes.first { $0.id == "http://example.org/Person" }
+        let graphDocument = GraphDocument(ontology: ontology)
+        let node = graphDocument.nodes.first { $0.id == "http://example.org/Person" }
         #expect(node?.metadata["comment"] == "A human being")
     }
 
@@ -184,9 +184,9 @@ struct GraphDocumentOntologyTests {
                 ),
             ]
         )
-        let doc = GraphDocument(ontology: ontology)
-        #expect(doc.nodes.contains { $0.id == "http://example.org/Child" })
-        #expect(doc.nodes.contains { $0.id == "http://example.org/Parent" })
-        #expect(doc.nodes.first { $0.id == "http://example.org/Child" }?.role == .type)
+        let graphDocument = GraphDocument(ontology: ontology)
+        #expect(graphDocument.nodes.contains { $0.id == "http://example.org/Child" })
+        #expect(graphDocument.nodes.contains { $0.id == "http://example.org/Parent" })
+        #expect(graphDocument.nodes.first { $0.id == "http://example.org/Child" }?.role == .type)
     }
 }

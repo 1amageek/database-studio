@@ -3,7 +3,7 @@ import SwiftUI
 /// Item編集モード
 public enum ItemEditorMode: Equatable {
     case create
-    case edit(DecodedItem)
+    case edit(StudioRecord)
 
     public static func == (lhs: ItemEditorMode, rhs: ItemEditorMode) -> Bool {
         switch (lhs, rhs) {
@@ -45,9 +45,16 @@ public struct ItemEditorView: View {
         case .create:
             _itemID = State(initialValue: UUID().uuidString)
             _jsonText = State(initialValue: "{\n  \n}")
+            _validationError = State(initialValue: nil)
         case .edit(let item):
             _itemID = State(initialValue: item.id)
-            _jsonText = State(initialValue: item.prettyJSON)
+            do {
+                _jsonText = State(initialValue: try item.formattedJSON())
+                _validationError = State(initialValue: nil)
+            } catch {
+                _jsonText = State(initialValue: "")
+                _validationError = State(initialValue: error.localizedDescription)
+            }
         }
     }
 
@@ -193,15 +200,21 @@ public struct ItemEditorView: View {
     }
 
     private func formatJSON() {
-        guard let data = jsonText.data(using: .utf8) else { return }
+        guard let data = jsonText.data(using: .utf8) else {
+            validationError = "Invalid UTF-8 encoding"
+            return
+        }
         do {
             let json = try JSONSerialization.jsonObject(with: data, options: [])
             let formatted = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-            if let formattedString = String(data: formatted, encoding: .utf8) {
-                jsonText = formattedString
+            guard let formattedString = String(data: formatted, encoding: .utf8) else {
+                validationError = "Formatted JSON is not valid UTF-8"
+                return
             }
+            jsonText = formattedString
+            validationError = nil
         } catch {
-            // JSON is invalid — leave text unchanged, validation will show the error
+            validationError = "Invalid JSON: \(error.localizedDescription)"
         }
     }
 
@@ -301,7 +314,7 @@ public struct DeleteConfirmationView: View {
 
 #Preview("Edit Mode") {
     ItemEditorView(
-        mode: .edit(PreviewData.userItems[0]),
+        mode: .edit(StudioSampleData.userRecords[0]),
         typeName: "User",
         onSave: { id, json in
             print("Save: \(id), \(json)")

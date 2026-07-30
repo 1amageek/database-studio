@@ -6,26 +6,26 @@ typealias SPARQLBinding = [String: String]
 /// SPARQL クエリをインメモリトリプルストアに対して評価する
 struct SPARQLEvaluator: Sendable {
 
-    private let store: InMemoryTripleStore
+    private let dataset: SPARQLDataset
     private let prefixes: [String: String]
 
     /// 中間結果の安全上限
     private static let maxIntermediateResults = 100_000
 
     /// 共通プレフィックス
-    private static let defaultPrefixes: [String: String] = [
+    private static let standardNamespacePrefixes: [String: String] = [
         "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
         "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
         "owl": "http://www.w3.org/2002/07/owl#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
     ]
 
-    init(store: InMemoryTripleStore, prefixes: [String: String]) {
-        var merged = Self.defaultPrefixes
+    init(dataset: SPARQLDataset, prefixes: [String: String]) {
+        var merged = Self.standardNamespacePrefixes
         for (k, v) in prefixes {
             merged[k] = v
         }
-        self.store = store
+        self.dataset = dataset
         self.prefixes = merged
     }
 
@@ -151,7 +151,7 @@ struct SPARQLEvaluator: Sendable {
         let p = resolveTerm(pattern.predicate, binding: binding)
         let o = resolveTerm(pattern.object, binding: binding)
 
-        let matches = store.match(subject: s, predicate: p, object: o)
+        let matches = dataset.match(subject: s, predicate: p, object: o)
 
         return matches.compactMap { triple in
             var newBinding = binding
@@ -457,9 +457,9 @@ struct SPARQLEvaluator: Sendable {
             var groupMap: [String: [SPARQLBinding]] = [:]
             var keyOrder: [String] = []
             for binding in bindings {
-                let key = try groupExprs.map { expr -> String in
-                    let val = try evaluateFilterExpr(expr, binding: binding)
-                    return val.stringValue
+                let key = try groupExprs.map { expression -> String in
+                    let evaluatedValue = try evaluateFilterExpr(expression, binding: binding)
+                    return evaluatedValue.stringValue
                 }.joined(separator: "\0")
 
                 if groupMap[key] == nil {

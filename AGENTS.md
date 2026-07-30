@@ -111,6 +111,32 @@ Directory Layer は階層的な名前空間を管理する仕組み。Unix フ�
 - NavigationSplitView for 3ペイン構成
 - すべてのDB操作は async/await
 
+### API and Function Naming
+
+- Apply these naming rules to public, package, internal, private, test,
+  generated-support, and host-boundary declarations and file names.
+- Name every declaration for its domain responsibility, observable behavior,
+  event, state transition, ownership, or lifecycle contract. An implementation
+  mechanism is never sufficient justification for a name.
+- Follow the Swift API Design Guidelines. Side-effecting operations use verb
+  phrases, nonmutating values read as nouns or properties, and declarations
+  read grammatically at their call sites.
+- Keep implementation language, ABI, calling convention, module identity,
+  binary format, toolchain, build mode, and memory-layout strategy out of names.
+- A protocol or platform term is allowed only when it is the externally selected
+  semantic adapter, not merely how the implementation happens to work.
+- Name callbacks for the event they handle or the state transition they perform.
+  Express an ABI boundary through its type and attribute rather than the Swift
+  declaration name.
+- Keep externally fixed symbol spellings only inside ABI attributes, import
+  descriptors, or protocol constants. Give the Swift or TypeScript declaration
+  that wraps the symbol a semantic name.
+- Distinguish implementations by behavior, ownership, or lifecycle. Vague names
+  such as `regular`, `legacy`, `impl`, `helper`, `manager`, or a bare `callback`
+  are review failures unless the declaration's domain contract makes the term
+  precise.
+- Rename touched violations before considering this package complete.
+
 ---
 
 ## ビルド方法
@@ -456,9 +482,9 @@ extension Schema {
 }
 ```
 
-### AnyIndexDescriptor との類似性
+### IndexDescriptorMetadata との類似性
 
-| 観点 | AnyIndexDescriptor | Schema.Ontology |
+| 観点 | IndexDescriptorMetadata | Schema.Ontology |
 |------|-------------------|-----------------|
 | 配置 | Core | Core |
 | 具象型 | IndexDescriptor | OWLOntology (Graph) |

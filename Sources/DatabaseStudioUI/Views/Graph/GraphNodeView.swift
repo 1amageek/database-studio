@@ -12,7 +12,7 @@ struct GraphNodeView: View {
     var body: some View {
         let style = GraphNodeStyle.style(for: node.role)
         let radius = mapping?.nodeRadius(for: node, baseRadius: style.radius) ?? style.radius
-        let color = mapping?.nodeColor(for: node, defaultColor: style.color) ?? style.color
+        let color = mapping?.nodeColor(for: node, baseColor: style.color) ?? style.color
         let highlighted = node.isHighlighted || (mapping?.highlightedPath.contains(node.id) ?? false)
 
         ZStack {

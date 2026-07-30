@@ -9,7 +9,7 @@ public final class MapWindowState {
     public var entityName: String = ""
 
     /// データソースからドキュメントを再取得するクロージャ
-    public var refreshAction: (@MainActor () async -> MapDocument?)?
+    public var refreshDocument: (@MainActor () async throws -> MapDocument?)?
 
     public init() {}
 }

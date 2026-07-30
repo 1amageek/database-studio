@@ -57,7 +57,7 @@ struct GraphInspectorView: View {
         }
     }
 
-    private var regularMetadata: [(key: String, value: String)] {
+    private var nonLinkMetadata: [(key: String, value: String)] {
         node.metadata
             .filter { !Self.urlKeys.contains($0.key) }
             .sorted(by: { $0.key < $1.key })
@@ -217,9 +217,9 @@ struct GraphInspectorView: View {
             }
 
             // Metadata
-            if !regularMetadata.isEmpty {
+            if !nonLinkMetadata.isEmpty {
                 Section("Metadata") {
-                    ForEach(regularMetadata, id: \.key) { key, value in
+                    ForEach(nonLinkMetadata, id: \.key) { key, value in
                         LabeledContent(key, value: value)
                     }
                 }
@@ -322,7 +322,7 @@ struct GraphInspectorView: View {
         .listStyle(.sidebar)
     }
 
-    // MARK: - Helpers
+    // MARK: - Metadata Presentation
 
     private func nodeLabel(for id: String) -> String {
         allNodes.first { $0.id == id }?.label ?? localName(id)
@@ -354,4 +354,3 @@ struct GraphInspectorView: View {
         }
     }
 }
-

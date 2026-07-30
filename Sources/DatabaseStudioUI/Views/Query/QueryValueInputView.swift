@@ -34,8 +34,8 @@ struct QueryValueInputView: View {
                         return ""
                     },
                     set: { newValue in
-                        if let num = Double(newValue) {
-                            value = .number(num)
+                        if let number = Double(newValue) {
+                            value = .number(number)
                         } else {
                             value = .string(newValue)
                         }

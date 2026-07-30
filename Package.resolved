@@ -1,15 +1,6 @@
 {
-  "originHash" : "4520cdb7888a560e7d26be95c9eaa709e5fbc303c233b12463cc2e32573e4c6a",
+  "originHash" : "e398e4ddff2d8217629183adbc04df77b01e2766381bcf7efb68747547d25177",
   "pins" : [
-    {
-      "identity" : "fdb-swift-bindings",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1amageek/fdb-swift-bindings.git",
-      "state" : {
-        "revision" : "cfa638d6801ebf1853278b5884564949c40be4fa",
-        "version" : "0.1.0"
-      }
-    },
     {
       "identity" : "postgres-nio",
       "kind" : "remoteSourceControl",
@@ -65,30 +56,12 @@
       }
     },
     {
-      "identity" : "swift-configuration",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-configuration.git",
-      "state" : {
-        "revision" : "be76c4ad929eb6c4bcaf3351799f2adf9e6848a9",
-        "version" : "1.2.0"
-      }
-    },
-    {
       "identity" : "swift-crypto",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
         "revision" : "6f70fa9eab24c1fd982af18c281c4525d05e3095",
         "version" : "4.2.0"
-      }
-    },
-    {
-      "identity" : "swift-hnsw",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1amageek/swift-hnsw.git",
-      "state" : {
-        "revision" : "73ffbc10b587ca1c1c9203a580b8d4de7878a26e",
-        "version" : "0.4.0"
       }
     },
     {
@@ -161,15 +134,6 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
-      }
-    },
-    {
-      "identity" : "swift-yaml",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1amageek/swift-yaml.git",
-      "state" : {
-        "revision" : "8a33d36bca390d9518d5f7e483cbbaa011da5f76",
-        "version" : "1.0.1"
       }
     }
   ],

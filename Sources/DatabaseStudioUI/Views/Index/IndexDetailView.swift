@@ -3,9 +3,9 @@ import Core
 
 /// インデックス詳細ビュー
 public struct IndexDetailView: View {
-    let index: AnyIndexDescriptor
+    let index: IndexDescriptorMetadata
 
-    public init(index: AnyIndexDescriptor) {
+    public init(index: IndexDescriptorMetadata) {
         self.index = index
     }
 
@@ -104,7 +104,7 @@ public struct IndexDetailView: View {
                         Text(key)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(metadataValueString(value))
+                        Text(displayText(for: value))
                             .font(.system(.body, design: .monospaced))
                     }
                 }
@@ -175,14 +175,15 @@ public struct IndexDetailView: View {
         }
     }
 
-    private func metadataValueString(_ value: IndexMetadataValue) -> String {
+    private func displayText(for value: IndexMetadataValue) -> String {
         switch value {
-        case .string(let s): return s
-        case .int(let i): return "\(i)"
-        case .double(let d): return String(format: "%.4f", d)
-        case .bool(let b): return b ? "true" : "false"
-        case .stringArray(let arr): return arr.joined(separator: ", ")
-        case .intArray(let arr): return arr.map(String.init).joined(separator: ", ")
+        case .string(let string): return string
+        case .int(let integer): return "\(integer)"
+        case .double(let double): return String(format: "%.4f", double)
+        case .bool(let boolean): return boolean ? "true" : "false"
+        case .stringArray(let strings): return strings.joined(separator: ", ")
+        case .intArray(let integers): return integers.map(String.init).joined(separator: ", ")
+        case .rdfTerm(let term): return term.description
         }
     }
 }
@@ -190,9 +191,9 @@ public struct IndexDetailView: View {
 // MARK: - Previews
 
 #Preview("Index Detail") {
-    IndexDetailView(index: AnyIndexDescriptor(
+    IndexDetailView(index: IndexDescriptorMetadata(
         name: "user_email_idx",
-        kind: AnyIndexKind(
+        kind: IndexKindMetadata(
             identifier: "scalar",
             subspaceStructure: .flat,
             fieldNames: ["email"],

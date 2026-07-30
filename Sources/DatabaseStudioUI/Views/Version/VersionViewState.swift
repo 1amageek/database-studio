@@ -31,11 +31,11 @@ final class VersionViewState {
     /// 比較先バージョン（選択バージョンの1つ前）
     var comparisonVersion: VersionEntry? {
         guard let selected = selectedVersion else { return nil }
-        guard let idx = cachedSortedVersions.firstIndex(where: { $0.id == selected.id }),
-              idx + 1 < cachedSortedVersions.count else {
+        guard let selectedIndex = cachedSortedVersions.firstIndex(where: { $0.id == selected.id }),
+              selectedIndex + 1 < cachedSortedVersions.count else {
             return nil
         }
-        return cachedSortedVersions[idx + 1]
+        return cachedSortedVersions[selectedIndex + 1]
     }
 
     // MARK: - Diff

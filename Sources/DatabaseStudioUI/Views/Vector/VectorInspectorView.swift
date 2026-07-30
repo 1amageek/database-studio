@@ -3,8 +3,8 @@ import SwiftUI
 /// 選択ベクトルポイントの詳細インスペクター
 struct VectorInspectorView: View {
     let point: VectorPoint
-    let knnResults: [VectorSearchResult]
-    let metric: VectorMetric
+    let nearestNeighbors: [NearestNeighborResult]
+    let comparisonMetric: VectorComparisonMetric
 
     var body: some View {
         ScrollView {
@@ -12,7 +12,7 @@ struct VectorInspectorView: View {
                 pointInfoSection
                 embeddingSection
                 fieldsSection
-                if !knnResults.isEmpty {
+                if !nearestNeighbors.isEmpty {
                     knnSection
                 }
             }
@@ -141,10 +141,10 @@ struct VectorInspectorView: View {
 
     private var knnSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(metric.rawValue) Neighbors")
+            Text("\(comparisonMetric.rawValue) Neighbors")
                 .font(.subheadline.weight(.semibold))
 
-            ForEach(Array(knnResults.enumerated()), id: \.element.id) { index, result in
+            ForEach(Array(nearestNeighbors.enumerated()), id: \.element.id) { index, result in
                 HStack {
                     Text("\(index + 1).")
                         .font(.caption.monospacedDigit())
@@ -154,7 +154,7 @@ struct VectorInspectorView: View {
                         .font(.caption)
                         .lineLimit(1)
                     Spacer()
-                    Text(result.formattedSimilarity)
+                    Text(result.formattedScore)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 検索結果1行の表示
+/// Presents one ranked search result and its highlighted snippets.
 struct SearchResultRow: View {
     let result: SearchResult
     let queryTokens: [String]
@@ -9,7 +9,7 @@ struct SearchResultRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top) {
-                // スコアバッジ
+                // Score badge.
                 Text(String(format: "%.2f", result.score))
                     .font(.caption.weight(.bold).monospacedDigit())
                     .padding(.horizontal, 6)
@@ -18,19 +18,19 @@ struct SearchResultRow: View {
                     .foregroundStyle(.blue)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    // ID
+                    // Record identifier.
                     Text(result.item.id)
                         .font(.callout.weight(.medium))
                         .lineLimit(1)
 
-                    // スニペット（ハイライト付き）
+                    // Highlighted snippets.
                     ForEach(Array(result.item.textFields.prefix(2)), id: \.key) { fieldName, text in
                         HStack(alignment: .top, spacing: 4) {
                             Text(fieldName)
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .frame(width: 50, alignment: .trailing)
-                            highlightedText(text: text, fieldName: fieldName)
+                            highlightedText(text)
                                 .font(.caption)
                                 .lineLimit(2)
                                 .foregroundStyle(.secondary)
@@ -43,57 +43,51 @@ struct SearchResultRow: View {
         .contentShape(Rectangle())
     }
 
-    // MARK: - ハイライト
+    // MARK: - Highlighting
 
-    private func highlightedText(text: String, fieldName: String) -> Text {
+    private func highlightedText(_ text: String) -> Text {
         guard !queryTokens.isEmpty else { return Text(text) }
 
-        let lowText = text.lowercased()
-        var highlights: [(range: Range<String.Index>, matched: Bool)] = []
-
-        // マッチ範囲を見つける
+        // Find every matching range.
         var matchedRanges: [Range<String.Index>] = []
         for token in queryTokens {
-            var searchStart = lowText.startIndex
-            while searchStart < lowText.endIndex,
-                  let range = lowText.range(of: token, range: searchStart..<lowText.endIndex) {
+            var searchStart = text.startIndex
+            while searchStart < text.endIndex,
+                  let range = text.range(
+                    of: token,
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: searchStart..<text.endIndex
+                  ) {
                 matchedRanges.append(range)
                 searchStart = range.upperBound
             }
         }
 
-        // マッチ範囲をソートしてマージ
-        let sorted = matchedRanges.sorted { $0.lowerBound < $1.lowerBound }
-        var merged: [Range<String.Index>] = []
-        for range in sorted {
-            if let last = merged.last, last.upperBound >= range.lowerBound {
-                let newEnd = Swift.max(last.upperBound, range.upperBound)
-                merged[merged.count - 1] = last.lowerBound..<newEnd
+        // Merge overlapping ranges.
+        let orderedRanges = matchedRanges.sorted { $0.lowerBound < $1.lowerBound }
+        var mergedRanges: [Range<String.Index>] = []
+        for range in orderedRanges {
+            if let previousRange = mergedRanges.last,
+               previousRange.upperBound >= range.lowerBound {
+                let mergedUpperBound = Swift.max(previousRange.upperBound, range.upperBound)
+                mergedRanges[mergedRanges.count - 1] = previousRange.lowerBound..<mergedUpperBound
             } else {
-                merged.append(range)
+                mergedRanges.append(range)
             }
         }
 
-        // テキストを構築
-        if merged.isEmpty { return Text(text) }
+        guard !mergedRanges.isEmpty else { return Text(text) }
 
-        var result = Text("")
-        var currentIndex = text.startIndex
-
-        for range in merged {
-            if currentIndex < range.lowerBound {
-                result = result + Text(text[currentIndex..<range.lowerBound])
+        var attributedText = AttributedString(text)
+        for range in mergedRanges {
+            guard let lowerBound = AttributedString.Index(range.lowerBound, within: attributedText),
+                  let upperBound = AttributedString.Index(range.upperBound, within: attributedText) else {
+                continue
             }
-            result = result + Text(text[range])
-                .bold()
-                .foregroundStyle(.primary)
-            currentIndex = range.upperBound
+            attributedText[lowerBound..<upperBound].inlinePresentationIntent = .stronglyEmphasized
+            attributedText[lowerBound..<upperBound].foregroundColor = .primary
         }
 
-        if currentIndex < text.endIndex {
-            result = result + Text(text[currentIndex..<text.endIndex])
-        }
-
-        return result
+        return Text(attributedText)
     }
 }

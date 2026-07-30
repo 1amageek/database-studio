@@ -2,10 +2,10 @@ import SwiftUI
 
 /// Connection settings view.
 struct ConnectionSettingsView: View {
-    @Bindable var viewModel: AppViewModel
+    @Bindable var studioState: DatabaseStudioState
     var isRequired: Bool = false
     @Environment(\.dismiss) private var dismiss
-    @State private var historyService = ConnectionHistoryService.shared
+    @State private var connectionHistory = ConnectionHistoryStore.shared
     @State private var refreshTrigger = false
     @State private var isConnecting = false
     @State private var connectTask: Task<Void, Never>?
@@ -32,7 +32,7 @@ struct ConnectionSettingsView: View {
         if isConnecting {
             Section("Status") {
                 ConnectingStatusView(
-                    filePath: viewModel.filePath,
+                    filePath: studioState.filePath,
                     onCancel: cancelConnectionAttempt
                 )
             }
@@ -41,7 +41,7 @@ struct ConnectionSettingsView: View {
 
     @ViewBuilder
     private var errorSection: some View {
-        if let errorPresentation = viewModel.connectionErrorPresentation {
+        if let errorPresentation = studioState.connectionErrorPresentation {
             Section("Error") {
                 ConnectionErrorDetailView(errorPresentation: errorPresentation)
             }
@@ -50,9 +50,9 @@ struct ConnectionSettingsView: View {
 
     @ViewBuilder
     private var favoritesSection: some View {
-        if !historyService.favorites.isEmpty {
+        if !connectionHistory.favorites.isEmpty {
             Section("Favorites") {
-                ForEach(historyService.favorites) { connection in
+                ForEach(connectionHistory.favorites) { connection in
                     ConnectionRowView(
                         connection: connection,
                         onSelect: { selectConnection(connection) },
@@ -66,9 +66,9 @@ struct ConnectionSettingsView: View {
 
     @ViewBuilder
     private var recentsSection: some View {
-        if !historyService.recents.isEmpty {
+        if !connectionHistory.recents.isEmpty {
             Section("Recent") {
-                ForEach(historyService.recents.prefix(5)) { connection in
+                ForEach(connectionHistory.recents.prefix(5)) { connection in
                     ConnectionRowView(
                         connection: connection,
                         onSelect: { selectConnection(connection) },
@@ -80,15 +80,15 @@ struct ConnectionSettingsView: View {
         }
     }
 
-    private var detectedBackend: BackendType {
-        BackendType.detect(from: viewModel.filePath)
+    private var detectedStorageKind: DatabaseStorageKind {
+        DatabaseStorageKind.detect(from: studioState.filePath)
     }
 
     private var connectionSection: some View {
         Section("Connection") {
             LabeledContent("Database File") {
                 HStack {
-                    TextField("Path", text: $viewModel.filePath)
+                    TextField("Path", text: $studioState.filePath)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
 
@@ -98,9 +98,9 @@ struct ConnectionSettingsView: View {
                 }
             }
 
-            if detectedBackend == .foundationDB {
+            if detectedStorageKind == .foundationDB {
                 LabeledContent("Root Path") {
-                    TextField("e.g. app/production", text: $viewModel.rootDirectoryPath)
+                    TextField("e.g. app/production", text: $studioState.rootDirectoryPath)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
                 }
@@ -111,9 +111,9 @@ struct ConnectionSettingsView: View {
             }
 
             HStack {
-                Image(systemName: detectedBackend == .sqlite ? "cylinder" : "server.rack")
+                Image(systemName: detectedStorageKind == .sqlite ? "cylinder" : "server.rack")
                     .foregroundStyle(.secondary)
-                Text(detectedBackend == .sqlite ? "SQLite" : "FoundationDB")
+                Text(detectedStorageKind == .sqlite ? "SQLite" : "FoundationDB")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -138,7 +138,7 @@ struct ConnectionSettingsView: View {
             Button("Connect") {
                 startConnectionAttempt()
             }
-            .disabled(viewModel.filePath.isEmpty || isConnecting)
+            .disabled(studioState.filePath.isEmpty || isConnecting)
         }
     }
 
@@ -151,33 +151,33 @@ struct ConnectionSettingsView: View {
         panel.message = "Select database file (.cluster, .sqlite, or .db)"
 
         if panel.runModal() == .OK, let url = panel.url {
-            viewModel.filePath = url.path
+            studioState.filePath = url.path
         }
     }
 
-    private func selectConnection(_ connection: ConnectionInfo) {
-        viewModel.filePath = connection.filePath
-        viewModel.rootDirectoryPath = connection.rootDirectoryPath
+    private func selectConnection(_ connection: SavedDatabaseConnection) {
+        studioState.filePath = connection.filePath
+        studioState.rootDirectoryPath = connection.rootDirectoryPath
     }
 
     private func connectAndSaveHistory() async {
-        await viewModel.connect()
-        if case .connected = viewModel.connectionState {
-            historyService.addOrUpdate(
-                filePath: viewModel.filePath,
-                rootDirectoryPath: viewModel.rootDirectoryPath
+        await studioState.connect()
+        if case .connected = studioState.connectionState {
+            connectionHistory.addOrUpdate(
+                filePath: studioState.filePath,
+                rootDirectoryPath: studioState.rootDirectoryPath
             )
             dismiss()
         }
     }
 
-    private func toggleFavorite(_ connection: ConnectionInfo) {
-        historyService.toggleFavorite(connection)
+    private func toggleFavorite(_ connection: SavedDatabaseConnection) {
+        connectionHistory.toggleFavorite(connection)
         refreshTrigger.toggle()
     }
 
-    private func deleteConnection(_ connection: ConnectionInfo) {
-        historyService.remove(connection)
+    private func deleteConnection(_ connection: SavedDatabaseConnection) {
+        connectionHistory.remove(connection)
         refreshTrigger.toggle()
     }
 
@@ -199,7 +199,7 @@ struct ConnectionSettingsView: View {
         connectTask?.cancel()
         connectTask = nil
         isConnecting = false
-        viewModel.cancelConnectionAttempt()
+        studioState.cancelConnectionAttempt()
     }
 
 }
@@ -253,7 +253,7 @@ private struct ConnectionErrorDetailView: View {
 
 /// Connection row view.
 private struct ConnectionRowView: View {
-    let connection: ConnectionInfo
+    let connection: SavedDatabaseConnection
     let onSelect: () -> Void
     let onToggleFavorite: () -> Void
     let onDelete: () -> Void
@@ -261,7 +261,7 @@ private struct ConnectionRowView: View {
     var body: some View {
         HStack {
             // Backend icon
-            Image(systemName: connection.backendType == .sqlite ? "cylinder" : "server.rack")
+            Image(systemName: connection.storageKind == .sqlite ? "cylinder" : "server.rack")
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
 
@@ -313,11 +313,11 @@ private struct ConnectionRowView: View {
 // MARK: - Previews
 
 #Preview("Connection Settings") {
-    @Previewable @State var viewModel = AppViewModel()
-    ConnectionSettingsView(viewModel: viewModel)
+    @Previewable @State var studioState = DatabaseStudioState()
+    ConnectionSettingsView(studioState: studioState)
 }
 
 #Preview("Connection Settings - Error") {
-    @Previewable @State var viewModel = AppViewModel.preview(connectionState: .error("Connection refused"))
-    ConnectionSettingsView(viewModel: viewModel)
+    @Previewable @State var studioState = DatabaseStudioState.sample(connectionState: .error("Connection refused"))
+    ConnectionSettingsView(studioState: studioState)
 }

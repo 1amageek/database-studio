@@ -9,7 +9,7 @@ public final class VersionWindowState {
     public var entityName: String = ""
 
     /// データソースからドキュメントを再取得するクロージャ
-    public var refreshAction: (@MainActor () async -> VersionDocument?)?
+    public var refreshDocument: (@MainActor () async -> VersionDocument?)?
 
     public init() {}
 }

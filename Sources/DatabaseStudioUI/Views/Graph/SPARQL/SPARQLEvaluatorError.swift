@@ -11,8 +11,8 @@ enum SPARQLEvaluatorError: Error, Sendable, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .typeError(let msg):
-            return "Type error: \(msg)"
+        case .typeError(let message):
+            return "Type error: \(message)"
         case .unboundVariable(let name):
             return "Unbound variable: ?\(name)"
         case .divisionByZero:
@@ -21,8 +21,8 @@ enum SPARQLEvaluatorError: Error, Sendable, LocalizedError {
             return "Invalid regex pattern: \(pattern)"
         case .resultTooLarge(let count):
             return "Result set too large (\(count) rows). Add a LIMIT clause."
-        case .unsupportedOperation(let op):
-            return "Unsupported operation: \(op)"
+        case .unsupportedOperation(let operation):
+            return "Unsupported operation: \(operation)"
         }
     }
 }

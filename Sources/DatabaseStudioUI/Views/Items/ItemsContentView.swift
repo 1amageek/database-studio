@@ -4,11 +4,11 @@ import Core
 
 /// Items テーブルビュー（中央ペイン）- 選択されたTypeのItemsを表示
 struct ItemsContentView: View {
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
 
     var body: some View {
-        if let typeName = viewModel.selectedEntityName {
-            ItemsTableView(typeName: typeName, viewModel: viewModel)
+        if let typeName = studioState.selectedEntityName {
+            ItemsTableView(typeName: typeName, studioState: studioState)
                 .navigationTitle(typeName)
         } else {
             ContentUnavailableView(
@@ -29,7 +29,7 @@ enum SearchMode: String, CaseIterable {
 /// Items テーブルビュー
 struct ItemsTableView: View {
     let typeName: String
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
     @Environment(\.openWindow) private var openWindow
     @State private var searchText = ""
     @State private var searchMode: SearchMode = .all
@@ -39,15 +39,15 @@ struct ItemsTableView: View {
     @State private var showingImportView = false
     @State private var showingDeleteConfirmation = false
     @State private var errorMessage: String?
-    @State private var sortOrder: [KeyPathComparator<DecodedItem>] = [
+    @State private var sortOrder: [KeyPathComparator<StudioRecord>] = [
         KeyPathComparator(\.id, order: .forward)
     ]
     @State private var selectedIDs: Set<String> = []
-    @State private var columnConfig: ColumnConfig = .default
+    @State private var columnConfig: ColumnConfig = .initialConfiguration
 
-    private var filteredItems: [DecodedItem] {
+    private var filteredItems: [StudioRecord] {
         // First apply query filter
-        var items = QueryExecutor.filter(viewModel.currentItems, with: viewModel.currentQuery)
+        var items = QueryExecutor.filter(studioState.currentItems, with: studioState.currentQuery)
         // Then apply search filter
         if !searchText.isEmpty {
             let searchLower = searchText.lowercased()
@@ -71,12 +71,12 @@ struct ItemsTableView: View {
     }
 
     /// Recursively search for text in JSON structure
-    private func searchInJSON(_ json: [String: Any], for searchText: String) -> Bool {
-        for (_, value) in json {
-            if let str = value as? String, str.lowercased().contains(searchText) {
+    private func searchInJSON(_ fields: [String: Any], for searchText: String) -> Bool {
+        for (_, value) in fields {
+            if let string = value as? String, string.lowercased().contains(searchText) {
                 return true
-            } else if let num = value as? NSNumber {
-                if String(describing: num).contains(searchText) {
+            } else if let number = value as? NSNumber {
+                if String(describing: number).contains(searchText) {
                     return true
                 }
             } else if let nested = value as? [String: Any] {
@@ -85,7 +85,7 @@ struct ItemsTableView: View {
                 }
             } else if let array = value as? [Any] {
                 for element in array {
-                    if let str = element as? String, str.lowercased().contains(searchText) {
+                    if let string = element as? String, string.lowercased().contains(searchText) {
                         return true
                     } else if let nested = element as? [String: Any] {
                         if searchInJSON(nested, for: searchText) {
@@ -98,21 +98,27 @@ struct ItemsTableView: View {
         return false
     }
 
-    private var selectedItems: [DecodedItem] {
+    private var selectedItems: [StudioRecord] {
         filteredItems.filter { selectedIDs.contains($0.id) }
     }
 
-    // JSON field column helpers (max 4 extra columns)
+    // JSON field columns (up to four additional columns)
     private var jsonField0: String? { columnConfig.jsonFieldColumns.indices.contains(0) ? columnConfig.jsonFieldColumns[0] : nil }
     private var jsonField1: String? { columnConfig.jsonFieldColumns.indices.contains(1) ? columnConfig.jsonFieldColumns[1] : nil }
     private var jsonField2: String? { columnConfig.jsonFieldColumns.indices.contains(2) ? columnConfig.jsonFieldColumns[2] : nil }
     private var jsonField3: String? { columnConfig.jsonFieldColumns.indices.contains(3) ? columnConfig.jsonFieldColumns[3] : nil }
 
     var body: some View {
-        if viewModel.isLoadingItems {
+        if studioState.isLoadingItems {
             ProgressView("読み込み中...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if viewModel.currentItems.isEmpty {
+        } else if let failureMessage = studioState.databaseOperationFailureMessage {
+            ContentUnavailableView(
+                "Record Access Unavailable",
+                systemImage: "exclamationmark.triangle",
+                description: Text(failureMessage)
+            )
+        } else if studioState.currentItems.isEmpty {
             ContentUnavailableView(
                 "アイテムがありません",
                 systemImage: "tray",
@@ -126,11 +132,11 @@ struct ItemsTableView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if viewModel.currentQuery.hasConditions {
+                    if studioState.currentQuery.hasConditions {
                         HStack(spacing: 2) {
                             Image(systemName: "line.3.horizontal.decrease.circle.fill")
                                 .font(.caption2)
-                            Text("\(viewModel.currentQuery.conditionCount)")
+                            Text("\(studioState.currentQuery.conditionCount)")
                         }
                         .font(.caption)
                         .foregroundStyle(.blue)
@@ -182,7 +188,7 @@ struct ItemsTableView: View {
                                 .font(.system(.body, design: .monospaced))
                                 .onAppear {
                                     if item.id == filteredItems.last?.id {
-                                        Task { await viewModel.loadMoreItems() }
+                                        Task { await studioState.loadMoreItems() }
                                     }
                                 }
                         }
@@ -236,8 +242,8 @@ struct ItemsTableView: View {
 
                     // Size Column
                     if columnConfig.visibleColumns.contains(.size) {
-                        TableColumn("Size", value: \.rawSize) { item in
-                            Text(item.formattedSize)
+                        TableColumn("Size", value: \.jsonByteCount) { item in
+                            Text(item.formattedJSONSize)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -246,11 +252,11 @@ struct ItemsTableView: View {
                 }
                 .tableStyle(.inset)
                 .onChange(of: selectedIDs) { _, newValue in
-                    viewModel.selectItems(ids: newValue)
+                    studioState.selectItems(ids: newValue)
                 }
 
                 // 追加読み込みインジケーター
-                if viewModel.isLoadingMoreItems {
+                if studioState.isLoadingMoreItems {
                     HStack {
                         Spacer()
                         ProgressView()
@@ -275,7 +281,7 @@ struct ItemsTableView: View {
                     mode: .create,
                     typeName: typeName,
                     onSave: { id, json in
-                        try await viewModel.createItem(id: id, json: json)
+                        try await studioState.createItem(id: id, fields: json)
                     },
                     onCancel: {
                         showingCreateEditor = false
@@ -286,7 +292,7 @@ struct ItemsTableView: View {
                 ImportView(
                     typeName: typeName,
                     onImport: { records in
-                        try await viewModel.importItems(records: records)
+                        try await studioState.importItems(records: records)
                     },
                     onCancel: {
                         showingImportView = false
@@ -298,7 +304,7 @@ struct ItemsTableView: View {
                 Button("Delete", role: .destructive) {
                     Task {
                         do {
-                            try await viewModel.deleteItems(ids: Array(selectedIDs))
+                            try await studioState.deleteItems(ids: Array(selectedIDs))
                             selectedIDs.removeAll()
                         } catch {
                             errorMessage = error.localizedDescription
@@ -314,7 +320,7 @@ struct ItemsTableView: View {
                     Button {
                         showingQueryBuilder = true
                     } label: {
-                        Image(systemName: viewModel.currentQuery.hasConditions
+                        Image(systemName: studioState.currentQuery.hasConditions
                             ? "line.3.horizontal.decrease.circle.fill"
                             : "line.3.horizontal.decrease.circle")
                     }
@@ -323,16 +329,16 @@ struct ItemsTableView: View {
                     .popover(isPresented: $showingQueryBuilder) {
                         QueryBuilderView(
                             query: Binding(
-                                get: { viewModel.currentQuery },
-                                set: { viewModel.currentQuery = $0 }
+                                get: { studioState.currentQuery },
+                                set: { studioState.currentQuery = $0 }
                             ),
-                            availableFields: viewModel.discoveredFields,
+                            availableFields: studioState.discoveredFields,
                             typeName: typeName,
                             onApply: {
                                 showingQueryBuilder = false
                             },
                             onClear: {
-                                viewModel.clearQuery()
+                                studioState.clearQuery()
                             }
                         )
                     }
@@ -346,7 +352,7 @@ struct ItemsTableView: View {
                     .popover(isPresented: $showingColumnConfig) {
                         ColumnConfigurationView(
                             config: $columnConfig,
-                            availableFields: viewModel.discoveredFields
+                            availableFields: studioState.discoveredFields
                         )
                     }
                 }
@@ -354,25 +360,26 @@ struct ItemsTableView: View {
                 // コレクション操作
                 ToolbarItemGroup(placement: .primaryAction) {
                     // Graph ウィンドウを開く（Graph インデックスがある場合のみ）
-                    if let graphIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "graph" }) {
-                        Button {
+                    if let graphIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "graph" }) {
+                        Button { [studioState] in
                             let windowState = GraphWindowState.shared
                             windowState.document = nil
+                            windowState.loadFailureMessage = nil
                             windowState.isLoading = true
                             windowState.entityName = typeName
-                            windowState.loadAction = { [weak viewModel] in
-                                guard let viewModel else { return nil }
-                                let items = await viewModel.loadAllItems(for: typeName)
-                                var doc = GraphDocument(
-                                    items: items,
+                            windowState.loadDocument = { [weak studioState] in
+                                guard let studioState else { throw StudioError.databaseSessionUnavailable }
+                                let items = try await studioState.loadAllItems(for: typeName)
+                                var graphDocument = try GraphDocument(
+                                    records: items,
                                     graphIndex: graphIndex
                                 )
-                                if let ontology = await viewModel.loadOntology() {
-                                    doc.mergeOntology(ontology)
+                                if let ontology = try await studioState.loadOntology() {
+                                    graphDocument.mergeOntology(ontology)
                                 }
-                                return doc
+                                return graphDocument
                             }
-                            windowState.refreshAction = windowState.loadAction
+                            windowState.refreshDocument = windowState.loadDocument
                             openWindow(id: "graph-viewer")
                         } label: {
                             Image(systemName: "point.3.connected.trianglepath.dotted")
@@ -381,32 +388,35 @@ struct ItemsTableView: View {
                     }
 
                     // Map ウィンドウを開く（spatial インデックスまたは lat/lng フィールドがある場合）
-                    if let spatialIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "spatial" }) {
-                        Button {
+                    if let spatialIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "spatial" }) {
+                        Button { [studioState] in
                             Task {
-                                let allItems = await viewModel.loadAllItems(for: typeName)
-                                let items = allItems.map(\.fields)
-                                let latField = spatialIndex.kind.fieldNames.first ?? "latitude"
-                                let lngField = spatialIndex.kind.fieldNames.count > 1 ? spatialIndex.kind.fieldNames[1] : "longitude"
-                                let mapState = MapWindowState.shared
-                                mapState.document = MapDocument(
-                                    items: items,
-                                    entityName: typeName,
-                                    latitudeField: latField,
-                                    longitudeField: lngField
-                                )
-                                mapState.entityName = typeName
-                                mapState.refreshAction = { [weak viewModel] in
-                                    guard let viewModel else { return nil }
-                                    let items = await viewModel.loadAllItems(for: typeName)
-                                    return MapDocument(
-                                        items: items.map(\.fields),
+                                do {
+                                    let records = try await studioState.loadAllItems(for: typeName)
+                                    let latitudeField = spatialIndex.kind.fieldNames.first ?? "latitude"
+                                    let longitudeField = spatialIndex.kind.fieldNames.count > 1 ? spatialIndex.kind.fieldNames[1] : "longitude"
+                                    let mapState = MapWindowState.shared
+                                    mapState.document = MapDocument(
+                                        items: records.map(\.fields),
                                         entityName: typeName,
-                                        latitudeField: latField,
-                                        longitudeField: lngField
+                                        latitudeField: latitudeField,
+                                        longitudeField: longitudeField
                                     )
+                                    mapState.entityName = typeName
+                                    mapState.refreshDocument = { [weak studioState] in
+                                        guard let studioState else { throw StudioError.databaseSessionUnavailable }
+                                        let records = try await studioState.loadAllItems(for: typeName)
+                                        return MapDocument(
+                                            items: records.map(\.fields),
+                                            entityName: typeName,
+                                            latitudeField: latitudeField,
+                                            longitudeField: longitudeField
+                                        )
+                                    }
+                                    openWindow(id: "map-view")
+                                } catch {
+                                    errorMessage = error.localizedDescription
                                 }
-                                openWindow(id: "map-view")
                             }
                         } label: {
                             Image(systemName: "map")
@@ -415,28 +425,31 @@ struct ItemsTableView: View {
                     }
 
                     // Search Console を開く（fulltext インデックスがある場合）
-                    if let fulltextIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "fulltext" }) {
-                        Button {
+                    if let fulltextIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "fulltext" }) {
+                        Button { [studioState] in
                             Task {
-                                let allItems = await viewModel.loadAllItems(for: typeName)
-                                let items = allItems.map(\.fields)
-                                let searchState = SearchWindowState.shared
-                                searchState.document = SearchDocument(
-                                    items: items,
-                                    entityName: typeName,
-                                    textFieldNames: fulltextIndex.kind.fieldNames
-                                )
-                                searchState.entityName = typeName
-                                searchState.refreshAction = { [weak viewModel] in
-                                    guard let viewModel else { return nil }
-                                    let items = await viewModel.loadAllItems(for: typeName)
-                                    return SearchDocument(
-                                        items: items.map(\.fields),
+                                do {
+                                    let records = try await studioState.loadAllItems(for: typeName)
+                                    let searchState = SearchWindowState.shared
+                                    searchState.document = SearchDocument(
+                                        items: records.map(\.fields),
                                         entityName: typeName,
                                         textFieldNames: fulltextIndex.kind.fieldNames
                                     )
+                                    searchState.entityName = typeName
+                                    searchState.refreshDocument = { [weak studioState] in
+                                        guard let studioState else { throw StudioError.databaseSessionUnavailable }
+                                        let records = try await studioState.loadAllItems(for: typeName)
+                                        return SearchDocument(
+                                            items: records.map(\.fields),
+                                            entityName: typeName,
+                                            textFieldNames: fulltextIndex.kind.fieldNames
+                                        )
+                                    }
+                                    openWindow(id: "search-console")
+                                } catch {
+                                    errorMessage = error.localizedDescription
                                 }
-                                openWindow(id: "search-console")
                             }
                         } label: {
                             Image(systemName: "magnifyingglass")
@@ -445,29 +458,32 @@ struct ItemsTableView: View {
                     }
 
                     // Vector Explorer を開く（vector インデックスがある場合）
-                    if let vectorIndex = viewModel.selectedEntity?.indexes.first(where: { $0.kind.identifier == "vector" }) {
-                        Button {
+                    if let vectorIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "vector" }) {
+                        Button { [studioState] in
                             Task {
-                                let allItems = await viewModel.loadAllItems(for: typeName)
-                                let items = allItems.map(\.fields)
-                                let embeddingField = vectorIndex.kind.fieldNames.first ?? "embedding"
-                                let vectorState = VectorWindowState.shared
-                                vectorState.document = VectorDocument(
-                                    items: items,
-                                    entityName: typeName,
-                                    embeddingField: embeddingField
-                                )
-                                vectorState.entityName = typeName
-                                vectorState.refreshAction = { [weak viewModel] in
-                                    guard let viewModel else { return nil }
-                                    let items = await viewModel.loadAllItems(for: typeName)
-                                    return VectorDocument(
-                                        items: items.map(\.fields),
+                                do {
+                                    let records = try await studioState.loadAllItems(for: typeName)
+                                    let embeddingField = vectorIndex.kind.fieldNames.first ?? "embedding"
+                                    let vectorState = VectorWindowState.shared
+                                    vectorState.document = try VectorDocument(
+                                        records: records,
                                         entityName: typeName,
                                         embeddingField: embeddingField
                                     )
+                                    vectorState.entityName = typeName
+                                    vectorState.refreshDocument = { [weak studioState] in
+                                        guard let studioState else { throw StudioError.databaseSessionUnavailable }
+                                        let records = try await studioState.loadAllItems(for: typeName)
+                                        return try VectorDocument(
+                                            records: records,
+                                            entityName: typeName,
+                                            embeddingField: embeddingField
+                                        )
+                                    }
+                                    openWindow(id: "vector-explorer")
+                                } catch {
+                                    errorMessage = error.localizedDescription
                                 }
-                                openWindow(id: "vector-explorer")
                             }
                         } label: {
                             Image(systemName: "cube.transparent")
@@ -476,25 +492,28 @@ struct ItemsTableView: View {
                     }
 
                     // Analytics ダッシュボード（常時表示）
-                    Button {
+                    Button { [studioState] in
                         Task {
-                            let allItems = await viewModel.loadAllItems(for: typeName)
-                            let items = allItems.map(\.fields)
-                            let analyticsState = AnalyticsWindowState.shared
-                            analyticsState.document = AnalyticsDocument(
-                                items: items,
-                                entityName: typeName
-                            )
-                            analyticsState.entityName = typeName
-                            analyticsState.refreshAction = { [weak viewModel] in
-                                guard let viewModel else { return nil }
-                                let items = await viewModel.loadAllItems(for: typeName)
-                                return AnalyticsDocument(
-                                    items: items.map(\.fields),
+                            do {
+                                let records = try await studioState.loadAllItems(for: typeName)
+                                let analyticsState = AnalyticsWindowState.shared
+                                analyticsState.document = AnalyticsDocument(
+                                    items: records.map(\.fields),
                                     entityName: typeName
                                 )
+                                analyticsState.entityName = typeName
+                                analyticsState.refreshDocument = { [weak studioState] in
+                                    guard let studioState else { throw StudioError.databaseSessionUnavailable }
+                                    let records = try await studioState.loadAllItems(for: typeName)
+                                    return AnalyticsDocument(
+                                        items: records.map(\.fields),
+                                        entityName: typeName
+                                    )
+                                }
+                                openWindow(id: "analytics-dashboard")
+                            } catch {
+                                errorMessage = error.localizedDescription
                             }
-                            openWindow(id: "analytics-dashboard")
                         }
                     } label: {
                         Image(systemName: "chart.bar")
@@ -511,7 +530,7 @@ struct ItemsTableView: View {
 
                         Menu("Export") {
                             Button("JSON") { exportItems(format: .json) }
-                            Button("JSONL") { exportItems(format: .jsonl) }
+                            Button("JSONL") { exportItems(format: .jsonLines) }
                             Button("CSV") { exportItems(format: .csv) }
                         }
 
@@ -527,7 +546,7 @@ struct ItemsTableView: View {
                             Button {
                                 copySelectedIDs()
                             } label: {
-                                Label("Copy Selected IDs", systemImage: "doc.on.doc")
+                                Label("Copy Selected IDs", systemImage: "graphDocument.on.graphDocument")
                             }
 
                             Divider()
@@ -553,8 +572,8 @@ struct ItemsTableView: View {
 
                     Button {
                         Task {
-                            if let entityName = viewModel.selectedEntityName {
-                                await viewModel.loadItems(for: entityName)
+                            if let entityName = studioState.selectedEntityName {
+                                await studioState.loadItems(for: entityName)
                             }
                         }
                     } label: {
@@ -569,23 +588,31 @@ struct ItemsTableView: View {
 
     // MARK: - Export
 
-    private func exportItems(format: ExportFormat) {
-        _ = ExportService.exportAndSave(
-            items: filteredItems,
-            typeName: typeName,
-            format: format,
-            fields: viewModel.discoveredFields
-        )
+    private func exportItems(format: RecordExportFormat) {
+        do {
+            try RecordExporter.exportToSelectedDestination(
+                records: filteredItems,
+                typeName: typeName,
+                format: format,
+                fields: studioState.discoveredFields
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
-    private func exportSelectedItems(format: ExportFormat) {
+    private func exportSelectedItems(format: RecordExportFormat) {
         guard !selectedItems.isEmpty else { return }
-        _ = ExportService.exportAndSave(
-            items: selectedItems,
-            typeName: "\(typeName)_selected",
-            format: format,
-            fields: viewModel.discoveredFields
-        )
+        do {
+            try RecordExporter.exportToSelectedDestination(
+                records: selectedItems,
+                typeName: "\(typeName)_selected",
+                format: format,
+                fields: studioState.discoveredFields
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func copySelectedIDs() {
@@ -595,58 +622,58 @@ struct ItemsTableView: View {
         NSPasteboard.general.setString(ids, forType: .string)
     }
 
-    // MARK: - Helpers
+    // MARK: - Item Preview Formatting
 
-    private func jsonPreview(_ json: [String: Any]) -> String {
-        let keys = json.keys.sorted().prefix(3)
+    private func jsonPreview(_ fields: [String: Any]) -> String {
+        let keys = fields.keys.sorted().prefix(3)
         let preview = keys.map { key in
-            let value = json[key]
-            let valueStr: String
-            if let str = value as? String {
-                valueStr = "\"\(str)\""
-            } else if let num = value as? NSNumber {
-                valueStr = "\(num)"
+            let value = fields[key]
+            let valueText: String
+            if let string = value as? String {
+                valueText = "\"\(string)\""
+            } else if let number = value as? NSNumber {
+                valueText = "\(number)"
             } else {
-                valueStr = "..."
+                valueText = "..."
             }
-            return "\(key): \(valueStr)"
+            return "\(key): \(valueText)"
         }.joined(separator: ", ")
-        return "{ \(preview)\(json.count > 3 ? ", ..." : "") }"
+        return "{ \(preview)\(fields.count > 3 ? ", ..." : "") }"
     }
 }
 
 // MARK: - Previews
 
 #Preview("Items Table - User") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         connectionState: .connected,
-        entityTree: PreviewData.entityTree,
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: "User",
-        items: PreviewData.userItems,
-        itemsProvider: PreviewData.items(for:)
+        records: StudioSampleData.userRecords,
+        recordsProvider: StudioSampleData.records(for:)
     )
-    ItemsContentView(viewModel: viewModel)
+    ItemsContentView(studioState: studioState)
         .frame(width: 500, height: 400)
 }
 
 #Preview("Items Table - Empty") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         connectionState: .connected,
-        entityTree: PreviewData.entityTree,
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: "User",
-        items: []
+        records: []
     )
-    ItemsContentView(viewModel: viewModel)
+    ItemsContentView(studioState: studioState)
         .frame(width: 500, height: 400)
 }
 
 #Preview("No Type Selected") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         connectionState: .connected,
-        entityTree: PreviewData.entityTree,
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: nil,
-        itemsProvider: PreviewData.items(for:)
+        recordsProvider: StudioSampleData.records(for:)
     )
-    ItemsContentView(viewModel: viewModel)
+    ItemsContentView(studioState: studioState)
         .frame(width: 500, height: 400)
 }

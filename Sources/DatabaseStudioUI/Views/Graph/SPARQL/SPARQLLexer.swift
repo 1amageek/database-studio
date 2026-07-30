@@ -113,8 +113,8 @@ struct SPARQLLexer: Sendable {
         case "-":
             position += 1
             if position < input.count && input[position].isNumber {
-                let num = try readNumber(negative: true)
-                return num
+                let number = try readNumber(negative: true)
+                return number
             }
             return .minus__
 
@@ -131,7 +131,7 @@ struct SPARQLLexer: Sendable {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Token Scanning
 
     private mutating func skipWhitespaceAndComments() {
         while position < input.count {

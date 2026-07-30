@@ -4,31 +4,33 @@ import Core
 
 /// メインビュー（3ペイン構成 + Inspector）
 public struct MainView: View {
-    @State private var viewModel = AppViewModel()
-    @State private var metricsViewModel: MetricsViewModel
+    @State private var studioState = DatabaseStudioState()
+    @State private var metricsDashboardState: MetricsDashboardState
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingConnectionSettings = false
     @State private var showInspector = false
 
     private var isConnectionRequired: Bool {
-        if case .connected = viewModel.connectionState { return false }
+        if case .connected = studioState.connectionState { return false }
         return true
     }
 
     public init() {
-        let vm = AppViewModel()
-        _viewModel = State(initialValue: vm)
-        _metricsViewModel = State(initialValue: MetricsViewModel(metricsService: vm.metricsService))
+        let studioState = DatabaseStudioState()
+        _studioState = State(initialValue: studioState)
+        _metricsDashboardState = State(
+            initialValue: MetricsDashboardState(metricsRecorder: studioState.metricsRecorder)
+        )
     }
 
     private func restoreLastConnection() async {
-        let historyService = ConnectionHistoryService.shared
-        if let last = historyService.mostRecent {
-            viewModel.filePath = last.filePath
-            viewModel.rootDirectoryPath = last.rootDirectoryPath
-            await viewModel.connect()
-            if case .connected = viewModel.connectionState {
-                historyService.addOrUpdate(
+        let connectionHistory = ConnectionHistoryStore.shared
+        if let last = connectionHistory.mostRecent {
+            studioState.filePath = last.filePath
+            studioState.rootDirectoryPath = last.rootDirectoryPath
+            await studioState.connect()
+            if case .connected = studioState.connectionState {
+                connectionHistory.addOrUpdate(
                     filePath: last.filePath,
                     rootDirectoryPath: last.rootDirectoryPath
                 )
@@ -42,24 +44,24 @@ public struct MainView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // サイドバー: ディレクトリツリー + 接続状態
             VStack(spacing: 0) {
-                DirectoryTreeView(viewModel: viewModel)
+                DirectoryTreeView(studioState: studioState)
 
                 Divider()
 
-                ConnectionStatusBar(viewModel: viewModel, showSettings: $showingConnectionSettings)
+                ConnectionStatusBar(studioState: studioState, showSettings: $showingConnectionSettings)
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
         } content: {
             // コンテンツ: Items テーブル
-            ItemsContentView(viewModel: viewModel)
+            ItemsContentView(studioState: studioState)
                 .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
         } detail: {
             // 詳細: Item 詳細
-            DetailPaneView(viewModel: viewModel)
+            DetailPaneView(studioState: studioState)
         }
         .navigationTitle("Database Studio")
         .inspector(isPresented: $showInspector) {
-            InspectorPaneView(viewModel: viewModel, metricsViewModel: metricsViewModel)
+            InspectorPaneView(studioState: studioState, metricsDashboardState: metricsDashboardState)
                 .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
         }
         .toolbar {
@@ -77,7 +79,7 @@ public struct MainView: View {
             await restoreLastConnection()
         }
         .sheet(isPresented: $showingConnectionSettings) {
-            ConnectionSettingsView(viewModel: viewModel, isRequired: isConnectionRequired)
+            ConnectionSettingsView(studioState: studioState, isRequired: isConnectionRequired)
         }
         .interactiveDismissDisabled(isConnectionRequired)
     }
@@ -85,12 +87,12 @@ public struct MainView: View {
 
 /// Detail ペイン（Item 詳細）
 struct DetailPaneView: View {
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
 
     var body: some View {
-        if let item = viewModel.selectedItem {
-            ItemDetailView(item: item, viewModel: viewModel)
-        } else if viewModel.selectedEntityName != nil {
+        if let item = studioState.selectedItem {
+            ItemDetailView(item: item, studioState: studioState)
+        } else if studioState.selectedEntityName != nil {
             ContentUnavailableView(
                 "Itemを選択",
                 systemImage: "doc.text",
@@ -108,12 +110,13 @@ struct DetailPaneView: View {
 
 /// Item 詳細ビュー（JSONビューア）
 struct ItemDetailView: View {
-    let item: DecodedItem
-    let viewModel: AppViewModel
+    let item: StudioRecord
+    let studioState: DatabaseStudioState
     @State private var copied = false
     @State private var showingEditor = false
     @State private var showingDeleteConfirmation = false
     @State private var errorMessage: String?
+    @State private var copyConfirmationTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
@@ -129,10 +132,23 @@ struct ItemDetailView: View {
                         Spacer()
 
                         Button {
-                            copyJSON()
-                            copied = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                copied = false
+                            do {
+                                try copyJSON()
+                                copied = true
+                                copyConfirmationTask?.cancel()
+                                copyConfirmationTask = Task { @MainActor in
+                                    do {
+                                        try await Task.sleep(for: .milliseconds(1500))
+                                    } catch is CancellationError {
+                                        return
+                                    } catch {
+                                        errorMessage = error.localizedDescription
+                                        return
+                                    }
+                                    copied = false
+                                }
+                            } catch {
+                                errorMessage = error.localizedDescription
                             }
                         } label: {
                             Image(systemName: copied ? "checkmark" : "doc.on.doc")
@@ -148,7 +164,7 @@ struct ItemDetailView: View {
 
                         Spacer()
 
-                        Text(item.formattedSize)
+                        Text(item.formattedJSONSize)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -210,7 +226,7 @@ struct ItemDetailView: View {
                 mode: .edit(item),
                 typeName: item.typeName,
                 onSave: { id, json in
-                    try await viewModel.updateItem(id: id, json: json)
+                    try await studioState.updateItem(id: id, fields: json)
                 },
                 onCancel: {
                     showingEditor = false
@@ -222,7 +238,7 @@ struct ItemDetailView: View {
             Button("Delete", role: .destructive) {
                 Task {
                     do {
-                        try await viewModel.deleteItem(id: item.id)
+                        try await studioState.deleteItem(id: item.id)
                     } catch {
                         errorMessage = error.localizedDescription
                     }
@@ -231,12 +247,18 @@ struct ItemDetailView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+        .onDisappear {
+            copyConfirmationTask?.cancel()
+            copyConfirmationTask = nil
+        }
     }
 
-    private func copyJSON() {
+    private func copyJSON() throws {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(item.prettyJSON, forType: .string)
+        guard pasteboard.setString(try item.formattedJSON(), forType: .string) else {
+            throw StudioRecordFormattingError.pasteboardWriteFailed(item.id)
+        }
     }
 }
 
@@ -319,7 +341,7 @@ struct JSONKeyValueView: View {
     }
 
     private var isExpandable: Bool {
-        if let dict = value as? [String: Any], !dict.isEmpty {
+        if let object = value as? [String: Any], !object.isEmpty {
             return true
         }
         if let array = value as? [Any], !array.isEmpty {
@@ -329,8 +351,8 @@ struct JSONKeyValueView: View {
     }
 
     private var collapsedSummary: String {
-        if let dict = value as? [String: Any] {
-            return "{ \(dict.count) fields }"
+        if let object = value as? [String: Any] {
+            return "{ \(object.count) fields }"
         }
         if let array = value as? [Any] {
             return "[ \(array.count) items ]"
@@ -346,9 +368,9 @@ struct JSONNestedContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let dict = value as? [String: Any] {
-                ForEach(dict.keys.sorted(), id: \.self) { key in
-                    JSONKeyValueView(key: key, value: dict[key], depth: depth)
+            if let object = value as? [String: Any] {
+                ForEach(object.keys.sorted(), id: \.self) { key in
+                    JSONKeyValueView(key: key, value: object[key], depth: depth)
                 }
             } else if let array = value as? [Any] {
                 ForEach(Array(array.enumerated()), id: \.offset) { index, element in
@@ -417,7 +439,7 @@ struct JSONArrayElementView: View {
     }
 
     private var isExpandable: Bool {
-        if let dict = value as? [String: Any], !dict.isEmpty {
+        if let object = value as? [String: Any], !object.isEmpty {
             return true
         }
         if let array = value as? [Any], !array.isEmpty {
@@ -427,8 +449,8 @@ struct JSONArrayElementView: View {
     }
 
     private var collapsedSummary: String {
-        if let dict = value as? [String: Any] {
-            return "{ \(dict.count) fields }"
+        if let object = value as? [String: Any] {
+            return "{ \(object.count) fields }"
         }
         if let array = value as? [Any] {
             return "[ \(array.count) items ]"
@@ -453,23 +475,23 @@ struct JSONPrimitiveValueView: View {
 
         if value is NSNull {
             return "null"
-        } else if let str = value as? String {
-            return "\"\(str)\""
-        } else if let num = value as? NSNumber {
-            if CFGetTypeID(num) == CFBooleanGetTypeID() {
-                return num.boolValue ? "true" : "false"
+        } else if let string = value as? String {
+            return "\"\(string)\""
+        } else if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return number.boolValue ? "true" : "false"
             }
-            return "\(num)"
+            return "\(number)"
         } else if let array = value as? [Any] {
             if array.isEmpty {
                 return "[]"
             }
             return "[ \(array.count) items ]"
-        } else if let dict = value as? [String: Any] {
-            if dict.isEmpty {
+        } else if let object = value as? [String: Any] {
+            if object.isEmpty {
                 return "{}"
             }
-            return "{ \(dict.count) fields }"
+            return "{ \(object.count) fields }"
         } else {
             return String(describing: value)
         }
@@ -482,8 +504,8 @@ struct JSONPrimitiveValueView: View {
             return .orange
         } else if value is String {
             return .green
-        } else if let num = value as? NSNumber {
-            if CFGetTypeID(num) == CFBooleanGetTypeID() {
+        } else if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
                 return .orange
             }
             return .cyan
@@ -495,17 +517,17 @@ struct JSONPrimitiveValueView: View {
 
 /// Inspector ペイン（Indexes + Statistics + Schema）
 struct InspectorPaneView: View {
-    let viewModel: AppViewModel
-    let metricsViewModel: MetricsViewModel
+    let studioState: DatabaseStudioState
+    let metricsDashboardState: MetricsDashboardState
     @State private var showSchemaVisualization = false
     @State private var showDataStatistics = false
     @State private var showMetricsDashboard = false
 
     var body: some View {
-        if let entity = viewModel.selectedEntity {
+        if let entity = studioState.selectedEntity {
             List {
                 // Collection Statistics
-                if let stats = viewModel.currentCollectionStats {
+                if let stats = studioState.currentCollectionStats {
                     Section("Statistics") {
                         CollectionStatsView(stats: stats)
                     }
@@ -514,7 +536,7 @@ struct InspectorPaneView: View {
                 // Indexes from Schema.Entity
                 Section("Indexes (\(entity.indexes.count))") {
                     ForEach(entity.indexes, id: \.name) { index in
-                        IndexRowCompact(index: index)
+                        CompactIndexRow(index: index)
                     }
                 }
 
@@ -565,10 +587,10 @@ struct InspectorPaneView: View {
                 SchemaVisualizationView(entity: entity)
             }
             .sheet(isPresented: $showDataStatistics) {
-                DataStatisticsView(viewModel: viewModel)
+                DataStatisticsView(studioState: studioState)
             }
             .sheet(isPresented: $showMetricsDashboard) {
-                MetricsDashboardView(viewModel: metricsViewModel)
+                MetricsDashboardView(studioState: metricsDashboardState)
             }
         } else {
             ContentUnavailableView(
@@ -582,7 +604,7 @@ struct InspectorPaneView: View {
 
 /// サイドバー下部の接続状態バー
 struct ConnectionStatusBar: View {
-    let viewModel: AppViewModel
+    let studioState: DatabaseStudioState
     @Binding var showSettings: Bool
 
     var body: some View {
@@ -590,7 +612,7 @@ struct ConnectionStatusBar: View {
             showSettings = true
         } label: {
             HStack(spacing: 6) {
-                switch viewModel.connectionState {
+                switch studioState.connectionState {
                 case .disconnected:
                     Image(systemName: "circle")
                         .foregroundStyle(.secondary)
@@ -606,7 +628,7 @@ struct ConnectionStatusBar: View {
                 case .connected:
                     Image(systemName: "circle.fill")
                         .foregroundStyle(.green)
-                    Text((viewModel.filePath as NSString).lastPathComponent)
+                    Text((studioState.filePath as NSString).lastPathComponent)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -615,9 +637,9 @@ struct ConnectionStatusBar: View {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundStyle(.red)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(viewModel.connectionErrorPresentation?.title ?? "Connection Error")
+                        Text(studioState.connectionErrorPresentation?.title ?? "Connection Error")
                             .foregroundStyle(.red)
-                        Text((viewModel.connectionErrorPresentation?.message ?? "Open connection settings for details."))
+                        Text((studioState.connectionErrorPresentation?.message ?? "Open connection settings for details."))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -636,35 +658,35 @@ struct ConnectionStatusBar: View {
             .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
-        .help(viewModel.connectionErrorPresentation?.message ?? "")
+        .help(studioState.connectionErrorPresentation?.message ?? "")
     }
 }
 
 // MARK: - Previews
 
 #Preview("Main View - With Inspector") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         connectionState: .connected,
-        entityTree: PreviewData.entityTree,
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: "User",
-        items: PreviewData.userItems,
+        records: StudioSampleData.userRecords,
         selectedItemID: "user_001",
-        itemsProvider: PreviewData.items(for:),
-        collectionStats: PreviewData.userCollectionStats
+        recordsProvider: StudioSampleData.records(for:),
+        collectionStatistics: StudioSampleData.userCollectionStats
     )
     @Previewable @State var columnVisibility: NavigationSplitViewVisibility = .all
     @Previewable @State var showInspector = true
 
     NavigationSplitView(columnVisibility: $columnVisibility) {
-        DirectoryTreeView(viewModel: viewModel)
+        DirectoryTreeView(studioState: studioState)
             .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
     } content: {
-        ItemsContentView(viewModel: viewModel)
+        ItemsContentView(studioState: studioState)
             .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
     } detail: {
-        DetailPaneView(viewModel: viewModel)
+        DetailPaneView(studioState: studioState)
             .inspector(isPresented: $showInspector) {
-                InspectorPaneView(viewModel: viewModel, metricsViewModel: MetricsViewModel(metricsService: viewModel.metricsService))
+                InspectorPaneView(studioState: studioState, metricsDashboardState: MetricsDashboardState(metricsRecorder: studioState.metricsRecorder))
                     .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
             }
     }
@@ -673,26 +695,26 @@ struct ConnectionStatusBar: View {
 }
 
 #Preview("Detail Pane - User") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         connectionState: .connected,
-        entityTree: PreviewData.entityTree,
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: "User",
-        items: PreviewData.userItems,
+        records: StudioSampleData.userRecords,
         selectedItemID: "user_001",
-        itemsProvider: PreviewData.items(for:)
+        recordsProvider: StudioSampleData.records(for:)
     )
-    DetailPaneView(viewModel: viewModel)
+    DetailPaneView(studioState: studioState)
         .frame(width: 500, height: 600)
 }
 
 #Preview("Inspector Pane") {
-    @Previewable @State var viewModel = AppViewModel.preview(
+    @Previewable @State var studioState = DatabaseStudioState.sample(
         connectionState: .connected,
-        entityTree: PreviewData.entityTree,
+        entityTree: StudioSampleData.entityTree,
         selectedEntityName: "User",
-        itemsProvider: PreviewData.items(for:),
-        collectionStats: PreviewData.userCollectionStats
+        recordsProvider: StudioSampleData.records(for:),
+        collectionStatistics: StudioSampleData.userCollectionStats
     )
-    InspectorPaneView(viewModel: viewModel, metricsViewModel: MetricsViewModel(metricsService: viewModel.metricsService))
+    InspectorPaneView(studioState: studioState, metricsDashboardState: MetricsDashboardState(metricsRecorder: studioState.metricsRecorder))
         .frame(width: 300, height: 500)
 }

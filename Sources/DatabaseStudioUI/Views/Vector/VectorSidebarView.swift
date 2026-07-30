@@ -9,8 +9,8 @@ struct VectorSidebarView: View {
             infoSection
             mappingSection
             knnSection
-            if !state.knnResults.isEmpty {
-                knnResultsSection
+            if !state.nearestNeighbors.isEmpty {
+                nearestNeighborsSection
             }
         }
         .listStyle(.sidebar)
@@ -62,11 +62,11 @@ struct VectorSidebarView: View {
 
     private var knnSection: some View {
         Section("KNN Search") {
-            Stepper("K: \(state.kValue)", value: $state.kValue, in: 1...50)
+            Stepper("Neighbors: \(state.neighborLimit)", value: $state.neighborLimit, in: 1...50)
                 .font(.caption)
 
-            Picker("Metric", selection: $state.metric) {
-                ForEach(VectorMetric.allCases) { m in
+            Picker("Metric", selection: $state.comparisonMetric) {
+                ForEach(VectorComparisonMetric.allCases) { m in
                     Text(m.rawValue).tag(m)
                 }
             }
@@ -82,9 +82,9 @@ struct VectorSidebarView: View {
 
     // MARK: - KNN 結果
 
-    private var knnResultsSection: some View {
-        Section("Nearest Neighbors (\(state.knnResults.count))") {
-            ForEach(Array(state.knnResults.enumerated()), id: \.element.id) { index, result in
+    private var nearestNeighborsSection: some View {
+        Section("Nearest Neighbors (\(state.nearestNeighbors.count))") {
+            ForEach(Array(state.nearestNeighbors.enumerated()), id: \.element.id) { index, result in
                 Button {
                     state.selectedPointID = result.id
                 } label: {
@@ -97,7 +97,7 @@ struct VectorSidebarView: View {
                             .font(.callout)
                             .lineLimit(1)
                         Spacer()
-                        Text(result.formattedSimilarity)
+                        Text(result.formattedScore)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }

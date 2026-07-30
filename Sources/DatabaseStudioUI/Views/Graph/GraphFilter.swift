@@ -80,9 +80,9 @@ enum GraphFilterFacet: Hashable, Sendable {
         case .nodeSource(let sources):
             return sources.contains(node.source)
 
-        case .metricThreshold(let metric, let op, let threshold):
+        case .metricThreshold(let metric, let comparison, let threshold):
             guard let value = node.metrics[metric] else { return false }
-            return op.evaluate(value, threshold)
+            return comparison.evaluate(value, threshold)
 
         case .metadataContains(let key, let value):
             let query = value.lowercased()
@@ -177,8 +177,8 @@ enum GraphFilterFacet: Hashable, Sendable {
             }
             return "\(sorted[0]), \(sorted[1]) +\(sorted.count - 2)"
 
-        case .metricThreshold(let metric, let op, let value):
-            return "\(metric) \(op.rawValue) \(String(format: "%.4f", value))"
+        case .metricThreshold(let metric, let comparison, let value):
+            return "\(metric) \(comparison.rawValue) \(String(format: "%.4f", value))"
 
         case .metadataContains(let key, let value):
             if let key {
@@ -286,8 +286,8 @@ enum GraphFilterFacetCategory: CaseIterable, Sendable {
         }
     }
 
-    /// デフォルト値で初期トークンを生成
-    func makeDefaultToken() -> GraphFilterToken {
+    /// Creates the initial token offered by this facet category.
+    func makeInitialToken() -> GraphFilterToken {
         switch self {
         case .nodeRole:
             GraphFilterToken(facet: .nodeRole(Set(GraphNodeRole.allCases)))

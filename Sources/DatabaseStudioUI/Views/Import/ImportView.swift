@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// インポートビュー
+/// Presents record import selection, preview, and confirmation.
 public struct ImportView: View {
     let typeName: String
-    let onImport: ([[String: Any]]) async throws -> Int
+    let onImport: @MainActor ([[String: Any]]) async throws -> Int
     let onCancel: () -> Void
 
-    @State private var importResult: ImportResult?
+    @State private var parsedImport: ParsedRecordImport?
     @State private var isLoading = false
     @State private var isImporting = false
     @State private var errorMessage: String?
@@ -18,7 +18,7 @@ public struct ImportView: View {
 
     public init(
         typeName: String,
-        onImport: @escaping ([[String: Any]]) async throws -> Int,
+        onImport: @escaping @MainActor ([[String: Any]]) async throws -> Int,
         onCancel: @escaping () -> Void
     ) {
         self.typeName = typeName
@@ -29,8 +29,8 @@ public struct ImportView: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if let result = importResult {
-                    importPreview(result)
+                if let parsedImport {
+                    importPreview(parsedImport)
                 } else if isLoading {
                     ProgressView("Reading file...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -38,7 +38,7 @@ public struct ImportView: View {
                     fileSelectionView
                 }
 
-                // エラー/成功メッセージ
+                // Import outcome.
                 if let error = errorMessage {
                     HStack {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -71,10 +71,10 @@ public struct ImportView: View {
                     }
                 }
 
-                if importResult != nil {
+                if parsedImport != nil {
                     ToolbarItem(placement: .automatic) {
                         Button("Select Another File") {
-                            importResult = nil
+                            parsedImport = nil
                             previewRecords = []
                             errorMessage = nil
                         }
@@ -91,7 +91,7 @@ public struct ImportView: View {
                                 await performImport()
                             }
                         }
-                        .disabled(importResult == nil)
+                        .disabled(parsedImport == nil)
                     }
                 }
             }
@@ -124,14 +124,14 @@ public struct ImportView: View {
 
     // MARK: - Import Preview
 
-    private func importPreview(_ result: ImportResult) -> some View {
+    private func importPreview(_ parsedImport: ParsedRecordImport) -> some View {
         VStack(spacing: 0) {
             HStack {
-                Label("\(result.count) records", systemImage: "doc.text")
+                Label("\(parsedImport.recordCount) records", systemImage: "doc.text")
                 Divider().frame(height: 16)
-                Label(result.format.rawValue, systemImage: "doc")
+                Label(parsedImport.format.rawValue, systemImage: "doc")
                 Divider().frame(height: 16)
-                Label(result.sourceURL.lastPathComponent, systemImage: "folder")
+                Label(parsedImport.sourceURL.lastPathComponent, systemImage: "folder")
 
                 Spacer()
 
@@ -144,7 +144,7 @@ public struct ImportView: View {
                         Text("_id").tag("_id")
                         Text("id").tag("id")
                         Text("Auto").tag("__auto__")
-                        ForEach(detectFields(result), id: \.self) { field in
+                        ForEach(detectedFields, id: \.self) { field in
                             if field != "_id" && field != "id" {
                                 Text(field).tag(field)
                             }
@@ -169,8 +169,8 @@ public struct ImportView: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
 
-                            if let id = extractID(from: record) {
-                                Text(id)
+                            if let identifier = extractID(from: record) {
+                                Text(identifier)
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
@@ -186,8 +186,8 @@ public struct ImportView: View {
                     .padding(.vertical, 4)
                 }
 
-                if result.count > 20 {
-                    Text("... and \(result.count - 20) more records")
+                if parsedImport.recordCount > 20 {
+                    Text("... and \(parsedImport.recordCount - 20) more records")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -199,87 +199,81 @@ public struct ImportView: View {
 
     // MARK: - Actions
 
+    @MainActor
     private func selectFile() {
-        guard let url = ImportService.showOpenDialog() else { return }
+        let sourceURL: URL
+        do {
+            guard let selectedURL = try RecordImporter.selectImportSource() else { return }
+            sourceURL = selectedURL
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
 
         isLoading = true
         errorMessage = nil
 
         Task {
             do {
-                let result = try ImportService.parseFile(at: url)
-                await MainActor.run {
-                    self.importResult = result
-                    self.previewRecords = result.getRecords()
-                    self.isLoading = false
-                    if detectFields(result).contains("_id") {
-                        idField = "_id"
-                    } else if detectFields(result).contains("id") {
-                        idField = "id"
-                    } else {
-                        idField = "__auto__"
-                    }
+                let parsedImport = try await RecordImporter.parseRecords(at: sourceURL)
+                let records = parsedImport.records
+                self.parsedImport = parsedImport
+                self.previewRecords = records
+                self.isLoading = false
+                let fields = detectedFields
+                if fields.contains("_id") {
+                    idField = "_id"
+                } else if fields.contains("id") {
+                    idField = "id"
+                } else {
+                    idField = "__auto__"
                 }
             } catch {
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.isLoading = false
-                }
+                self.errorMessage = error.localizedDescription
+                self.isLoading = false
             }
         }
     }
 
+    @MainActor
     private func performImport() async {
-        guard let result = importResult else { return }
+        guard let parsedImport else { return }
 
         isImporting = true
         errorMessage = nil
 
         do {
-            let currentIdField = idField
-            var records = result.getRecords()
-            records = records.map { record in
-                var mutable = record
-                mutable.removeValue(forKey: "_type")
+            let selectedIdentifierField = idField
+            var records = parsedImport.records
+            for index in records.indices {
+                records[index].removeValue(forKey: "_type")
 
-                if currentIdField == "__auto__" {
-                    mutable["_id"] = UUID().uuidString
-                } else if currentIdField != "_id" {
-                    if let idValue = mutable[currentIdField] {
-                        mutable["_id"] = idValue
+                if selectedIdentifierField == "__auto__" {
+                    records[index]["_id"] = UUID().uuidString
+                } else if selectedIdentifierField != "_id" {
+                    if let identifier = records[index][selectedIdentifierField] {
+                        records[index]["_id"] = identifier
                     } else {
-                        mutable["_id"] = UUID().uuidString
+                        records[index]["_id"] = UUID().uuidString
                     }
                 }
-                return mutable
             }
 
-            let jsonData = try JSONSerialization.data(withJSONObject: records, options: [])
-            guard let sendableRecords = try JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] else {
-                throw ImportError.parseError("Failed to prepare records")
-            }
-
-            let count = try await onImport(sendableRecords)
-            await MainActor.run {
-                importedCount = count
-                isImporting = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    dismiss()
-                }
-            }
+            let importedRecordCount = try await onImport(records)
+            importedCount = importedRecordCount
+            isImporting = false
+            dismiss()
         } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isImporting = false
-            }
+            errorMessage = error.localizedDescription
+            isImporting = false
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Record Preview Formatting
 
-    private func detectFields(_ result: ImportResult) -> [String] {
+    private var detectedFields: [String] {
         var fields = Set<String>()
-        for record in result.getRecords().prefix(10) {
+        for record in previewRecords.prefix(10) {
             fields.formUnion(record.keys)
         }
         return fields.sorted()
@@ -289,8 +283,8 @@ public struct ImportView: View {
         if idField == "__auto__" {
             return "(auto)"
         }
-        if let id = record[idField] {
-            return "\(id)"
+        if let identifier = record[idField] {
+            return "\(identifier)"
         }
         return nil
     }
@@ -302,10 +296,10 @@ public struct ImportView: View {
     }
 
     private func formatValue(_ value: Any) -> String {
-        if let str = value as? String {
-            return "\"\(str.prefix(20))\(str.count > 20 ? "..." : "")\""
-        } else if let num = value as? NSNumber {
-            return "\(num)"
+        if let string = value as? String {
+            return "\"\(string.prefix(20))\(string.count > 20 ? "..." : "")\""
+        } else if let number = value as? NSNumber {
+            return "\(number)"
         } else if value is NSNull {
             return "null"
         } else {

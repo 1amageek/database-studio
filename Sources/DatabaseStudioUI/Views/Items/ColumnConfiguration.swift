@@ -32,7 +32,7 @@ public struct ColumnConfig: Codable, Equatable, Sendable {
         self.jsonFieldColumns = jsonFieldColumns
     }
 
-    public static let `default` = ColumnConfig()
+    public static let initialConfiguration = ColumnConfig()
 
     public var allColumnCount: Int {
         visibleColumns.count + jsonFieldColumns.count
@@ -122,7 +122,7 @@ struct ColumnConfigurationView: View {
 
             // リセットボタン
             Button("Reset to Default") {
-                config = .default
+                config = .initialConfiguration
             }
             .buttonStyle(.borderless)
         }
@@ -210,7 +210,7 @@ struct ColumnConfigurationView: View {
 // MARK: - Previews
 
 #Preview("Column Configuration") {
-    @Previewable @State var config = ColumnConfig.default
+    @Previewable @State var config = ColumnConfig.initialConfiguration
     ColumnConfigurationView(
         config: $config,
         availableFields: [
