@@ -290,7 +290,9 @@ public struct RecordImporter {
                 row.append(completedField())
                 field = ""
                 fieldWasQuoted = false
-            } else if (character == "\n" || character == "\r") && !isInsideQuotedField {
+            // "\r\n" is one Character (grapheme cluster) in Swift, so CRLF
+            // never matches "\r" or "\n" alone and must be listed explicitly.
+            } else if (character == "\n" || character == "\r" || character == "\r\n") && !isInsideQuotedField {
                 row.append(completedField())
                 try consume(rowNumber, row)
                 row.removeAll(keepingCapacity: true)

@@ -68,6 +68,14 @@ public struct RecordExporter {
             exportedRecords.append(exportedRecord)
         }
 
+        // JSONSerialization raises an ObjC exception (not a Swift error) for
+        // unsupported values, so validity must be checked before encoding.
+        guard JSONSerialization.isValidJSONObject(exportedRecords) else {
+            throw RecordExportError.serializationFailed(
+                .json,
+                "records contain values that are not representable in JSON"
+            )
+        }
         do {
             return try JSONSerialization.data(
                 withJSONObject: exportedRecords,
@@ -90,6 +98,15 @@ public struct RecordExporter {
             exportedRecord["_id"] = record.id
             exportedRecord["_type"] = record.typeName
 
+            // JSONSerialization raises an ObjC exception (not a Swift error)
+            // for unsupported values, so validity must be checked first.
+            guard JSONSerialization.isValidJSONObject(exportedRecord) else {
+                throw RecordExportError.recordSerializationFailed(
+                    record.id,
+                    .jsonLines,
+                    "record contains values that are not representable in JSON"
+                )
+            }
             do {
                 if index > 0 {
                     output.append(0x0A)
