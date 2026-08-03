@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// Displays one index in a compact summary row.
 struct CompactIndexRow: View {
@@ -56,19 +56,34 @@ struct CompactIndexRow: View {
 #Preview("Index Row Compact") {
     VStack {
         CompactIndexRow(index: IndexDescriptorMetadata(
+            entityName: "User",
             name: "email_idx",
-            kind: IndexKindMetadata(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["email"], metadata: [:]),
-            commonMetadata: [:]
+            kind: IndexKindMetadata(
+                identifier: "scalar",
+                subspaceStructure: .flat,
+                fields: [IndexFieldMetadata(identity: FieldIdentity(name: "email", number: 1))],
+                metadata: [:]
+            )
         ))
         CompactIndexRow(index: IndexDescriptorMetadata(
+            entityName: "User",
             name: "embedding_idx",
-            kind: IndexKindMetadata(identifier: "vector", subspaceStructure: .hierarchical, fieldNames: ["embedding"], metadata: ["dimensions": .int(384), "metric": .string("cosine")]),
-            commonMetadata: [:]
+            kind: IndexKindMetadata(
+                identifier: "vector",
+                subspaceStructure: .hierarchical,
+                fields: [IndexFieldMetadata(identity: FieldIdentity(name: "embedding", number: 2))],
+                metadata: ["dimensions": .int64(384), "metric": .string("cosine")]
+            )
         ))
         CompactIndexRow(index: IndexDescriptorMetadata(
+            entityName: "User",
             name: "user_count",
-            kind: IndexKindMetadata(identifier: "count", subspaceStructure: .aggregation, fieldNames: [], metadata: [:]),
-            commonMetadata: [:]
+            kind: IndexKindMetadata(
+                identifier: "count",
+                subspaceStructure: .aggregation,
+                fields: [],
+                metadata: [:]
+            )
         ))
     }
     .padding()

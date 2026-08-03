@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// Subspace構造を可視化
 public struct SubspaceStructureView: View {

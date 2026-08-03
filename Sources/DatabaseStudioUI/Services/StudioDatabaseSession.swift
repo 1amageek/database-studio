@@ -4,9 +4,9 @@ import DatabaseEngine
 import DatabaseCLICore
 import GraphIndex
 import OntologyIndex
-import Core
-import Graph
+import DatabaseKit
 import StorageKit
+import StorageKitSystemClock
 import SQLiteStorage
 import FDBStorage
 import FoundationDB
@@ -39,6 +39,9 @@ public final class StudioDatabaseSession {
     @ObservationIgnored
     private var schemaRegistry: SchemaRegistry?
 
+    @ObservationIgnored
+    private let clock = SystemStorageClock()
+
     public init() {}
 
     // MARK: - Connection
@@ -64,7 +67,7 @@ public final class StudioDatabaseSession {
                 connectionState = .error("Failed to create storage engine")
                 return
             }
-            self.schemaRegistry = SchemaRegistry(database: engine)
+            self.schemaRegistry = SchemaRegistry(database: engine, clock: clock)
             connectionState = .connected
             try await loadEntities()
         } catch is CancellationError {
@@ -93,10 +96,10 @@ public final class StudioDatabaseSession {
             logger.info("Connection succeeded")
             self.engine = engine
         } catch is CancellationError {
-            engine.shutdown()
+            engine.requestShutdown()
             throw CancellationError()
         } catch {
-            engine.shutdown()
+            engine.requestShutdown()
             throw FoundationDBConnectionError.cannotConnect(clusterFilePath)
         }
     }
@@ -115,7 +118,7 @@ public final class StudioDatabaseSession {
     }
 
     public func disconnect() {
-        engine?.shutdown()
+        engine?.requestShutdown()
         engine = nil
         schemaRegistry = nil
         entities = []
@@ -133,7 +136,7 @@ public final class StudioDatabaseSession {
         guard let engine, let registry = schemaRegistry else {
             throw StudioError.notConnected
         }
-        _ = try await CatalogDataAccess.open(database: engine)
+        _ = try await CatalogDataAccess.open(database: engine, clock: clock)
         let loaded = try await registry.loadAll()
         self.entities = loaded.sorted { $0.name < $1.name }
     }

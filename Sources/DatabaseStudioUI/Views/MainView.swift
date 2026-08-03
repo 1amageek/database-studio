@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import Core
+import DatabaseKit
 
 /// メインビュー（3ペイン構成 + Inspector）
 public struct MainView: View {

@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 @testable import DatabaseStudioUI
-import Graph
+import DatabaseKit
 
 @Suite("GraphDocument Ontology Constructor")
 struct GraphDocumentOntologyTests {

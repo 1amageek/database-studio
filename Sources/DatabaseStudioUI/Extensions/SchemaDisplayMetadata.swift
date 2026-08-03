@@ -1,5 +1,5 @@
 import Foundation
-import Core
+import DatabaseKit
 
 // MARK: - Index Kind Presentation
 
@@ -58,22 +58,30 @@ extension FieldSchemaType {
     public var displayName: String {
         switch self {
         case .string: return "String"
-        case .int: return "Int"
         case .int8: return "Int8"
         case .int16: return "Int16"
         case .int32: return "Int32"
         case .int64: return "Int64"
-        case .uint: return "UInt"
         case .uint8: return "UInt8"
         case .uint16: return "UInt16"
         case .uint32: return "UInt32"
         case .uint64: return "UInt64"
-        case .float: return "Float"
-        case .double: return "Double"
+        case .float32: return "Float32"
+        case .float64: return "Float64"
+        case .decimal: return "Decimal"
         case .bool: return "Bool"
-        case .data: return "Data"
+        case .bytes: return "Bytes"
         case .date: return "Date"
+        case .time: return "Time"
+        case .dateTime: return "DateTime"
+        case .timestamp: return "Timestamp"
+        case .timeSpan: return "TimeSpan"
+        case .calendarPeriod: return "CalendarPeriod"
+        case .geographicPoint: return "GeoPoint"
+        case .geographicPosition: return "GeoPosition"
+        case .vector: return "Vector"
         case .uuid: return "UUID"
+        case .object: return "Object"
         case .nested: return "Nested"
         case .enum: return "Enum"
         case .rdfTerm: return "RDF Term"
@@ -85,13 +93,16 @@ extension FieldSchemaType {
     public var iconName: String {
         switch self {
         case .string, .uuid: return "textformat"
-        case .int, .int8, .int16, .int32, .int64,
-             .uint, .uint8, .uint16, .uint32, .uint64: return "number"
-        case .float, .double: return "function"
+        case .int8, .int16, .int32, .int64,
+             .uint8, .uint16, .uint32, .uint64: return "number"
+        case .float32, .float64, .decimal: return "function"
         case .bool: return "checkmark.circle"
-        case .data: return "doc.fill"
-        case .date: return "calendar"
-        case .nested: return "rectangle.3.group"
+        case .bytes: return "doc.fill"
+        case .date, .time, .dateTime, .timestamp,
+             .timeSpan, .calendarPeriod: return "calendar"
+        case .geographicPoint, .geographicPosition: return "mappin.and.ellipse"
+        case .vector: return "chart.dots.scatter"
+        case .object, .nested: return "rectangle.3.group"
         case .enum: return "list.dash"
         case .rdfTerm: return "point.3.connected.trianglepath.dotted"
         case .reference: return "link"

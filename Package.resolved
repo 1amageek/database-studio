@@ -1,6 +1,24 @@
 {
-  "originHash" : "e398e4ddff2d8217629183adbc04df77b01e2766381bcf7efb68747547d25177",
+  "originHash" : "4ec4c760d08ba423cb41b60ddadbe599b51e3519a3b3d69ca6b3f70ccb4ede68",
   "pins" : [
+    {
+      "identity" : "database-types",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/1amageek/database-types.git",
+      "state" : {
+        "revision" : "4b0c81a9c322cbfa5628e411ee1fa931c2890e5d",
+        "version" : "26.730.0"
+      }
+    },
+    {
+      "identity" : "fdb-swift-bindings",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/1amageek/fdb-swift-bindings.git",
+      "state" : {
+        "revision" : "47e6b4215d331661e5cf030eac4ff206c932d6bf",
+        "version" : "0.3.3"
+      }
+    },
     {
       "identity" : "postgres-nio",
       "kind" : "remoteSourceControl",
@@ -65,6 +83,15 @@
       }
     },
     {
+      "identity" : "swift-hnsw",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/1amageek/swift-hnsw.git",
+      "state" : {
+        "revision" : "e427a41eeb6a8190b188ebb695694ba719f3e0e8",
+        "version" : "1.1.4"
+      }
+    },
+    {
       "identity" : "swift-log",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
@@ -123,8 +150,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
-        "version" : "602.0.0"
+        "revision" : "b90056de69eed23b3fb39ab69cf1780071dfb664",
+        "version" : "604.0.0-prerelease-2026-06-05"
       }
     },
     {

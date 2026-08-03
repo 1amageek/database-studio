@@ -1,5 +1,5 @@
 import Foundation
-import Graph
+import DatabaseKit
 
 extension GraphDocument {
 
@@ -120,10 +120,10 @@ extension GraphDocument {
         self.edges = edges
     }
 
-    /// RDF リテラル文字列を `OWLLiteral` にパースする
-    static func parseRDFLiteral(_ raw: String) throws -> OWLLiteral {
+    /// RDF リテラル文字列を `RDFLiteral` にパースする
+    static func parseRDFLiteral(_ raw: String) throws -> RDFLiteral {
         guard raw.hasPrefix("\"") else {
-            return .string(raw)
+            return RDFLiteral(lexicalForm: raw, datatype: .xsdString)
         }
         if let caretRange = raw.range(of: "\"^^", options: .backwards) {
             let text = String(raw[raw.index(after: raw.startIndex)..<caretRange.lowerBound])
@@ -131,17 +131,17 @@ extension GraphDocument {
             while datatype.hasPrefix("<") && datatype.hasSuffix(">") {
                 datatype = String(datatype.dropFirst().dropLast())
             }
-            return try OWLLiteral(lexicalForm: text, datatype: datatype)
+            return try RDFLiteral(lexicalForm: text, datatype: datatype)
         }
         if let atRange = raw.range(of: "\"@", options: .backwards) {
             let text = String(raw[raw.index(after: raw.startIndex)..<atRange.lowerBound])
             let lang = String(raw[atRange.upperBound...])
-            return try .langString(text, language: lang)
+            return try RDFLiteral(lexicalForm: text, language: lang)
         }
         if raw.hasSuffix("\"") {
             let text = String(raw.dropFirst().dropLast())
-            return .string(text)
+            return RDFLiteral(lexicalForm: text, datatype: .xsdString)
         }
-        return .string(raw)
+        return RDFLiteral(lexicalForm: raw, datatype: .xsdString)
     }
 }

@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 @testable import DatabaseStudioUI
-import Core
+import DatabaseKit
 
 @MainActor
 @Suite("Session State Management")

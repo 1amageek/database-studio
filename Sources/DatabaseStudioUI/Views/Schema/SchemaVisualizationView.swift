@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// スキーマ可視化ビュー
 public struct SchemaVisualizationView: View {
@@ -228,8 +228,9 @@ private struct IndexCard: View {
 // MARK: - Preview
 
 #Preview {
-    SchemaVisualizationView(entity: Schema.Entity(
+    SchemaVisualizationView(entity: try! Schema.Entity(
         name: "User",
+        identifierType: .string,
         fields: [
             FieldSchema(name: "id", fieldNumber: 1, type: .string),
             FieldSchema(name: "name", fieldNumber: 2, type: .string),
@@ -239,14 +240,25 @@ private struct IndexCard: View {
         directoryComponents: [.staticPath("app"), .staticPath("users")],
         indexes: [
             IndexDescriptorMetadata(
+                entityName: "User",
                 name: "user_email_idx",
-                kind: IndexKindMetadata(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["email"], metadata: [:]),
-                commonMetadata: ["unique": .bool(true)]
+                kind: IndexKindMetadata(
+                    identifier: "scalar",
+                    subspaceStructure: .flat,
+                    fields: [IndexFieldMetadata(identity: FieldIdentity(name: "email", number: 3))],
+                    metadata: [:]
+                ),
+                commonOptions: CommonIndexOptions(unique: true)
             ),
             IndexDescriptorMetadata(
+                entityName: "User",
                 name: "user_age_idx",
-                kind: IndexKindMetadata(identifier: "scalar", subspaceStructure: .flat, fieldNames: ["age"], metadata: [:]),
-                commonMetadata: [:]
+                kind: IndexKindMetadata(
+                    identifier: "scalar",
+                    subspaceStructure: .flat,
+                    fields: [IndexFieldMetadata(identity: FieldIdentity(name: "age", number: 4))],
+                    metadata: [:]
+                )
             ),
         ]
     ))

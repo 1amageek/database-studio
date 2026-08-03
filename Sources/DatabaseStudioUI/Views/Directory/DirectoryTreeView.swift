@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// ディレクトリツリービュー（Entity + Indexes）
 struct DirectoryTreeView: View {

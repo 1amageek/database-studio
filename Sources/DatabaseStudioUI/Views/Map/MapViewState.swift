@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import _MapKit_SwiftUI
 import CoreLocation
 
 /// 地図可視化の検索モード

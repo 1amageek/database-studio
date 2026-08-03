@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// プレビュー用のモックデータ
 @MainActor

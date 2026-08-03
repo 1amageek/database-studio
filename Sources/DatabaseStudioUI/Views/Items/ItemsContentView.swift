@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import Core
+import DatabaseKit
 
 /// Items テーブルビュー（中央ペイン）- 選択されたTypeのItemsを表示
 struct ItemsContentView: View {

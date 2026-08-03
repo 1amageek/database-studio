@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import _MapKit_SwiftUI
 
 /// MapKit Map を使った地図描画ビュー
 struct MapCanvasView: View {

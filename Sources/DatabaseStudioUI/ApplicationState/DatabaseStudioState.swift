@@ -1,7 +1,6 @@
 import SwiftUI
 import Observation
-import Core
-import Graph
+import DatabaseKit
 
 /// Owns application-wide Database Studio state and database operations.
 @MainActor

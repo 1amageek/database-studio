@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// グラフウィンドウの共有状態
 @Observable @MainActor

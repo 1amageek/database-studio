@@ -1,5 +1,5 @@
 import Foundation
-import Core
+import DatabaseKit
 
 /// A database record prepared for presentation in Database Studio.
 public struct StudioRecord: Identifiable {
@@ -17,6 +17,14 @@ public struct StudioRecord: Identifiable {
 
     /// A formatted JSON representation of the record fields.
     public func formattedJSON() throws -> String {
+        // JSONSerialization raises an ObjC exception (not a Swift error) for
+        // unsupported values, so validity must be checked before encoding.
+        guard JSONSerialization.isValidJSONObject(fields) else {
+            throw StudioRecordFormattingError.jsonEncodingFailed(
+                id,
+                "record contains values that are not representable in JSON"
+            )
+        }
         do {
             let encodedFields = try JSONSerialization.data(
                 withJSONObject: fields,

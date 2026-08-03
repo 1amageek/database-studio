@@ -1,5 +1,5 @@
 import SwiftUI
-import Core
+import DatabaseKit
 
 /// インデックス詳細ビュー
 public struct IndexDetailView: View {
@@ -175,15 +175,24 @@ public struct IndexDetailView: View {
         }
     }
 
-    private func displayText(for value: IndexMetadataValue) -> String {
+    private func displayText(for value: FieldValue) -> String {
         switch value {
         case .string(let string): return string
-        case .int(let integer): return "\(integer)"
-        case .double(let double): return String(format: "%.4f", double)
         case .bool(let boolean): return boolean ? "true" : "false"
-        case .stringArray(let strings): return strings.joined(separator: ", ")
-        case .intArray(let integers): return integers.map(String.init).joined(separator: ", ")
-        case .rdfTerm(let term): return term.description
+        case .int8(let integer): return "\(integer)"
+        case .int16(let integer): return "\(integer)"
+        case .int32(let integer): return "\(integer)"
+        case .int64(let integer): return "\(integer)"
+        case .uint8(let integer): return "\(integer)"
+        case .uint16(let integer): return "\(integer)"
+        case .uint32(let integer): return "\(integer)"
+        case .uint64(let integer): return "\(integer)"
+        case .float32(let number): return String(format: "%.4f", number)
+        case .float64(let number): return String(format: "%.4f", number)
+        case .array(let values):
+            return values.map { displayText(for: $0) }.joined(separator: ", ")
+        case .null: return "null"
+        default: return String(describing: value)
         }
     }
 }
@@ -192,17 +201,15 @@ public struct IndexDetailView: View {
 
 #Preview("Index Detail") {
     IndexDetailView(index: IndexDescriptorMetadata(
+        entityName: "User",
         name: "user_email_idx",
         kind: IndexKindMetadata(
             identifier: "scalar",
             subspaceStructure: .flat,
-            fieldNames: ["email"],
+            fields: [IndexFieldMetadata(identity: FieldIdentity(name: "email", number: 1))],
             metadata: [:]
         ),
-        commonMetadata: [
-            "unique": .bool(true),
-            "sparse": .bool(false)
-        ]
+        commonOptions: CommonIndexOptions(unique: true)
     ))
     .frame(width: 600, height: 700)
 }

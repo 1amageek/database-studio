@@ -1,5 +1,5 @@
 import Foundation
-import Graph
+import DatabaseKit
 
 extension GraphDocument {
 
