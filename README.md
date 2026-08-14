@@ -95,4 +95,4 @@ language, calling convention, or storage representation.
 
 ## License
 
-MIT
+Licensed under the [MIT License](LICENSE).
