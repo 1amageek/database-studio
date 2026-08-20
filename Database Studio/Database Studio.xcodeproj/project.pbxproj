@@ -25,12 +25,20 @@
 			remoteGlobalIDString = 129439A02F3A280300A10189;
 			remoteInfo = "Database Studio";
 		};
+		B3E100072F5E000000A10189 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 129439992F3A280300A10189 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 129439A02F3A280300A10189;
+			remoteInfo = "Database Studio";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		129439A12F3A280300A10189 /* Database Studio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Database Studio.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		129439B02F3A280600A10189 /* Database StudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Database StudioTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		129439BA2F3A280600A10189 /* Database StudioUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Database StudioUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B3E100012F5E000000A10189 /* Database StudioBenchmarks.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Database StudioBenchmarks.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -47,6 +55,11 @@
 		129439BD2F3A280600A10189 /* Database StudioUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Database StudioUITests";
+			sourceTree = "<group>";
+		};
+		B3E100022F5E000000A10189 /* Database StudioBenchmarks */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Database StudioBenchmarks";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -74,6 +87,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B3E100032F5E000000A10189 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -83,6 +103,7 @@
 				129439A32F3A280300A10189 /* Database Studio */,
 				129439B32F3A280600A10189 /* Database StudioTests */,
 				129439BD2F3A280600A10189 /* Database StudioUITests */,
+				B3E100022F5E000000A10189 /* Database StudioBenchmarks */,
 				129439A22F3A280300A10189 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -93,6 +114,7 @@
 				129439A12F3A280300A10189 /* Database Studio.app */,
 				129439B02F3A280600A10189 /* Database StudioTests.xctest */,
 				129439BA2F3A280600A10189 /* Database StudioUITests.xctest */,
+				B3E100012F5E000000A10189 /* Database StudioBenchmarks.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -169,6 +191,29 @@
 			productReference = 129439BA2F3A280600A10189 /* Database StudioUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		B3E100062F5E000000A10189 /* Database StudioBenchmarks */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B3E1000B2F5E000000A10189 /* Build configuration list for PBXNativeTarget "Database StudioBenchmarks" */;
+			buildPhases = (
+				B3E100042F5E000000A10189 /* Sources */,
+				B3E100032F5E000000A10189 /* Frameworks */,
+				B3E100052F5E000000A10189 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B3E100082F5E000000A10189 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B3E100022F5E000000A10189 /* Database StudioBenchmarks */,
+			);
+			name = "Database StudioBenchmarks";
+			packageProductDependencies = (
+			);
+			productName = "Database StudioBenchmarks";
+			productReference = B3E100012F5E000000A10189 /* Database StudioBenchmarks.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -187,6 +232,10 @@
 						TestTargetID = 129439A02F3A280300A10189;
 					};
 					129439B92F3A280600A10189 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 129439A02F3A280300A10189;
+					};
+					B3E100062F5E000000A10189 = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = 129439A02F3A280300A10189;
 					};
@@ -212,6 +261,7 @@
 				129439A02F3A280300A10189 /* Database Studio */,
 				129439AF2F3A280600A10189 /* Database StudioTests */,
 				129439B92F3A280600A10189 /* Database StudioUITests */,
+				B3E100062F5E000000A10189 /* Database StudioBenchmarks */,
 			);
 		};
 /* End PBXProject section */
@@ -232,6 +282,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		129439B82F3A280600A10189 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B3E100052F5E000000A10189 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -262,6 +319,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B3E100042F5E000000A10189 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -274,6 +338,11 @@
 			isa = PBXTargetDependency;
 			target = 129439A02F3A280300A10189 /* Database Studio */;
 			targetProxy = 129439BB2F3A280600A10189 /* PBXContainerItemProxy */;
+		};
+		B3E100082F5E000000A10189 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 129439A02F3A280300A10189 /* Database Studio */;
+			targetProxy = B3E100072F5E000000A10189 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -552,6 +621,46 @@
 			};
 			name = Release;
 		};
+		B3E100092F5E000000A10189 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WWCKBW8CKN;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "team.stamp.Database-StudioBenchmarks";
+				PRODUCT_MODULE_NAME = DatabaseStudioBenchmarks;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "Database Studio";
+			};
+			name = Debug;
+		};
+		B3E1000A2F5E000000A10189 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WWCKBW8CKN;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "team.stamp.Database-StudioBenchmarks";
+				PRODUCT_MODULE_NAME = DatabaseStudioBenchmarks;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "Database Studio";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -587,6 +696,15 @@
 			buildConfigurations = (
 				129439CB2F3A280600A10189 /* Debug */,
 				129439CC2F3A280600A10189 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B3E1000B2F5E000000A10189 /* Build configuration list for PBXNativeTarget "Database StudioBenchmarks" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B3E100092F5E000000A10189 /* Debug */,
+				B3E1000A2F5E000000A10189 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
