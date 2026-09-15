@@ -146,3 +146,5 @@ Changes to the session state machine require rechecking
 session tests. Changes to `StorageEngine` shutdown semantics require the
 `storage-kit` contract and its backend tests to be reviewed, not reimplemented
 in Studio.
+
+Sample application design: [Maintenance Studio](Examples/MaintenanceStudio/DESIGN.md).
