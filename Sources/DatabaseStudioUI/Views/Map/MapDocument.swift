@@ -49,7 +49,7 @@ public struct MapDocument: Sendable {
     }
 }
 
-/// CatalogDataAccess の結果から MapDocument を構築
+/// Builds a map document from decoded entity values.
 extension MapDocument {
     public init(
         items: [[String: Any]],

@@ -1,18 +1,38 @@
 import Foundation
 import DatabaseKit
-import DatabaseKit
+
+private enum GraphDocumentIndexError: LocalizedError {
+    case requiresPropertyGraphIndex
+
+    var errorDescription: String? {
+        "Graph records require a property-graph index declaration."
+    }
+}
 
 extension GraphDocument {
 
-    /// Builds a graph document from Studio records and GraphIndex metadata.
+    /// Builds a graph document from Studio records and a property-graph index.
     ///
     /// Resolves the configured source, edge, and target fields and transforms
     /// each record into graph nodes and edges.
-    init(records: [StudioRecord], graphIndex: IndexDescriptorMetadata) throws {
-        let indexMetadata = graphIndex.kind.metadata
-        let fromField = indexMetadata["fromField"]?.stringValue ?? ""
-        let edgeField = indexMetadata["edgeField"]?.stringValue ?? ""
-        let toField = indexMetadata["toField"]?.stringValue ?? ""
+    init(records: [StudioRecord], graphIndex: IndexDescriptor) throws {
+        guard case .graph(let definition, _) = graphIndex.declaration.definition,
+              case .property(
+                let source,
+                let label,
+                let target,
+                _,
+                _
+              ) = definition else {
+            throw GraphDocumentIndexError.requiresPropertyGraphIndex
+        }
+        let fromField = source.name
+        let edgeField: String
+        switch label {
+        case .field(let field): edgeField = field.name
+        case .implicit: edgeField = ""
+        }
+        let toField = target.name
 
         var nodesByIdentifier: [String: GraphNode] = [:]
         var edges: [GraphEdge] = []

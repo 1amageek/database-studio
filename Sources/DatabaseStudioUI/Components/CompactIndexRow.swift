@@ -3,12 +3,12 @@ import DatabaseKit
 
 /// Displays one index in a compact summary row.
 struct CompactIndexRow: View {
-    let index: IndexDescriptorMetadata
+    let index: IndexDescriptor
 
     var body: some View {
         HStack {
-            Image(systemName: index.kind.symbolName)
-                .foregroundStyle(color(for: index.kind))
+            Image(systemName: index.type.symbolName)
+                .foregroundStyle(color(for: index.type))
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -16,7 +16,7 @@ struct CompactIndexRow: View {
                     .font(.system(.body, design: .monospaced))
 
                 HStack(spacing: 4) {
-                    Text(index.kind.displayName)
+                    Text(index.type.displayName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -33,58 +33,51 @@ struct CompactIndexRow: View {
         .padding(.vertical, 2)
     }
 
-    private func color(for kind: IndexKindMetadata) -> Color {
-        switch kind.identifier {
-        case "scalar": return .blue
-        case "count", "sum", "average": return .orange
-        case "min", "max": return .purple
-        case "vector": return .green
-        case "fullText": return .cyan
-        case "spatial": return .teal
-        case "graph": return .pink
-        case "rank": return .yellow
-        case "bitmap": return .indigo
-        case "version": return .brown
-        case "leaderboard": return .mint
-        default: return .gray
+    private func color(for type: IndexType) -> Color {
+        switch type {
+        case .ordered: .blue
+        case .aggregate: .orange
+        case .updateCount: .orange
+        case .history: .brown
+        case .bitmap: .indigo
+        case .leaderboard: .mint
+        case .vector: .green
+        case .text: .cyan
+        case .spatial: .teal
+        case .rank: .yellow
+        case .graph: .pink
+        case .custom: .gray
         }
     }
 }
 
-// MARK: - Previews
-
 #Preview("Index Row Compact") {
+    let fields = [
+        FieldSchema(name: "email", fieldNumber: 1, type: .string),
+        FieldSchema(name: "embedding", fieldNumber: 2, type: .vector),
+    ]
     VStack {
-        CompactIndexRow(index: IndexDescriptorMetadata(
-            entityName: "User",
-            name: "email_idx",
-            kind: IndexKindMetadata(
-                identifier: "scalar",
-                subspaceStructure: .flat,
-                fields: [IndexFieldMetadata(identity: FieldIdentity(name: "email", number: 1))],
-                metadata: [:]
+        CompactIndexRow(
+            index: try! IndexDescriptor(
+                entityName: "User",
+                declaration: .ordered(
+                    name: "email_idx",
+                    keys: [.ascending(.init(name: "email", number: 1))]
+                ),
+                fieldSchemas: fields
             )
-        ))
-        CompactIndexRow(index: IndexDescriptorMetadata(
-            entityName: "User",
-            name: "embedding_idx",
-            kind: IndexKindMetadata(
-                identifier: "vector",
-                subspaceStructure: .hierarchical,
-                fields: [IndexFieldMetadata(identity: FieldIdentity(name: "embedding", number: 2))],
-                metadata: ["dimensions": .int64(384), "metric": .string("cosine")]
+        )
+        CompactIndexRow(
+            index: try! IndexDescriptor(
+                entityName: "User",
+                declaration: .vector(
+                    name: "embedding_idx",
+                    embedding: .init(name: "embedding", number: 2),
+                    dimensions: 384
+                ),
+                fieldSchemas: fields
             )
-        ))
-        CompactIndexRow(index: IndexDescriptorMetadata(
-            entityName: "User",
-            name: "user_count",
-            kind: IndexKindMetadata(
-                identifier: "count",
-                subspaceStructure: .aggregation,
-                fields: [],
-                metadata: [:]
-            )
-        ))
+        )
     }
     .padding()
     .frame(width: 300)

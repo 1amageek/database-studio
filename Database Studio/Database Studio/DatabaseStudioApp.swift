@@ -3,12 +3,26 @@ import DatabaseStudioUI
 
 @main
 struct DatabaseStudioApp: App {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
         WindowGroup {
             MainView()
         }
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Connect to Server…") {
+                    openWindow(id: "runtime-workspace")
+                }
+            }
+        }
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
+
+        Window("Database Server", id: "runtime-workspace") {
+            RuntimeConnectionView()
+        }
+        .defaultSize(width: 1100, height: 750)
 
         Window("Graph Viewer", id: "graph-viewer") {
             GraphWindowView()

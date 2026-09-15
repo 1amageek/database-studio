@@ -117,14 +117,14 @@ public final class DatabaseStudioState {
         }
     }
 
-    public func disconnect() {
-        databaseSession.disconnect()
+    public func disconnect() async {
         resetSessionState()
+        await databaseSession.disconnect()
     }
 
-    public func cancelConnectionAttempt() {
-        databaseSession.cancelConnectionAttempt()
+    public func cancelConnectionAttempt() async {
         resetSessionState()
+        await databaseSession.cancelConnectionAttempt()
     }
 
     // MARK: - Entity Tree

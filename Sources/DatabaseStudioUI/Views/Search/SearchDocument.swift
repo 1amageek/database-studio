@@ -95,7 +95,7 @@ public struct SearchDocument: Sendable {
         self.allFieldNames = allFieldNames
     }
 
-    /// CatalogDataAccess の結果から構築
+    /// Builds a search document from decoded entity values.
     public init(
         items: [[String: Any]],
         entityName: String,

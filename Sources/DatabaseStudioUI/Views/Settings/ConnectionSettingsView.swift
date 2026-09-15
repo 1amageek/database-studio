@@ -199,7 +199,9 @@ struct ConnectionSettingsView: View {
         connectTask?.cancel()
         connectTask = nil
         isConnecting = false
-        studioState.cancelConnectionAttempt()
+        Task { @MainActor in
+            await studioState.cancelConnectionAttempt()
+        }
     }
 
 }

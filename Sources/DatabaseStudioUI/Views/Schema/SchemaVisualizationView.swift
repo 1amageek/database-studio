@@ -169,12 +169,12 @@ private struct FieldsCard: View {
 // MARK: - Index Card
 
 private struct IndexCard: View {
-    let index: IndexDescriptorMetadata
+    let index: IndexDescriptor
 
     var body: some View {
         HStack(spacing: 12) {
             // Kind icon
-            Image(systemName: index.kind.symbolName)
+            Image(systemName: index.type.symbolName)
                 .foregroundStyle(kindColor)
                 .frame(width: 24)
 
@@ -184,7 +184,7 @@ private struct IndexCard: View {
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    Text(index.kind.displayName)
+                    Text(index.type.displayName)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
@@ -199,7 +199,7 @@ private struct IndexCard: View {
 
             Spacer()
 
-            if index.unique {
+            if index.isUnique {
                 Text("UNIQUE")
                     .font(.caption2)
                     .fontWeight(.medium)
@@ -217,10 +217,11 @@ private struct IndexCard: View {
     }
 
     private var kindColor: Color {
-        switch index.kind.subspaceStructure {
-        case .flat: return .blue
-        case .aggregation: return .green
-        case .hierarchical: return .purple
+        switch index.type {
+        case .ordered: return .blue
+        case .aggregate, .updateCount, .leaderboard, .rank: return .green
+        case .vector, .text, .spatial, .graph: return .purple
+        case .history, .bitmap, .custom: return .orange
         }
     }
 }
@@ -239,26 +240,34 @@ private struct IndexCard: View {
         ],
         directoryComponents: [.staticPath("app"), .staticPath("users")],
         indexes: [
-            IndexDescriptorMetadata(
+            try! IndexDescriptor(
                 entityName: "User",
-                name: "user_email_idx",
-                kind: IndexKindMetadata(
-                    identifier: "scalar",
-                    subspaceStructure: .flat,
-                    fields: [IndexFieldMetadata(identity: FieldIdentity(name: "email", number: 3))],
-                    metadata: [:]
+                declaration: .ordered(
+                    name: "user_email_idx",
+                    keys: [
+                        .ascending(.init(name: "email", number: 3)),
+                    ],
+                    unique: true
                 ),
-                commonOptions: CommonIndexOptions(unique: true)
+                fieldSchemas: [
+                    FieldSchema(
+                        name: "email",
+                        fieldNumber: 3,
+                        type: .string
+                    ),
+                ]
             ),
-            IndexDescriptorMetadata(
+            try! IndexDescriptor(
                 entityName: "User",
-                name: "user_age_idx",
-                kind: IndexKindMetadata(
-                    identifier: "scalar",
-                    subspaceStructure: .flat,
-                    fields: [IndexFieldMetadata(identity: FieldIdentity(name: "age", number: 4))],
-                    metadata: [:]
-                )
+                declaration: .ordered(
+                    name: "user_age_idx",
+                    keys: [
+                        .ascending(.init(name: "age", number: 4)),
+                    ]
+                ),
+                fieldSchemas: [
+                    FieldSchema(name: "age", fieldNumber: 4, type: .int64),
+                ]
             ),
         ]
     ))

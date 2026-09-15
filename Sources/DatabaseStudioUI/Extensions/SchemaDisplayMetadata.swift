@@ -1,57 +1,183 @@
-import Foundation
 import DatabaseKit
 
-// MARK: - Index Kind Presentation
+// MARK: - Index presentation
 
-extension IndexKindMetadata {
-    /// The localized-neutral label shown for the index kind.
+extension IndexType {
+    /// The localized-neutral label shown for the semantic index family.
     public var displayName: String {
-        switch identifier {
-        case "scalar": return "Scalar"
-        case "vector": return "Vector"
-        case "fulltext": return "Full Text"
-        case "spatial": return "Spatial"
-        case "graph": return "Graph"
-        case "rank": return "Rank"
-        case "bitmap": return "Bitmap"
-        case "version": return "Version"
-        case "relationship": return "Relationship"
-        case "leaderboard": return "Leaderboard"
-        case "permuted": return "Permuted"
-        case "count": return "Count"
-        case "sum": return "Sum"
-        case "average": return "Average"
-        case "min": return "Min"
-        case "max": return "Max"
-        default: return identifier.capitalized
+        switch self {
+        case .ordered: "Ordered"
+        case .aggregate(let function): function.displayName
+        case .updateCount: "Update Count"
+        case .history: "History"
+        case .bitmap: "Bitmap"
+        case .leaderboard: "Leaderboard"
+        case .vector: "Vector"
+        case .text(.fullText): "Full Text"
+        case .text(.autocomplete): "Autocomplete"
+        case .spatial: "Spatial"
+        case .rank: "Rank"
+        case .graph(.property): "Property Graph"
+        case .graph(.rdf): "RDF Dataset"
+        case .graph(.ontologyProjection): "Ontology Projection"
+        case .custom(let identifier): identifier
         }
     }
 
-    /// The SF Symbol representing the index kind.
+    /// The SF Symbol representing the semantic index family.
     public var symbolName: String {
-        switch identifier {
-        case "scalar": return "line.3.horizontal.decrease"
-        case "vector": return "arrow.up.right"
-        case "fulltext": return "text.magnifyingglass"
-        case "spatial": return "map"
-        case "graph": return "point.3.connected.trianglepath.dotted"
-        case "rank": return "chart.bar"
-        case "bitmap": return "square.grid.3x3"
-        case "version": return "clock.arrow.circlepath"
-        case "relationship": return "arrow.left.arrow.right"
-        case "leaderboard": return "trophy"
-        case "permuted": return "arrow.triangle.swap"
-        case "count": return "number"
-        case "sum": return "sum"
-        case "average": return "divide"
-        case "min": return "arrow.down.to.line"
-        case "max": return "arrow.up.to.line"
-        default: return "questionmark.circle"
+        switch self {
+        case .ordered: "line.3.horizontal.decrease"
+        case .aggregate(.count), .updateCount: "number"
+        case .aggregate(.sum): "sum"
+        case .aggregate(.average): "divide"
+        case .aggregate(.minimum): "arrow.down.to.line"
+        case .aggregate(.maximum): "arrow.up.to.line"
+        case .aggregate(.nonNullCount), .aggregate(.approximateDistinct):
+            "number.square"
+        case .aggregate(.percentile): "chart.line.uptrend.xyaxis"
+        case .history: "clock.arrow.circlepath"
+        case .bitmap: "square.grid.3x3"
+        case .leaderboard: "trophy"
+        case .vector: "arrow.up.right"
+        case .text: "text.magnifyingglass"
+        case .spatial: "map"
+        case .rank: "chart.bar"
+        case .graph: "point.3.connected.trianglepath.dotted"
+        case .custom: "puzzlepiece.extension"
         }
     }
 }
 
-// MARK: - Field Type Presentation
+private extension AggregateFunctionType {
+    var displayName: String {
+        switch self {
+        case .count: "Count"
+        case .sum: "Sum"
+        case .minimum: "Minimum"
+        case .maximum: "Maximum"
+        case .average: "Average"
+        case .nonNullCount: "Non-null Count"
+        case .approximateDistinct: "Approximate Distinct"
+        case .percentile: "Percentile"
+        }
+    }
+}
+
+extension IndexDescriptor {
+    /// Complete logical configuration rendered without inferring a physical
+    /// storage layout from schema semantics.
+    var configurationDisplay: [String: String] {
+        switch declaration.definition {
+        case .ordered:
+            return [:]
+        case .aggregate(let function, _, _):
+            switch function {
+            case .approximateDistinct(let precision):
+                return ["Precision": String(precision)]
+            case .percentile(let compression):
+                return ["Compression": String(compression)]
+            default:
+                return [:]
+            }
+        case .updateCount, .bitmap, .rank:
+            return [:]
+        case .history(_, let retention):
+            return ["Retention": retention.displayText]
+        case .leaderboard(_, _, let window, let count):
+            return [
+                "Window": window.displayText,
+                "Window Count": String(count),
+            ]
+        case .vector(_, let dimensions, let metric):
+            return [
+                "Dimensions": String(dimensions),
+                "Metric": metric.rawValue,
+            ]
+        case .text(_, let mode):
+            return mode.configurationDisplay
+        case .spatial(_, let encoding, let level):
+            return [
+                "Encoding": encoding.rawValue,
+                "Level": String(level),
+            ]
+        case .graph(let definition, _):
+            return definition.configurationDisplay
+        case .custom(let definition):
+            var values = ["Identifier": definition.identifier]
+            for (key, value) in definition.parameters {
+                values["Parameter: \(key)"] = String(describing: value)
+            }
+            return values
+        }
+    }
+}
+
+private extension VersionHistoryStrategy {
+    var displayText: String {
+        switch self {
+        case .keepAll: "Keep all"
+        case .keepLast(let count): "Keep last \(count)"
+        case .keepForDuration(let duration):
+            "\(duration.seconds)s + \(duration.nanoseconds)ns"
+        }
+    }
+}
+
+private extension LeaderboardWindowType {
+    var displayText: String {
+        switch self {
+        case .hourly: "Hourly"
+        case .daily: "Daily"
+        case .weekly: "Weekly"
+        case .monthly: "Monthly"
+        case .custom(let duration): "Custom (\(duration)s)"
+        }
+    }
+}
+
+private extension TextIndexMode {
+    var configurationDisplay: [String: String] {
+        switch self {
+        case .fullText(
+            let tokenizer,
+            let storePositions,
+            let ngramSize,
+            let minimumTermLength
+        ):
+            return [
+                "Tokenizer": tokenizer.rawValue,
+                "Store Positions": storePositions ? "Yes" : "No",
+                "N-gram Size": String(ngramSize),
+                "Minimum Term Length": String(minimumTermLength),
+            ]
+        case .autocomplete(let minimum, let maximum):
+            return [
+                "Minimum Prefix Length": String(minimum),
+                "Maximum Prefix Length": String(maximum),
+            ]
+        }
+    }
+}
+
+private extension GraphIndexDefinition where FieldReference == FieldIdentity {
+    var configurationDisplay: [String: String] {
+        switch self {
+        case .property(_, _, _, _, let strategy):
+            return ["Strategy": strategy.rawValue]
+        case .rdf:
+            return [:]
+        case .ontologyProjection(let iriBase, let graph):
+            var values = ["Individual IRI Base": iriBase]
+            if let graph {
+                values["Graph"] = String(describing: graph.term)
+            }
+            return values
+        }
+    }
+}
+
+// MARK: - Field type presentation
 
 extension FieldSchemaType {
     /// The label shown for the field type.
@@ -110,7 +236,7 @@ extension FieldSchemaType {
     }
 }
 
-// MARK: - Entity Schema Presentation
+// MARK: - Entity schema presentation
 
 extension Schema.Entity {
     /// A display-ready representation of the entity directory path.

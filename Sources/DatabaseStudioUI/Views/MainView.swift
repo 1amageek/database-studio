@@ -625,6 +625,12 @@ struct ConnectionStatusBar: View {
                     Text("Connecting...")
                         .foregroundStyle(.secondary)
 
+                case .disconnecting:
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Disconnecting...")
+                        .foregroundStyle(.secondary)
+
                 case .connected:
                     Image(systemName: "circle.fill")
                         .foregroundStyle(.green)

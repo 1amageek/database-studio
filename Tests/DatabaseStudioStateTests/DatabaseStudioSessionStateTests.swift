@@ -10,7 +10,7 @@ struct DatabaseStudioSessionStateTests {
     // MARK: - disconnect() completeness
 
     @Test("disconnect resets all session state to defaults")
-    func disconnectResetsAllState() {
+    func disconnectResetsAllState() async {
         let studioState = DatabaseStudioState()
 
         // Set every session state property to a non-default value.
@@ -35,7 +35,7 @@ struct DatabaseStudioSessionStateTests {
         ))
         studioState.discoveredFields = [DiscoveredField(path: "name", name: "name", inferredType: .string, sampleValues: [], depth: 0)]
 
-        studioState.disconnect()
+        await studioState.disconnect()
 
         // Navigation
         #expect(studioState.selectedEntityName == nil)
@@ -96,7 +96,7 @@ struct DatabaseStudioSessionStateTests {
         #expect(studioState.databaseOperationFailureMessage == nil)
 
         // Clean up
-        studioState.disconnect()
+        await studioState.disconnect()
         if FileManager.default.fileExists(atPath: databasePath) {
             try FileManager.default.removeItem(atPath: databasePath)
         }
@@ -105,23 +105,23 @@ struct DatabaseStudioSessionStateTests {
     // MARK: - Idempotency
 
     @Test("disconnect is idempotent")
-    func disconnectIsIdempotent() {
+    func disconnectIsIdempotent() async {
         let studioState = DatabaseStudioState()
-        studioState.disconnect()
-        studioState.disconnect()
+        await studioState.disconnect()
+        await studioState.disconnect()
         #expect(studioState.connectionState == .disconnected)
     }
 
     // MARK: - Configuration state preservation
 
     @Test("disconnect preserves configuration state")
-    func disconnectPreservesConfiguration() {
+    func disconnectPreservesConfiguration() async {
         let studioState = DatabaseStudioState()
         studioState.filePath = "/custom/path.sqlite"
         studioState.rootDirectoryPath = "myapp"
         studioState.pageSize = 50
 
-        studioState.disconnect()
+        await studioState.disconnect()
 
         #expect(studioState.filePath == "/custom/path.sqlite")
         #expect(studioState.rootDirectoryPath == "myapp")
@@ -131,13 +131,13 @@ struct DatabaseStudioSessionStateTests {
     // MARK: - Computed properties after reset
 
     @Test("computed properties reflect reset state")
-    func computedPropertiesReflectResetState() {
+    func computedPropertiesReflectResetState() async {
         let studioState = DatabaseStudioState()
         studioState.selectedItemID = "x"
         studioState.selectedItemIDs = ["x", "y"]
         studioState.currentItems = [StudioRecord(id: "x", typeName: "T", fields: [:], jsonByteCount: 0)]
 
-        studioState.disconnect()
+        await studioState.disconnect()
 
         #expect(studioState.selectedItem == nil)
         #expect(studioState.selectedItems.isEmpty)

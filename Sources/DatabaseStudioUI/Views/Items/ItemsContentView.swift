@@ -360,7 +360,8 @@ struct ItemsTableView: View {
                 // コレクション操作
                 ToolbarItemGroup(placement: .primaryAction) {
                     // Graph ウィンドウを開く（Graph インデックスがある場合のみ）
-                    if let graphIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "graph" }) {
+                    if let graphIndex = studioState.selectedEntity?.indexes
+                        .first(where: { $0.type == .graph(.property) }) {
                         Button { [studioState] in
                             let windowState = GraphWindowState.shared
                             windowState.document = nil
@@ -388,13 +389,14 @@ struct ItemsTableView: View {
                     }
 
                     // Map ウィンドウを開く（spatial インデックスまたは lat/lng フィールドがある場合）
-                    if let spatialIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "spatial" }) {
+                    if let spatialIndex = studioState.selectedEntity?.indexes
+                        .first(where: { $0.type == .spatial }) {
                         Button { [studioState] in
                             Task {
                                 do {
                                     let records = try await studioState.loadAllItems(for: typeName)
-                                    let latitudeField = spatialIndex.kind.fieldNames.first ?? "latitude"
-                                    let longitudeField = spatialIndex.kind.fieldNames.count > 1 ? spatialIndex.kind.fieldNames[1] : "longitude"
+                                    let latitudeField = spatialIndex.fieldNames.first ?? "latitude"
+                                    let longitudeField = spatialIndex.fieldNames.count > 1 ? spatialIndex.fieldNames[1] : "longitude"
                                     let mapState = MapWindowState.shared
                                     mapState.document = MapDocument(
                                         items: records.map(\.fields),
@@ -425,7 +427,8 @@ struct ItemsTableView: View {
                     }
 
                     // Search Console を開く（fulltext インデックスがある場合）
-                    if let fulltextIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "fulltext" }) {
+                    if let fulltextIndex = studioState.selectedEntity?.indexes
+                        .first(where: { $0.type == .text(.fullText) }) {
                         Button { [studioState] in
                             Task {
                                 do {
@@ -434,7 +437,7 @@ struct ItemsTableView: View {
                                     searchState.document = SearchDocument(
                                         items: records.map(\.fields),
                                         entityName: typeName,
-                                        textFieldNames: fulltextIndex.kind.fieldNames
+                                        textFieldNames: fulltextIndex.fieldNames
                                     )
                                     searchState.entityName = typeName
                                     searchState.refreshDocument = { [weak studioState] in
@@ -443,7 +446,7 @@ struct ItemsTableView: View {
                                         return SearchDocument(
                                             items: records.map(\.fields),
                                             entityName: typeName,
-                                            textFieldNames: fulltextIndex.kind.fieldNames
+                                            textFieldNames: fulltextIndex.fieldNames
                                         )
                                     }
                                     openWindow(id: "search-console")
@@ -458,12 +461,13 @@ struct ItemsTableView: View {
                     }
 
                     // Vector Explorer を開く（vector インデックスがある場合）
-                    if let vectorIndex = studioState.selectedEntity?.indexes.first(where: { $0.kind.identifier == "vector" }) {
+                    if let vectorIndex = studioState.selectedEntity?.indexes
+                        .first(where: { $0.type == .vector }) {
                         Button { [studioState] in
                             Task {
                                 do {
                                     let records = try await studioState.loadAllItems(for: typeName)
-                                    let embeddingField = vectorIndex.kind.fieldNames.first ?? "embedding"
+                                    let embeddingField = vectorIndex.fieldNames.first ?? "embedding"
                                     let vectorState = VectorWindowState.shared
                                     vectorState.document = try VectorDocument(
                                         records: records,

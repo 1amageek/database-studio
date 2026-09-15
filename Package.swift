@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/1amageek/database-client.git", from: "26.0904.0"),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
             from: "26.0905.0"
@@ -28,6 +29,9 @@ let package = Package(
         .target(
             name: "DatabaseStudioUI",
             dependencies: [
+                .product(name: "DatabaseClient", package: "database-client"),
+                .product(name: "DatabaseClientHTTP", package: "database-client"),
+                .product(name: "DatabaseWire", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "GraphIndex", package: "database-framework"),
                 .product(name: "OntologyIndex", package: "database-framework"),
