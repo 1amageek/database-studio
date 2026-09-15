@@ -72,3 +72,18 @@ read back exact counts. Server exit 0 and negative readiness both passed.
 - `/tmp/maintenance-catalog-run-1/evidence.json` records successful ontology/SHACL publication and restart, followed by an overly narrow sample assertion.
 - Actual CNC ancestors are MachiningEquipment at depth 1, Equipment at depth 2, and `owl:Thing` at depth 3. The sample now includes the universal class in its exact expected result.
 - Studio should distinguish explicitly declared classes from the implicit top class when presenting ontology layers. This is a presentation finding, not a server failure.
+
+### SAMPLE-009 validation follow-up
+
+The sample now defines a canonical RDF dataset index on MaintenanceStatement and
+populates 360 derived statements from all 180 equipment items. Actual validation
+passes for both factory graphs. Deleting equipment-0001's line statement returns
+exactly one sh:MinCountConstraintComponent violation with the correct focus node
+and lineID path; restoring it removes the violation. Restart verification passes
+at `/tmp/maintenance-shacl-run-1/evidence.json`.
+
+### SAMPLE-011: Business edits and sample RDF projection have separate lifecycles
+
+- The sample's equipmentType/lineID statements are derived fixtures, not framework-maintained ontology projections. Editing Equipment does not update MaintenanceStatement automatically.
+- Impact: a Studio user must not interpret validation of the projection as validation of later business edits without refreshing it.
+- Current boundary: the isolated runner seeds and verifies one deterministic snapshot. Production synchronization or a maintained model projection requires its own explicit schema contract.

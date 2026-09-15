@@ -12,7 +12,7 @@ It does not connect to or modify a database.
 
 Current status: ordinary SQLite import and restart/readback are verified with
 1,000 records, authorized CRUD, and denied-operation checks. Ontology and SHACL catalog publication, restart persistence and ontology hierarchy
-are also verified. SHACL data validation, MultiBase setup and Studio UI validation
+are also verified. SHACL equipment validation is verified. MultiBase setup and Studio UI validation
 remain in progress. Use a fresh sample
 database. See [ISSUES.md](ISSUES.md) for observed problems and fixes.
 
@@ -55,3 +55,17 @@ Catalog verification: `/tmp/maintenance-catalog-run-2/evidence.json` confirms
 19 ontology axioms, 6 shape quads and the CNC ancestor chain through `owl:Thing`,
 with unchanged catalog contents and all 1000 records after restart. This is not
 evidence of SHACL validation against the equipment data.
+
+## Equipment SHACL validation
+
+The runner adds `MaintenanceStatement` and the `maintenance_equipment_rdf` index
+through `validation-schema.json`. It stores 360 derived RDF statements for the
+180 equipment items, separately from the 1000 business records. Each factory
+has its own named graph. The projection is sample-owned; editing Equipment
+records does not automatically synchronize these derived statements.
+
+`/tmp/maintenance-shacl-run-1/evidence.json` verifies normal validation for both
+factory graphs, exactly one missing-line violation on equipment-0001, successful
+restoration, and normal validation after restart. The violation names lineID and
+sh:MinCountConstraintComponent. All 1000 business records remain present, the
+server exits 0, and its endpoint is unreachable after shutdown.

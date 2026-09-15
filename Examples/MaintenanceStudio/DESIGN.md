@@ -44,9 +44,25 @@ Reproducibility tests compare two runs and reject intentionally broken reference
 The ordinary runner verifies exactly 1,000 persisted rows after server restart,
 explicit role permissions, denied Factory deletion, and WorkOrder CRUD. It only
 reports success after clean shutdown and negative readiness. Database-enforced
-relationships, ontology/SHACL execution, MultiBase and Studio UI remain pending. [ISSUES.md](ISSUES.md) records
+relationships, MultiBase and Studio UI remain pending. Ontology catalog and
+SHACL projection execution are verified by the sample runner. [ISSUES.md](ISSUES.md) records
 observed usability problems and the current verification boundaries.
 
 The next sample increment publishes the generated ontology and SHACL catalog,
 then verifies the CNC ancestor chain and exact catalog readback after restart.
 Catalog publication does not establish SHACL validation against entity indexes.
+
+## Equipment Validation Projection
+
+The sample owns MaintenanceStatement, a derived projection of the 180 Equipment
+rows into 360 RDF statements (equipmentType and lineID). Business counts remain
+1000; projection counts are reported separately. String IDs remain unchanged.
+A named graph per factory scopes validation; named graphs do not imply MultiBase.
+The maintenance_equipment_rdf index uses canonical RDFTerm subject, predicate,
+object and graph fields and requires GraphIndexes (included in AllRuntimeFeatures).
+The sample creates a fresh schema rather than migrating an existing database.
+
+Verification requires zero issues in both graphs, one missing-line violation
+for an explicitly identified equipment after deleting its projection, and zero
+issues after restoring it. Repeat normal validation after restart. Derived rows
+are sample-owned fixtures, not automatic production model synchronization.

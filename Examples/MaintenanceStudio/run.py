@@ -10,6 +10,7 @@ import subprocess
 import time
 from pathlib import Path
 from generate import COUNTS, tagged, write_bundle
+from validation import ENTITY, extend_schema, verify
 
 
 def run(cli, server, directory):
@@ -20,6 +21,9 @@ def run(cli, server, directory):
     if versions[0] != versions[1]:
         raise RuntimeError(f'CLI/server version mismatch: {versions}')
     rows = write_bundle(directory/'fixtures', 20260915)
+    manifest = json.loads((directory/'fixtures/schema.json').read_text())
+    extend_schema(manifest)
+    (directory/'validation-schema.json').write_text(json.dumps(manifest))
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
@@ -51,7 +55,7 @@ def run(cli, server, directory):
     configuration = json.loads(config.read_text())
     configuration['entityPolicies'] = [
         {'entity': entity, 'roles': {operation: ['admin'] for operation in ('list', 'get', 'create', 'update', 'delete')}}
-        for entity in COUNTS
+        for entity in (*COUNTS, ENTITY)
     ]
     configuration['entityPolicies'][0]['roles'].pop('delete')
     config.write_text(json.dumps(configuration, indent=2)+'\n')
@@ -74,9 +78,9 @@ def run(cli, server, directory):
                     with socket.create_connection(('127.0.0.1', port), timeout=.1): break
                 except OSError: time.sleep(.05)
             evidence['capabilities'] = command('capabilities')
-            plan = command('schema', 'plan', '@'+str(directory/'fixtures/schema.json'))
+            plan = command('schema', 'plan', '@'+str(directory/'validation-schema.json'))
             evidence['schemaPlan'] = plan
-            applied = command('schema', 'apply', '@'+str(directory/'fixtures/schema.json'),
+            applied = command('schema', 'apply', '@'+str(directory/'validation-schema.json'),
                               '--expected-fingerprint', plan['currentFingerprint'], '--idempotency-key', 'maintenance-schema-v1')
             if 'id' in applied:
                 evidence['schemaJob'] = command('job', 'wait', applied['id'], applied['family'], applied['kind'])
@@ -122,6 +126,7 @@ def run(cli, server, directory):
             if len(catalog) != 19 or len(shape_catalog) != 6:
                 raise RuntimeError('Ontology or SHACL catalog count mismatch')
             evidence['catalogPublished'] = True
+            verify(command, rows, evidence, seed=True)
             process.terminate()
             if process.wait(timeout=20) != 0:
                 raise RuntimeError('Server did not shut down cleanly before restart')
@@ -150,6 +155,7 @@ def run(cli, server, directory):
                 raise RuntimeError('Ontology ancestor hierarchy mismatch: '+json.dumps(hierarchy))
             evidence['ontologyHierarchy'] = hierarchy
             evidence['catalogRestartVerified'] = True
+            verify(command, rows, evidence, seed=False)
             evidence['readback'] = {}
             for entity in COUNTS:
                 result = command('query', 'sql', f'SELECT COUNT(*) AS sample_count FROM {entity}', '--output', 'json')
