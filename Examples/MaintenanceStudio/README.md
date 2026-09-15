@@ -11,8 +11,9 @@ a Schema JSON manifest, tagged values, SQL inserts, expected results and checksu
 It does not connect to or modify a database.
 
 Current status: ordinary SQLite import and restart/readback are verified with
-1,000 records, authorized CRUD, and denied-operation checks. Ontology, SHACL,
-MultiBase setup and Studio UI validation remain in progress. Use a fresh sample
+1,000 records, authorized CRUD, and denied-operation checks. Ontology and SHACL catalog publication, restart persistence and ontology hierarchy
+are also verified. SHACL data validation, MultiBase setup and Studio UI validation
+remain in progress. Use a fresh sample
 database. See [ISSUES.md](ISSUES.md) for observed problems and fixes.
 
 
@@ -31,7 +32,7 @@ failure. Credentials never appear in arguments or output. A server without Entit
 policies rejects inserts; this failure is preserved, not bypassed.
 
 The generated N-Quads include a common ontology, two factory graph files and a
-SHACL Equipment-line shape. They are not yet automatically imported by the runner.
+SHACL Equipment-line shape. The runner imports the ontology and SHACL catalog. Factory data graphs are not yet imported.
 Factory graphs are named graphs, not a substitute for MultiBase instances.
 
 The runner writes explicit `entityPolicies` into its isolated server configuration.
@@ -49,3 +50,8 @@ CLI/server 26.0904.0 and the schema-driven authorization fix. It retained exactl
 orders and 200 incidents after restart. The owned server exited with status 0
 and was unreachable after shutdown. The SQLite file remains in that isolated
 run directory; the runner does not leave a background server running.
+
+Catalog verification: `/tmp/maintenance-catalog-run-2/evidence.json` confirms
+19 ontology axioms, 6 shape quads and the CNC ancestor chain through `owl:Thing`,
+with unchanged catalog contents and all 1000 records after restart. This is not
+evidence of SHACL validation against the equipment data.

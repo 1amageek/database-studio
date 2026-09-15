@@ -106,6 +106,22 @@ def run(cli, server, directory):
             command('entity', 'delete', 'WorkOrder', json.dumps(tagged(probe['id'])),
                     '--idempotency-key', 'authorization-probe-delete')
             evidence['crudVerified'] = True
+            required = {'ontology.execute', 'shacl.execute'}
+            advertised = {feature['identifier'] for feature in evidence['capabilities']['features']}
+            if not required <= advertised:
+                raise RuntimeError('Ontology or SHACL capability is unavailable')
+            ontology = 'urn:maintenance:ontology'
+            shapes = 'urn:maintenance:shapes'
+            command('ontology', 'upsert', json.dumps(dict(ontology=ontology, imports=[],
+                axioms='@'+str(directory/'fixtures/ontology.nq'))),
+                '--idempotency-key', 'maintenance-ontology-v1', '--output', 'json')
+            command('shacl', 'upsert', shapes, '@'+str(directory/'fixtures/shapes.nq'),
+                '--idempotency-key', 'maintenance-shapes-v1', '--output', 'json')
+            catalog = command('ontology', 'describe', ontology, '--output', 'json')
+            shape_catalog = command('shacl', 'describe', shapes, '--output', 'json')
+            if len(catalog) != 19 or len(shape_catalog) != 6:
+                raise RuntimeError('Ontology or SHACL catalog count mismatch')
+            evidence['catalogPublished'] = True
             process.terminate()
             if process.wait(timeout=20) != 0:
                 raise RuntimeError('Server did not shut down cleanly before restart')
@@ -124,6 +140,16 @@ def run(cli, server, directory):
                 except OSError: time.sleep(.05)
             command('capabilities')
             evidence['restarted'] = True
+            if command('ontology', 'describe', ontology, '--output', 'json') != catalog:
+                raise RuntimeError('Ontology catalog changed after restart')
+            if command('shacl', 'describe', shapes, '--output', 'json') != shape_catalog:
+                raise RuntimeError('SHACL catalog changed after restart')
+            hierarchy = command('ontology', 'hierarchy', ontology, 'urn:maintenance:CNC', '--output', 'json')
+            expected = {'urn:maintenance:MachiningEquipment': '1', 'urn:maintenance:Equipment': '2', 'owl:Thing': '3'}
+            if {entry['resource']: entry['depth'] for entry in hierarchy} != expected:
+                raise RuntimeError('Ontology ancestor hierarchy mismatch: '+json.dumps(hierarchy))
+            evidence['ontologyHierarchy'] = hierarchy
+            evidence['catalogRestartVerified'] = True
             evidence['readback'] = {}
             for entity in COUNTS:
                 result = command('query', 'sql', f'SELECT COUNT(*) AS sample_count FROM {entity}', '--output', 'json')

@@ -46,3 +46,7 @@ explicit role permissions, denied Factory deletion, and WorkOrder CRUD. It only
 reports success after clean shutdown and negative readiness. Database-enforced
 relationships, ontology/SHACL execution, MultiBase and Studio UI remain pending. [ISSUES.md](ISSUES.md) records
 observed usability problems and the current verification boundaries.
+
+The next sample increment publishes the generated ontology and SHACL catalog,
+then verifies the CNC ancestor chain and exact catalog readback after restart.
+Catalog publication does not establish SHACL validation against entity indexes.

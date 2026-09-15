@@ -50,7 +50,7 @@ read back exact counts. Server exit 0 and negative readiness both passed.
 
 - Reproduction: `xcrun --toolchain org.swift.64202608141a --find swiftc` returns the Xcode default compiler on this Mac; only the 2026-09-04 snapshot is installed.
 - Impact before the fix: both package harnesses claimed an August 14 pin while compiling with Apple Swift 6.4.0.30.4. The resulting build cannot prove the pinned-toolchain contract.
-- Evidence: `/tmp/schema-authorization-framework-3.log` and `/tmp/schema-authorization-server.log`; both build processes were stopped. The August 14 package download URL redirects to a 404 page.
+- Evidence: `/tmp/schema-authorization-framework-3.log` and `/tmp/schema-authorization-server.log`; both build processes were stopped. The initial download check used an incorrect `swift-6.4-branch` URL. The correct `swift-6.4.x-branch` URL returns HTTP 200; the earlier availability claim was corrected.
 - Improvement: validate the resolved toolchain identity before dependency resolution or compilation; align the normative pin and runner configuration before resuming. The user approved the September 4 baseline. Both harnesses now verify the resolved compiler bundle identifier before building; wrong-compiler rejection was exercised in both.
 
 ### SAMPLE-008: Reserved aggregate alias gives an unhelpful SQL error
@@ -60,3 +60,15 @@ read back exact counts. Server exit 0 and negative readiness both passed.
 - Workaround: the sample uses `AS sample_count` for the count column.
 - Improvement: report the parser location and expected token, and document reserved identifiers. Parser behavior is outside the authorization fix.
 - Evidence: `/tmp/maintenance-studio-auth-fixed-1/evidence.json`.
+
+### SAMPLE-009: SHACL validation requires an RDF dataset index
+
+- The current seven-entity sample has no indexes. `shacl validate` requires both an entity and an RDF dataset index; uploading `shapes.nq` alone does not validate equipment data.
+- Confirmed path: `DatabaseGraphOperations/SchemaDatabaseSHACLDataSourceResolver.resolveSource` rejects a missing index and a non-RDF index before constructing the data source.
+- Next sample work must define and populate the canonical RDF dataset index, then verify both conforming equipment and a missing-line violation. An empty validation result is not evidence that the 180 equipment items were checked.
+
+### SAMPLE-010: Hierarchy includes the implicit universal class
+
+- `/tmp/maintenance-catalog-run-1/evidence.json` records successful ontology/SHACL publication and restart, followed by an overly narrow sample assertion.
+- Actual CNC ancestors are MachiningEquipment at depth 1, Equipment at depth 2, and `owl:Thing` at depth 3. The sample now includes the universal class in its exact expected result.
+- Studio should distinguish explicitly declared classes from the implicit top class when presenting ontology layers. This is a presentation finding, not a server failure.
