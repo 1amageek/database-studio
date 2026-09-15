@@ -10,9 +10,18 @@ let package = Package(
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
     ],
     dependencies: [
-        .package(path: "../database-framework"),
-        .package(path: "../database-kit"),
-        .package(path: "../storage-kit"),
+        .package(
+            url: "https://github.com/1amageek/database-framework.git",
+            from: "26.0905.0"
+        ),
+        .package(
+            url: "https://github.com/1amageek/database-kit.git",
+            from: "26.0809.4"
+        ),
+        .package(
+            url: "https://github.com/1amageek/storage-kit.git",
+            from: "26.0807.0"
+        ),
     ],
     targets: [
         // UI - UI層（SwiftUI・macOS専用）+ ロジック層統合
@@ -20,7 +29,6 @@ let package = Package(
             name: "DatabaseStudioUI",
             dependencies: [
                 .product(name: "DatabaseEngine", package: "database-framework"),
-                .product(name: "DatabaseCLICore", package: "database-framework"),
                 .product(name: "GraphIndex", package: "database-framework"),
                 .product(name: "OntologyIndex", package: "database-framework"),
                 .product(name: "DatabaseKit", package: "database-kit"),

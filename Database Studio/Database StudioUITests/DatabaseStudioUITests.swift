@@ -28,7 +28,8 @@ final class DatabaseStudioUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.state, .runningForeground)
     }
 
 }

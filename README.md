@@ -45,27 +45,40 @@ connection described above is installed.
 ## Requirements
 
 - macOS 26 or later
-- Swift 6.4 toolchain, required by the local database packages
+- Swift snapshot `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-09-04-a`
+- Xcode 27, whose bundled compiler evaluates the Swift 6.4 package manifests
 - FoundationDB client libraries for FoundationDB connections
 
 ## Build and test
 
-```bash
-xcodebuild \
-  -project "Database Studio/Database Studio.xcodeproj" \
-  -scheme "Database Studio" \
-  -destination "platform=macOS" \
-  CODE_SIGNING_ALLOWED=NO \
-  build
-```
+Build and launch the macOS app:
 
 ```bash
-xcodebuild \
+./run.sh
+```
+
+The script uses the installed September 4 snapshot for source compilation and
+Xcode's bundled toolchain for package evaluation and linking. It saves build
+logs and a result bundle in a unique temporary directory and launches only
+after a successful build. Build products are retained in `DerivedData`.
+
+Run the launch UI tests with local ad-hoc signing:
+
+```bash
+result_directory="$(mktemp -d)"
+perl -e 'alarm shift; exec @ARGV' 600 env \
+  TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault xcodebuild \
   -project "Database Studio/Database Studio.xcodeproj" \
   -scheme "Database Studio" \
   -destination "platform=macOS" \
-  CODE_SIGNING_ALLOWED=NO \
-  test
+  -derivedDataPath DerivedData \
+  -resultBundlePath "$result_directory/Launch.xcresult" \
+  '-only-testing:Database StudioUITests' \
+  SWIFT_EXEC="$(xcrun --toolchain org.swift.64202609041a --find swiftc)" \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+  test 2>&1 | tee "$result_directory/test.log"
+xcrun xcresulttool get test-results summary \
+  --path "$result_directory/Launch.xcresult"
 ```
 
 ## Dependencies
