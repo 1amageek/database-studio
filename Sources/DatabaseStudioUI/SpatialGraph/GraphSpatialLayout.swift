@@ -20,7 +20,7 @@ struct GraphSpatialLayout {
     static let maximumNodes = 1000
     static let maximumEdges = 4_096
     static let maximumIterations = 120
-    static let maximumRepulsionPairs = 512 * 511 / 2 * maximumIterations
+    static let maximumRepulsionPairs = 4_000_000
 
     static func iterationLimit(nodeCount: Int) -> Int {
         guard nodeCount > 1 else { return maximumIterations }
@@ -68,7 +68,7 @@ struct GraphSpatialLayout {
         var velocities = forces
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: elapsedLimit)
-        // ponytail: adapt iterations to retain the measured pair-work budget through 1000 nodes;
+        // ponytail: adapt iterations to bound pair work through 1000 nodes;
         // use a measured spatial tree when larger or more refined layouts are required.
         for iteration in 0..<iterationLimit(nodeCount: ids.count) where !ids.isEmpty {
             try Task.checkCancellation()

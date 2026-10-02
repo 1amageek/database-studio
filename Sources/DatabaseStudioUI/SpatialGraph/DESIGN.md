@@ -197,15 +197,15 @@ The revised admission limits are 1,000 nodes, 4,096 edges, at most 120 iteration
 layout budget, a yield every 32 pairwise rows and 32 node labels. These are
 private operational defaults, not database limits. Acceptance records measurements
 and rejects defaults that fail responsiveness or retained-memory checks.
-The 1000-entity revision retains the original 512-node/120-iteration pair-work
-budget: at most 15,697,920 repulsion pairs. Per-snapshot iterations are the
-smaller of 120 and that budget divided by unordered node pairs (at least one
-iteration); 1000 nodes receive 31 iterations. Approximate finite layout remains
-presentation-only. Elapsed-limit and cancellation failures remain explicit.
-Per-turn yielding occurs every 32 rows; larger graphs still receive no more
-pair work than the previously measured maximum. Measure the researched graph's
-actual layout/geometry/projection and confirm rendering before accepting this
-admission increase. No spatial tree or new solver is needed for this bound.
+Integration of the original 15,697,920-pair ceiling failed the unchanged
+10-second elapsed contract on the researched 1000-entity graph. The corrected
+private ceiling is 4,000,000 repulsion pairs. Per-snapshot iterations are the
+smaller of 120 and that ceiling divided by unordered node pairs (at least one
+iteration): 1000 nodes receive 8 iterations and 512 receive 30. This reduces
+refinement, not identity or topology; coordinates remain presentation-only.
+Elapsed and cancellation failures remain explicit. Yield every 32 rows and
+verify the corrected bound on the real resource before acceptance.
+No spatial tree or new solver is needed for this bound.
 
 The presentation owner owns limits on supported Macs: admitted nodes/edges/bytes, iterations, per-turn work, total elapsed layout
 time, glyph/label budgets and retained geometry. Record defaults, measured graph
@@ -305,3 +305,16 @@ a user trackpad observation; no hardware-input success is claimed. Build logs
 retain existing duplicate-rpath and AppIntents metadata warnings; test result
 bundles contain no runtime warnings. All mutable input/native state is MainActor
 owned; this macOS-only path introduces no Embedded branch or unsafe isolation.
+
+### Researched 1000-entity acceptance
+
+The corrected headless native path computed all 1000 finite positions in
+1.684742834s, built 2584 native relationship meshes in 0.027793083s and projected
+1000 glyphs / checked picking and camera mesh retention in 0.006149375s.
+The first 31-iteration integration attempt failed its elapsed limit; the
+4,000,000-pair ceiling gives 8 iterations / 3,996,000 pair operations for this
+snapshot. No identities or relationships are dropped. Computer use confirmed
+actual rendering with all points/relations on the corrected app build.
+These are single-run stage measurements on macOS 27.0 arm64 with Swift 6.4.0;
+they are not a frame-rate, allocation, other-hardware or physical-touch claim.
+Full package acceptance is recorded by [GraphDataset](../GraphDataset/DESIGN.md).

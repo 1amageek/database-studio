@@ -104,3 +104,20 @@ source URL, retrieval time and CC0 license; clearing focus restored all points.
 No XCTest UI runner or developer database was used. This is evidence for this
 bundled snapshot and this Mac, not a frame-rate or physical-touch claim.
 Build/test evidence: `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-dataset-verification-l3pt2rkr`.
+
+### Integrated acceptance
+
+Final `CorrectedIntegration.xcresult` passed exactly 63 tests with zero failures,
+skips, expected failures and result-bundle runtime warnings. The first integrated
+run exposed the 31-iteration elapsed-limit failure; SpatialGraph reduced its
+private pair-work ceiling, then the corrected real-resource path passed.
+`PackageBuild3.xcresult` and `AppBuild3.xcresult` succeeded. Existing linker duplicate
+rpath and skipped AppIntents metadata warnings remain; raw logs contain no compiler
+or testing-runtime internal errors. RealityKit's engine asset-path diagnostic is
+retained in the raw test log; native geometry execution and actual app rendering
+both succeeded, so it is not hidden or treated as evidence of GPU failure.
+All 22 resolved URL dependency revisions match the package test graph, with no
+edited dependency or path dependency. Swift 6.4.0 release compiler, Xcode host
+linker and macOS 27.0 arm64 runtime were used. Changed source/test files match the
+isolated compiled copy. Final Computer use confirms 1000 points / 2584 relations
+with the corrected layout and leaves the graph open in 3D.
