@@ -42,6 +42,9 @@ let package = Package(
                 .product(name: "SQLiteStorage", package: "storage-kit"),
             ],
             path: "Sources/DatabaseStudioUI",
+            swiftSettings: [
+                .unsafeFlags(["-Xfrontend", "-enable-cross-import-overlays"])
+            ],
             linkerSettings: [
                 .unsafeFlags(["-L/usr/local/lib"]),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/local/lib"])

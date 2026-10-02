@@ -41,17 +41,6 @@
                ReferencedContainer = "container:Database Studio.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "129439B92F3A280600A10189"
-               BuildableName = "Database StudioUITests.xctest"
-               BlueprintName = "Database StudioUITests"
-               ReferencedContainer = "container:Database Studio.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

@@ -10,10 +10,114 @@ enum TimelineOrientation: String, CaseIterable, Sendable {
 @Observable @MainActor
 final class GraphViewState {
 
+    var isSpatial = false {
+        didSet {
+            guard isSpatial != oldValue else { return }
+            if isSpatial {
+                twoDimensionalNodeIDs = visibleNodeIDs
+                stopSimulation()
+            } else {
+                cancelSpatialLayout()
+                if visibleNodeIDs != twoDimensionalNodeIDs { updateFocusLayout() }
+            }
+        }
+    }
+    private var twoDimensionalNodeIDs: Set<String> = []
+    var spatialCamera = GraphSpatialCamera()
+    var spatialViewport = CGSize.zero
+    var hasSpatialCamera = false
+    private(set) var spatialLayout: GraphSpatialLayout?
+    private(set) var spatialFailureMessage: String?
+    private(set) var isSpatialLoading = false
+    private(set) var spatialDocumentRevision: UInt64 = 0
+    private(set) var spatialGeometryRevision: UInt64 = 0
+    private var spatialLayoutTask: Task<Void, Never>?
+    private var spatialLayoutGeneration: UInt64 = 0
+    private var spatialSeeds: [String: SIMD3<Float>] = [:]
+
+    var spatialUnavailableReason: String? {
+        if timelineOrientation != .off { return "Timeline exploration uses 2D." }
+        if !document.edges.contains(where: { $0.edgeKind == .relationship }) {
+            return "Hierarchy-only graphs use 2D. 3D is available for relationship networks."
+        }
+        if document.nodes.count > GraphSpatialLayout.maximumNodes || document.edges.count > GraphSpatialLayout.maximumEdges {
+            return GraphSpatialLayout.Failure.capacity.errorDescription
+        }
+        return nil
+    }
+
+    func prepareSpatialLayout() async {
+        guard isSpatial, spatialLayout == nil, spatialUnavailableReason == nil else { return }
+        if let task = spatialLayoutTask { await task.value; return }
+        spatialLayoutGeneration &+= 1
+        let generation = spatialLayoutGeneration
+        let snapshot = document
+        let seeds = spatialSeeds
+        isSpatialLoading = true
+        spatialFailureMessage = nil
+        let task = Task { @MainActor [weak self] in
+            do {
+                let layout = try await GraphSpatialLayout.compute(document: snapshot, initialPositions: seeds)
+                guard !Task.isCancelled, let self, self.isSpatial,
+                      self.spatialLayoutGeneration == generation else { return }
+                self.spatialLayout = layout
+                self.spatialGeometryRevision &+= 1
+                self.isSpatialLoading = false
+                self.spatialLayoutTask = nil
+                if !self.hasSpatialCamera {
+                    self.fitSpatialCamera()
+                    self.hasSpatialCamera = true
+                }
+            } catch is CancellationError {
+                guard let self, self.spatialLayoutGeneration == generation else { return }
+                self.isSpatialLoading = false
+                self.spatialLayoutTask = nil
+            } catch {
+                guard let self, !Task.isCancelled, self.spatialLayoutGeneration == generation else { return }
+                self.spatialFailureMessage = error.localizedDescription
+                self.isSpatialLoading = false
+                self.spatialLayoutTask = nil
+            }
+        }
+        spatialLayoutTask = task
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+    }
+
+    func cancelSpatialLayout() {
+        spatialLayoutGeneration &+= 1
+        spatialLayoutTask?.cancel()
+        spatialLayoutTask = nil
+        isSpatialLoading = false
+    }
+
+    func moveSpatialNode(_ id: String, screen: CGPoint, planePoint: SIMD3<Float>) {
+        guard let next = spatialCamera.point(onPlaneThrough: planePoint, screen: screen, size: spatialViewport),
+              spatialLayout != nil else { return }
+        do {
+            try spatialLayout?.move(id, to: next)
+            spatialGeometryRevision &+= 1
+        } catch { spatialFailureMessage = error.localizedDescription }
+    }
+
+    func reportSpatialFailure(_ error: Error) { spatialFailureMessage = error.localizedDescription }
+
+    func fitSpatialCamera() {
+        guard let bounds = spatialLayout?.bounds(for: visibleNodes) else { return }
+        spatialCamera.fit(center: bounds.center, radius: bounds.radius, size: spatialViewport)
+    }
+
     // MARK: - データ
 
     var document: GraphDocument {
-        didSet { invalidateCache() }
+        didSet {
+            spatialSeeds = spatialLayout?.positions ?? spatialSeeds
+            cancelSpatialLayout()
+            spatialLayout = nil
+            spatialFailureMessage = nil
+            spatialDocumentRevision &+= 1
+            spatialGeometryRevision &+= 1
+            invalidateCache()
+        }
     }
 
     /// フルグラフ用レイアウト（サーチ中も位置を保持）
@@ -241,6 +345,7 @@ final class GraphViewState {
 
     /// フォーカスモードの切り替えに応じてレイアウトを更新
     private func updateFocusLayout() {
+        guard !isSpatial else { return }
         if isFocusMode {
             enterFocusMode()
         } else {
@@ -585,6 +690,7 @@ final class GraphViewState {
     }
 
     private func invalidateVisibleCache() {
+        spatialGeometryRevision &+= 1
         cachedVisibleEdges = nil
         cachedVisibleNodes = nil
         cachedVisibleNodeIDs = nil
@@ -633,6 +739,7 @@ final class GraphViewState {
 
     // MARK: - クエリ
 
+    private var queryGeneration = 0
     var showQueryPanel = false
     var queryText: String = "SELECT ?s ?p ?o\nWHERE {\n  ?s ?p ?o\n}\nLIMIT 100"
     var queryResults: [QueryResultRow] = []
@@ -659,10 +766,13 @@ final class GraphViewState {
         queryResults = []
         queryResultColumns = []
 
+        queryGeneration += 1
+        let generation = queryGeneration
         let documentSnapshot = document
         let text = queryText
 
         Task {
+            guard generation == queryGeneration else { return }
             do {
                 let dataset = SPARQLDataset(document: documentSnapshot)
                 let parsed = try SPARQLParser.parse(text)
@@ -704,6 +814,12 @@ final class GraphViewState {
     func updateDocument(_ newDocument: GraphDocument) {
         let cleaned = newDocument.removingOwlThing()
         let previousNodeIDs = Set(document.nodes.map(\.id))
+        let previousLabels = allEdgeLabels
+        queryGeneration += 1
+        isQueryExecuting = false
+        queryResults = []
+        queryResultColumns = []
+        queryError = nil
 
         // メトリクス計算 → ノードに設定
         let metrics = GraphMetricsComputer.compute(document: cleaned)
@@ -719,7 +835,7 @@ final class GraphViewState {
 
         // 新しいエッジラベルを activeEdgeLabels に追加（既存のフィルタ状態は維持）
         let newLabels = Set(enriched.edges.map(\.label))
-        let addedLabels = newLabels.subtracting(activeEdgeLabels.union(allEdgeLabels))
+        let addedLabels = newLabels.subtracting(activeEdgeLabels.union(previousLabels))
         activeEdgeLabels.formUnion(addedLabels)
         // 削除されたラベルを除去
         activeEdgeLabels = activeEdgeLabels.intersection(newLabels)
@@ -785,6 +901,7 @@ final class GraphViewState {
     }
 
     func startSimulation(size: CGSize) {
+        guard !isSpatial else { return }
         viewportSize = size
         hasUserAdjustedCamera = false
         let nodeIDs = document.nodes.map(\.id)
@@ -840,6 +957,7 @@ final class GraphViewState {
 
     /// ドラッグ後に位置を保ったまま微調整シミュレーションを再開
     func resumeSimulation(size: CGSize) {
+        guard !isSpatial else { return }
         let layout = activeLayout
         layout.reheat()
 
@@ -887,6 +1005,7 @@ final class GraphViewState {
     // MARK: - Zoom to Fit
 
     func zoomToFit(padding: CGFloat = 60) {
+        if isSpatial { fitSpatialCamera(); return }
         let nodeIDs = visibleNodeIDs
         let nodePositions = nodeIDs.compactMap { activeLayout.positions[$0] }
         guard !nodePositions.isEmpty, viewportSize.width > 0, viewportSize.height > 0,

@@ -2,29 +2,34 @@
 
 ## Purpose and Scope
 
-Status: implementation in progress, 2026-09-15. A standalone macOS RealityView
-probe on the pinned toolchain rendered a plane, moved its camera and accepted
-screen-aligned selection. Integrated renderer verification remains pending.
+Status: presentation revised 2026-10-02. The spatial implementation uses a bounded
+relationship network. Native verification and its limits are recorded in
+[SpatialGraph](SpatialGraph/DESIGN.md); broader Studio acceptance remains pending.
 
 Parent: [Database Studio](../../DESIGN.md).
-Child: [SpatialGraph](SpatialGraph/DESIGN.md).
+Children: [SpatialGraph](SpatialGraph/DESIGN.md),
+[RuntimeConnection](RuntimeConnection/DESIGN.md).
 Existing folders are source navigation locations, not newly declared component
 boundaries. Studio integrates the existing database runtime through DatabaseClient; it does
 not implement a new runtime. Source-dependent presentation capabilities remain
 explicit gates until their canonical operations are connected.
 
-The requested result is a beautiful, readable graph whose **space is 3D and
-whose nodes remain 2D**, with reversible 2D/3D presentation switching. The
-existing implementation informs data meaning and useful interactions; its
-exact appearance is not an immutable design requirement.
+The requested result uses 3D where changing viewpoint helps explore intersecting
+relationships. Tables, attributes, schema diagrams and ontology hierarchies stay
+2D. The reference video supplies a visual direction for the spatial network:
+small points, restrained lines, sparse labels and stable viewpoint changes.
+Its animation is not evidence of database semantics or runtime performance.
 
 ### Fixed decisions
 
 - Flat class and individual glyphs retain distinguishable silhouettes, icons,
   labels and domain colors; they have no extrusion, bevel or volumetric body.
-- Layers, node coordinates and relationship paths occupy spatial depth.
-- One central viewport presents either 2D or 3D and either the ontology view
-  or an available MultiBase view. MultiBase is never a second bottom canvas.
+- Spatial network coordinates are presentation layout, not class depth, physical
+  distance, similarity, chronology or source ownership. Spatial layout and drawing
+  contracts are owned by [SpatialGraph](SpatialGraph/DESIGN.md).
+- The graph viewport defaults to 2D. An explicit spatial network view is available
+  for relationship exploration; hierarchy-only and timeline views remain 2D.
+- Base selection, when available, is a source control independent of projection.
 - The lower pane remains the SPARQL editor and Table/Raw result panel.
 - Changing projection preserves data identity, selection, filters, query text,
   results, inspector state and navigation history.
@@ -37,8 +42,8 @@ exact appearance is not an immutable design requirement.
 |---|---|---|
 | Graph window and `GraphViewState` | Document revision, selection, filtering, focus, query presentation and projection state | No independent renderer-owned copy of semantic state |
 | Graph conversion in Studio | Preserve node/edge identity, role, labels and supplied provenance | No Base membership inferred from IRI, color, folder name or proximity |
-| 2D layout and spatial layout | Presentation coordinates keyed by identity and revision | No changes to triples, class membership or authorization |
-| `GraphCanvas` / proposed RealityKit view | Draw the same visible graph and emit identity-based interaction intents | No storage handles, queries, grants or ontology reasoning |
+| 2D layout / SpatialGraph | Presentation coordinates keyed by identity and revision | No changes to triples, class membership or authorization |
+| `GraphCanvas` / spatial view | Draw the same visible graph and emit identity-based interaction intents | No storage handles, queries, grants or ontology reasoning |
 | Existing query panel | Edit and evaluate local document queries; render results and errors | Projection switching never changes the query dataset |
 | DatabaseKit / database runtime | Canonical ontology, Base, Composition and source/derived lineage | Studio consumes their contracts; it does not recreate them |
 
@@ -62,9 +67,9 @@ wrapping canonical values, with exact API shape decided at its integration gate.
 Graph window
 ├── Sidebar: class tree / available Base targets / filters
 ├── Detail column
-│   ├── Toolbar: [2D | 3D]   [Ontology | MultiBase, when available]
+│   ├── Toolbar: [2D | 3D network, when applicable] + independent source controls
 │   ├── ONE graph viewport: GraphCanvas OR RealityKit presentation
-│   │   └── in-viewport orbit / pan / zoom / fit / layer controls
+│   │   └── in-viewport orbit / pan / zoom / fit / focus controls
 │   └── Existing optional VSplitView lower pane
 │       └── HSplitView: SPARQL editor | results [Table | Raw]
 └── Existing inspector: Detail / Events / People / Places
@@ -110,13 +115,12 @@ These observations come from source, not a live-data rendering verification.
 | Domain family | Restrained inherited color; color never stands for Base authorization |
 | Selection / search | Separate outline treatments; selection does not overwrite domain color |
 | Relationship | Directed line with original predicate; show readable labels primarily near focus or at close zoom |
-| Layer | Thin, low-contrast plane/contour with heading; optional guides, no glass slab |
+| Spatial overview and focus | Point density, line contrast and label priority follow [SpatialGraph](SpatialGraph/DESIGN.md); no ontology-height planes |
 | Base | Independently bounded peer region containing its graph |
 | Composition | Separate association to participating Base regions, never a relationship triple or containment edge |
 
 Beauty comes from spacing, typographic hierarchy, stable motion, restrained
-color and legible relationships. Labels and glyphs face the camera without
-tilting with layer surfaces. No lighting-dependent contrast on node faces.
+color and legible relationships. Labels and glyphs remain screen-facing throughout camera motion. No lighting-dependent contrast on node faces.
 Respect light/dark appearance and reduced motion. Shape, text and the accessible
 sidebar must identify objects without relying on color or depth alone.
 
@@ -127,40 +131,41 @@ identical visible node/edge identities and shared filters. Occlusion and
 level-of-detail are rendering decisions and do not remove graph data.
 
 Retain independent 2D and 3D camera/position state. Returning to a visited mode
-restores it rather than fitting again. The first spatial view initializes from
-the existing layout and explicit layer assignment. Keep the selected identity
-as the transition anchor. Spatial drag changes presentation offsets only; it
-does not reparent nodes or move data between Bases. Layer assignment changes
-through explicit presentation controls, not dragging across a plane.
+restores it rather than fitting again. The first spatial view initializes a
+relationship-based layout under the child contract. Keep the selected identity
+as the transition anchor. Spatial dragging changes presentation coordinates
+only; it does not reparent nodes, edit relationships or move data between Bases.
 
 Existing timeline layout remains a 2D presentation in the first implementation.
 While timeline mode is active, explain why 3D is unavailable; switching requires
 turning timeline off. Do not discard timeline state silently. The current 2D
 minimap remains 2D-only; spatial Fit and orientation controls occupy the viewport.
 
-### Ontology layers
+### Presentation eligibility
 
-Use explicit named `subClassOf` edges for hierarchy layout. Do not hard-code
-three planes or insert an `owl:Thing` hub. For display depth, collapse strongly
-connected class groups, then compute deterministic longest-parent-path depth
-on the resulting acyclic graph; disconnected roots start at depth zero. Keep
-all original edges and identities, including cycles and multiple inheritance.
-Grouping cycles is layout bookkeeping, not an assertion of class equivalence.
+| User task | Presentation | Spatial eligibility |
+|---|---|---|
+| Read values, edit a record, inspect properties or query rows | 2D table/editor/inspector | No spatial control in these surfaces |
+| Inspect schema, class ancestry or a hierarchy-only graph | 2D diagram/tree | Hierarchy depth alone does not enable 3D |
+| Trace relationships across a network of entities or mixed ontology/instance relations | 2D by default; explicit 3D network option | Actual relationship edges and an admitted spatial layout are required |
+| Inspect time or geographic values | Existing dedicated 2D view | Their presence does not automatically create a spatial graph |
+| Compare Base catalogs or source metadata | 2D list/table | Multiple sources alone do not justify 3D |
 
-Place individuals after the deepest retained class layer and keep every type
-edge. Untyped individuals receive an explicitly unclassified group. Existing
-role visibility still applies; enabling 3D does not implicitly enable classes.
-Compute layer assignment from the retained document, not a transient filtered
-subset, so searching does not move every node between layers.
+Eligibility is a presentation purpose plus an explicit user choice, not a node
+count heuristic. No automatic switch on load, zoom, filtering or source change.
+When a document revision loses spatial eligibility, retain selection and query
+state and show the reason with an explicit return-to-2D action.
 
-Imported-ontology grouping is a separate, provenance-dependent arrangement.
-An imports list alone does not assign every node or axiom to a source ontology.
-Offer it only after source membership is supplied. Imports, subclass edges and
-instance edges have different meanings and may not be substituted for one another.
+The ontology sidebar owns a readable class hierarchy; the spatial network can
+include its original class/type edges when requested without mapping them to
+height. Cycles and multiple parents remain original graph relations. Imported
+ontology grouping requires supplied membership; an imports list alone is
+insufficient. Spatial position is never evidence of a source or asserted fact.
 
-### MultiBase layers
+### Source scope
 
-Each Base is an independent region; hierarchy depth remains inside that region.
+Each Base, when its source capability is connected, is an independently identified
+source scope. Its position is not a hierarchy or an authorization boundary.
 Preserve a scoped presentation identity consisting of the supplied source scope
 and local graph identity. Equal IRIs in different Bases must not be merged merely
 to simplify rendering. For repeated representations of shared ontology classes,
@@ -182,7 +187,7 @@ successful MultiBase load. Demonstration data must be explicitly labeled.
 
 1. Accept a document revision and its source scope in the owning graph state.
 2. Derive visibility once, preserving the existing filter and focus semantics.
-3. Compute presentation coordinates and layer membership for that revision.
+3. Compute presentation coordinates for that revision under the active layout contract.
 4. Publish only if the document, source generation and layout request still match.
 5. Update the active renderer by stable identity; selection updates the existing
    sidebar and inspector, never a separate spatial selection model.
@@ -199,8 +204,9 @@ of multiple Base graphs that could merge identities or create cross-Base joins.
 
 `GraphViewState` remains the MainActor semantic presentation owner. A spatial
 view owns its scene entities. The parent retains the spatial camera and cached
-coordinates. Layout is synchronous on MainActor and invalidated when the document
-changes; it creates no background task or subscription.
+coordinates. Spatial layout execution, cache keys, cancellation and bounds are
+owned by [SpatialGraph](SpatialGraph/DESIGN.md); it cannot publish into a superseded
+document or source generation.
 
 Window close, source replacement, disconnect and renderer teardown cancel
 pending work and release subscriptions/resources. Mode switching suspends hidden
@@ -215,17 +221,9 @@ query results.
 
 ## Failure, Concurrency, and Constraints
 
-Use macOS `RealityView` for spatial planes and edges, with a screen-space
-Canvas overlay for flat glyphs, labels and matching pointer hit tests. Apple's [RealityView documentation](https://developer.apple.com/documentation/realitykit/realityview.md)
-provides a macOS camera-content initializer; its visionOS attachment initializer
-is not an assumed macOS label solution. [BillboardComponent](https://developer.apple.com/documentation/realitykit/billboardcomponent.md)
-faces entities toward the active camera but does not expose the final adjusted
-orientation through the normal transform. Picking must therefore be verified
-against rendered glyphs rather than assumed from that transform.
-
-Documentation lists both APIs from macOS 15, within this package's macOS 26
-minimum. This is API availability evidence, not a compile/link, rendering,
-interaction or performance result on the pinned September 4 toolchain.
+The existing macOS RealityKit and Canvas path is the starting point.
+[SpatialGraph](SpatialGraph/DESIGN.md) owns camera projection, drawing and picking.
+Availability or a numeric camera check is not native rendering acceptance.
 
 If spatial initialization fails, retain the document and 2D state, display the
 failure and offer explicit return to 2D. Do not silently substitute a renderer.
@@ -247,9 +245,9 @@ sampling or label reduction without reporting it as missing database data.
 | Contract | Required evidence before implementation completion |
 |---|---|
 | Same graph across projections | Assert equal visible node/edge IDs, selected scoped identity, filters and query text/results through 2D → 3D → 2D; query/storage invocation counters stay unchanged |
-| Existing pane preserved | UI test opens SPARQL, executes a query, switches both modes and checks editor, Table/Raw results, error presentation and divider position |
-| Flat nodes in spatial space | macOS screenshots at different orbit angles show depth-separated layers and camera-facing flat silhouettes; hit-test selected glyphs at each angle |
-| Ontology correctness | Multiple parents, disconnected roots, cycles, untyped individuals and hidden classes retain original relations and deterministic grouping |
+| Existing pane preserved | Codex Computer use opens SPARQL, executes a query, switches both modes and checks editor, Table/Raw results, error presentation and divider position |
+| Spatial network | Actual macOS screenshots and interaction show a point-and-line network at different orbit angles; selected point and related predicates remain identifiable; hierarchy-only views stay 2D |
+| Ontology correctness | Cycles, multiple parents, untyped individuals and hidden classes retain original identities and edges; changing role does not manufacture a spatial hierarchy |
 | Base isolation | Same IRI in two Bases stays distinguishable; source and derived contributor lineage round-trip through selection; absent capability is explicit |
 | Snapshot freshness | Equal-count updates change labels/endpoints; stale background completion cannot overwrite a newer document or source generation |
 | Lifecycle | Close/switch/disconnect during load/layout; confirm cancelled work cannot publish and scene subscriptions/resources release |
@@ -258,23 +256,22 @@ sampling or label reduction without reporting it as missing database data.
 
 Existing [RDF conversion tests](../../Tests/GraphDocumentTests/GraphDocumentRDFTests.swift)
 and [ontology conversion tests](../../Tests/GraphDocumentTests/GraphDocumentOntologyTests.swift)
-are regression inputs, not proof of the proposed renderer. New rendering/state
+are regression inputs; native renderer evidence is owned by SpatialGraph. New rendering/state
 checks belong to Studio's test targets, not DatabaseKit or storage backends.
 
 ### Implementation gates and bounded sequence
 
 | Gate | Confirmed gap | Closure evidence |
 |---|---|---|
-| P1 — native spatial path | No RealityKit renderer or tested camera/picking path in Studio | Minimal pinned-toolchain macOS prototype proves flat glyphs, orbit, matching picking, resizing and teardown before renderer API is frozen |
-| P2 — shared state | Layout currently starts from canvas appearance; refresh fingerprint is count-only | Revision-driven state integration plus switching/query-pane/lifecycle tests |
-| P3 — source membership | GraphDocument has no Base/import provenance; Studio loads one ontology and rejects record runtime operations | Trace and implement the authorized source adapter with canonical identities and lineage; verify success, denied/unsupported and partial-load failures before enabling MultiBase/import grouping |
+| P1 — spatial network | Bounded deterministic network layout and retained relationship geometry replace SCC height grids and planes | Replace the layer contract in SpatialGraph, preserve original identities/edges and verify bounded layout, projection and actual native selection |
+| P2 — presentation integration | Toolbar admits relationship networks, keeps hierarchy/timeline in 2D and preserves shared state | Apply purpose-based eligibility; verify 2D default, retained cameras, visibility and query-pane state with zero extra query/storage invocations |
+| P3 — source membership | Current GraphDocument carries unscoped String IDs, not Base/import membership | Keep cross-source grouping unavailable until canonical scoped identity and lineage are supplied; this presentation task does not implement the runtime integration |
 
-Implement P1 first, then shared-state and ontology-depth presentation under P2.
-P3 is an explicit integration boundary, not a license to build a new database
-runtime or invent an authorization API in Studio. Its unavailable views remain
-honest until the source contract is established. Final whole-feature readiness
-requires every enabled path's acceptance evidence; this document alone does not
-declare implementation-ready or runtime-verified status for P1–P3.
+The current source already compares complete documents and stops 2D simulation
+on entry to 3D. Retain those mechanisms. Implementation acceptance requires
+P1 and P2's behavioral evidence; P3 remains a separate unavailable capability.
+SpatialGraph records the native implementation evidence. These gates do not
+establish the separate full-Studio acceptance matrix below.
 
 Child design: [RuntimeConnection](RuntimeConnection/DESIGN.md), owning the
 connection handshake, operation lifetime and server catalog.

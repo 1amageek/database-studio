@@ -111,7 +111,7 @@ public struct GraphEdge: Identifiable, Hashable, Sendable {
 }
 
 /// ノードとエッジで構成されるグラフドキュメント
-public struct GraphDocument: Sendable {
+public struct GraphDocument: Sendable, Equatable {
     public var nodes: [GraphNode]
     public var edges: [GraphEdge]
 

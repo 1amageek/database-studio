@@ -14,6 +14,10 @@ struct DatabaseStudioApp: App {
                 Button("Connect to Server…") {
                     openWindow(id: "runtime-workspace")
                 }
+                Button("Open Example Graph") {
+                    GraphWindowState.shared.showExample()
+                    openWindow(id: "graph-viewer")
+                }
             }
         }
         .windowStyle(.titleBar)

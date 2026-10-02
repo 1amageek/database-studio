@@ -5,10 +5,12 @@ public struct GraphView: View {
     @State private var state: GraphViewState
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
+    private let sourceDocument: GraphDocument
     private let initialFocusNodeID: String?
     private let initialFocusHops: Int?
 
     public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil) {
+        sourceDocument = document
         _state = State(initialValue: GraphViewState(document: document))
         self.initialFocusNodeID = focusNodeID
         self.initialFocusHops = focusHops
@@ -24,6 +26,14 @@ public struct GraphView: View {
                     inspectorContent
                 }
         }
+        .alert("Unable to Refresh Graph", isPresented: Binding(
+            get: { GraphWindowState.shared.loadFailureMessage != nil },
+            set: { if !$0 { GraphWindowState.shared.loadFailureMessage = nil } }
+        )) {
+            Button("OK") { GraphWindowState.shared.loadFailureMessage = nil }
+        } message: {
+            Text(GraphWindowState.shared.loadFailureMessage ?? "")
+        }
         .navigationSubtitle(toolbarSubtitle)
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
@@ -38,10 +48,8 @@ public struct GraphView: View {
                 showInspector = true
             }
         }
-        .onChange(of: graphDocumentFingerprint) { _, _ in
-            if let updatedDocument = GraphWindowState.shared.document {
-                state.updateDocument(updatedDocument)
-            }
+        .onChange(of: sourceDocument) { _, updatedDocument in
+            state.updateDocument(updatedDocument)
         }
         .task {
             if let id = initialFocusNodeID {
@@ -51,15 +59,6 @@ public struct GraphView: View {
                 state.focusOnNode(id)
             }
         }
-    }
-
-    // MARK: - Document Fingerprint
-
-    private var graphDocumentFingerprint: Int? {
-        guard let graphDocument = GraphWindowState.shared.document else { return nil }
-        let n = graphDocument.nodes.count
-        let e = graphDocument.edges.count
-        return (n + e) * (n + e + 1) / 2 + e
     }
 
     // MARK: - Detail Content
@@ -81,11 +80,14 @@ public struct GraphView: View {
 
     private var canvasWithMinimap: some View {
         ZStack(alignment: .bottomTrailing) {
-            GraphCanvas(state: state)
-
-            MinimapView(state: state)
-                .padding(12)
-                .opacity(state.visibleNodes.count > 20 ? 1.0 : 0.0)
+            if state.isSpatial {
+                GraphSpatialView(state: state)
+            } else {
+                GraphCanvas(state: state)
+                MinimapView(state: state)
+                    .padding(12)
+                    .opacity(state.visibleNodes.count > 20 ? 1.0 : 0.0)
+            }
         }
         .overlay(alignment: .top) {
             VStack(spacing: 4) {
@@ -280,22 +282,38 @@ public struct GraphView: View {
 
     @ViewBuilder
     private var toolbarActions: some View {
+        Picker("Projection", selection: $state.isSpatial) {
+            Text("2D").tag(false)
+            Text("3D").tag(true).disabled(state.spatialUnavailableReason != nil)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 90)
+        .accessibilityIdentifier("graph.projection")
+        .help(state.spatialUnavailableReason ?? "Explore relationships in 2D or 3D")
+
         Button {
             Task {
                 guard let refreshDocument = GraphWindowState.shared.refreshDocument else {
                     return
                 }
+                let generation = GraphWindowState.shared.loadGeneration
                 do {
-                    if let refreshedDocument = try await refreshDocument() {
-                        state.updateDocument(refreshedDocument)
+                    let refreshedDocument = try await refreshDocument()
+                    guard generation == GraphWindowState.shared.loadGeneration else { return }
+                    if let refreshedDocument {
+                        GraphWindowState.shared.document = refreshedDocument
+                    } else {
+                        GraphWindowState.shared.loadFailureMessage = "The source returned no graph document."
                     }
                 } catch {
+                    guard generation == GraphWindowState.shared.loadGeneration else { return }
                     GraphWindowState.shared.loadFailureMessage = error.localizedDescription
                 }
             }
         } label: {
             Image(systemName: "arrow.clockwise")
         }
+        .disabled(GraphWindowState.shared.refreshDocument == nil)
         .help("Refresh")
         .keyboardShortcut("r", modifiers: .command)
 
@@ -326,6 +344,7 @@ public struct GraphView: View {
                   ? "square.stack.3d.up.fill"
                   : "square.stack.3d.up.slash")
         }
+        .accessibilityIdentifier("graph.classes")
         .help(state.showClassNodes ? "Hide Classes" : "Show Classes")
         .keyboardShortcut("t", modifiers: .command)
 
@@ -372,6 +391,7 @@ public struct GraphView: View {
         } label: {
             Image(systemName: "terminal")
         }
+        .accessibilityIdentifier("graph.query")
         .help("SPARQL Console")
         .keyboardShortcut("c", modifiers: [.command, .shift])
 
