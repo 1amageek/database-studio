@@ -1,5 +1,6 @@
 import XCTest
 import simd
+import RealityKit
 @testable import DatabaseStudioUI
 
 @MainActor
@@ -77,6 +78,70 @@ final class SpatialGraphTests: XCTestCase {
         XCTAssertNil(camera.project(camera.eye + camera.backward, size: size))
         XCTAssertNil(camera.project(SIMD3(.nan, 0, 0), size: size))
         XCTAssertNil(camera.point(onPlaneThrough: world, screen: .zero, size: .zero))
+    }
+
+    func testThreeFingerTranslationTwistAndContactReset() throws {
+        var input = ThreeFingerRotation()
+        let initial: [AnyHashable: CGPoint] = [0: CGPoint(x: -10, y: -10),
+                                               1: CGPoint(x: 10, y: -10), 2: CGPoint(x: 0, y: 20)]
+        XCTAssertNil(input.update(initial))
+        let moved = initial.mapValues { CGPoint(x: $0.x + 12, y: $0.y - 8) }
+        let delta = try XCTUnwrap(input.update(moved))
+        XCTAssertEqual(delta.translation.width, 12, accuracy: 0.0001)
+        XCTAssertEqual(delta.translation.height, -8, accuracy: 0.0001)
+        XCTAssertEqual(delta.roll, 0, accuracy: 0.0001)
+        let twisted = moved.mapValues { CGPoint(x: 12 - ($0.y + 8), y: -8 + ($0.x - 12)) }
+        let twist = try XCTUnwrap(input.update(twisted))
+        XCTAssertEqual(twist.roll, -.pi / 2, accuracy: 0.0001)
+        XCTAssertEqual(twist.translation.width, 0, accuracy: 0.0001)
+        XCTAssertEqual(twist.translation.height, 0, accuracy: 0.0001)
+        XCTAssertNil(input.update([0: .zero, 1: .zero]))
+        XCTAssertNil(input.update(initial))
+        XCTAssertNil(input.update([0: .zero, 1: .zero, 2: .zero, 3: .zero]))
+        XCTAssertNil(input.update(initial))
+        XCTAssertNil(input.update([0: .zero, 1: .zero, 3: .zero]))
+        XCTAssertNil(input.update(initial))
+        input.reset()
+        XCTAssertNil(input.update(moved))
+        XCTAssertNil(input.update([0: CGPoint(x: CGFloat.nan, y: 0), 1: .zero, 2: .zero]))
+        XCTAssertNil(input.update(initial))
+    }
+
+    func testFullCameraRotationAndRollShareNativeProjectionBasis() async throws {
+        var camera = GraphSpatialCamera(yaw: 0, pitch: 0, distance: 10)
+        let initial = camera
+        camera.orbit(dx: 0, dy: CGFloat(Float.pi / 0.006))
+        XCTAssertLessThan(simd_distance(camera.backward, SIMD3(0, 0, -1)), 0.0001)
+        camera.orbit(dx: 0, dy: CGFloat(Float.pi / 0.006))
+        XCTAssertLessThan(simd_distance(camera.backward, initial.backward), 0.0001)
+        camera.orbit(dx: 0, dy: 0, roll: .pi / 2)
+        XCTAssertLessThan(simd_distance(camera.right, SIMD3(0, 1, 0)), 0.0001)
+        let size = CGSize(width: 900, height: 600)
+        let projected = try XCTUnwrap(camera.project(SIMD3(1, 0, 0), size: size))
+        XCTAssertEqual(projected.point.x, 450, accuracy: 0.0001)
+        XCTAssertGreaterThan(projected.point.y, 300)
+        let restored = try XCTUnwrap(camera.point(onPlaneThrough: SIMD3(1, 0, 0), screen: projected.point, size: size))
+        XCTAssertLessThan(simd_distance(restored, SIMD3(1, 0, 0)), 0.0001)
+        for _ in 0..<1000 { camera.orbit(dx: 3, dy: 5, roll: 0.01) }
+        XCTAssertEqual(simd_length(camera.orientation.vector), 1, accuracy: 0.0001)
+        let unchanged = camera
+        camera.orbit(dx: .nan, dy: 0)
+        XCTAssertEqual(camera, unchanged)
+        let document = network(3)
+        let layout = try await GraphSpatialLayout.compute(document: document)
+        let scene = GraphSpatialScene()
+        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: false)
+        let native = try XCTUnwrap(scene.root.children.compactMap { $0 as? PerspectiveCamera }.first)
+        XCTAssertLessThan(simd_distance(native.position, camera.eye), 0.0001)
+        for axis in [SIMD3<Float>(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1)] {
+            XCTAssertLessThan(simd_distance(native.orientation.act(axis), camera.orientation.act(axis)), 0.0001)
+        }
+        scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
+        for glyph in scene.glyphs { XCTAssertEqual(scene.hit(at: glyph.point), glyph.node.id) }
+        camera.orbit(dx: 10, dy: -10, roll: 0.3)
+        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: false)
+        XCTAssertEqual(scene.geometryBuildCount, 1)
+
     }
 
     func testNodeDragChangesOnlyPresentationOnCameraFacingPlane() async throws {

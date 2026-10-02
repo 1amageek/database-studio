@@ -17,6 +17,7 @@ struct CanvasInteractionView<Content: View>: NSViewRepresentable {
     let onMagnify: @MainActor (CGFloat, CGPoint) -> Void
     var onNavigateBack: (@MainActor () -> Void)?
     var onNavigateForward: (@MainActor () -> Void)?
+    var onThreeFingerOrbit: (@MainActor (CGFloat, CGFloat, CGFloat) -> Void)?
     @ViewBuilder var content: Content
 
     func makeNSView(context: Context) -> CanvasInteractionResponder {
@@ -26,9 +27,14 @@ struct CanvasInteractionView<Content: View>: NSViewRepresentable {
         interactionResponder.onMagnify = onMagnify
         interactionResponder.onNavigateBack = onNavigateBack
         interactionResponder.onNavigateForward = onNavigateForward
+        interactionResponder.onThreeFingerOrbit = onThreeFingerOrbit
+        interactionResponder.allowedTouchTypes = onThreeFingerOrbit == nil ? [] : [.indirect]
+        interactionResponder.wantsRestingTouches = onThreeFingerOrbit != nil
 
-        let presentedContent = NSHostingView(rootView: content)
+        let presentedContent = CanvasHostingView(rootView: content)
         presentedContent.translatesAutoresizingMaskIntoConstraints = false
+        presentedContent.allowedTouchTypes = interactionResponder.allowedTouchTypes
+        presentedContent.wantsRestingTouches = interactionResponder.wantsRestingTouches
         interactionResponder.addSubview(presentedContent)
         NSLayoutConstraint.activate([
             presentedContent.leadingAnchor.constraint(equalTo: interactionResponder.leadingAnchor),
@@ -45,27 +51,61 @@ struct CanvasInteractionView<Content: View>: NSViewRepresentable {
         interactionResponder.onMagnify = onMagnify
         interactionResponder.onNavigateBack = onNavigateBack
         interactionResponder.onNavigateForward = onNavigateForward
+        interactionResponder.onThreeFingerOrbit = onThreeFingerOrbit
+        interactionResponder.allowedTouchTypes = onThreeFingerOrbit == nil ? [] : [.indirect]
+        interactionResponder.wantsRestingTouches = onThreeFingerOrbit != nil
+        context.coordinator.presentedContent?.allowedTouchTypes = interactionResponder.allowedTouchTypes
+        context.coordinator.presentedContent?.wantsRestingTouches = interactionResponder.wantsRestingTouches
         context.coordinator.presentedContent?.rootView = content
     }
 
+    static func dismantleNSView(_ interactionResponder: CanvasInteractionResponder, coordinator: CanvasContentState) {
+        interactionResponder.onThreeFingerOrbit = nil
+        interactionResponder.onScroll = nil
+        interactionResponder.onMagnify = nil
+        interactionResponder.onNavigateBack = nil
+        interactionResponder.onNavigateForward = nil
+        coordinator.presentedContent = nil
+    }
+
     func makeCoordinator() -> CanvasContentState { CanvasContentState() }
+
+    // Forward raw contacts explicitly rather than relying on SwiftUI gesture handling.
+    final class CanvasHostingView: NSHostingView<Content> {
+        override func touchesBegan(with event: NSEvent) { nextResponder?.touchesBegan(with: event) }
+        override func touchesMoved(with event: NSEvent) { nextResponder?.touchesMoved(with: event) }
+        override func touchesEnded(with event: NSEvent) { nextResponder?.touchesEnded(with: event) }
+        override func touchesCancelled(with event: NSEvent) { nextResponder?.touchesCancelled(with: event) }
+    }
 
     final class CanvasContentState {
         var presentedContent: NSHostingView<Content>?
     }
 }
 
-/// Handles canvas scrolling, magnification, and backward or forward navigation.
+/// Handles canvas camera gestures and backward or forward navigation.
 final class CanvasInteractionResponder: NSView {
     var onScroll: (@MainActor (CGFloat, CGFloat) -> Void)?
     var onMagnify: (@MainActor (CGFloat, CGPoint) -> Void)?
     var onNavigateBack: (@MainActor () -> Void)?
     var onNavigateForward: (@MainActor () -> Void)?
 
+    var onThreeFingerOrbit: (@MainActor (CGFloat, CGFloat, CGFloat) -> Void)? {
+        didSet {
+            if onThreeFingerOrbit == nil {
+                rotation.reset()
+                isHandlingThreeFingerGesture = false
+            }
+        }
+    }
+    private var rotation = ThreeFingerRotation()
+    private var isHandlingThreeFingerGesture = false
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
     override func scrollWheel(with event: NSEvent) {
+        guard !isHandlingThreeFingerGesture else { return }
         let horizontalDelta: CGFloat
         let verticalDelta: CGFloat
         if event.hasPreciseScrollingDeltas {
@@ -81,6 +121,7 @@ final class CanvasInteractionResponder: NSView {
     }
 
     override func magnify(with event: NSEvent) {
+        guard !isHandlingThreeFingerGesture else { return }
         let location = convert(event.locationInWindow, from: nil)
         MainActor.assumeIsolated {
             onMagnify?(event.magnification, CGPoint(x: location.x, y: location.y))
@@ -99,7 +140,40 @@ final class CanvasInteractionResponder: NSView {
         }
     }
 
+    override func touchesBegan(with event: NSEvent) { updateRotation(with: event) }
+    override func touchesMoved(with event: NSEvent) { updateRotation(with: event) }
+    override func touchesEnded(with event: NSEvent) { updateRotation(with: event) }
+    override func touchesCancelled(with event: NSEvent) {
+        rotation.reset()
+        isHandlingThreeFingerGesture = false
+    }
+
+    private func updateRotation(with event: NSEvent) {
+        guard onThreeFingerOrbit != nil else { return }
+        let touches = event.touches(matching: .touching, in: self)
+        if touches.isEmpty { isHandlingThreeFingerGesture = false }
+        guard touches.count == 3, let first = touches.first, let device = first.device as? NSObject else {
+            rotation.reset()
+            return
+        }
+        var contacts: [AnyHashable: CGPoint] = [:]
+        for touch in touches {
+            guard touch.type == .indirect, let otherDevice = touch.device as? NSObject,
+                  device.isEqual(otherDevice), let identity = touch.identity as? AnyHashable else {
+                rotation.reset()
+                return
+            }
+            contacts[identity] = CGPoint(x: touch.normalizedPosition.x * touch.deviceSize.width,
+                                         y: -touch.normalizedPosition.y * touch.deviceSize.height)
+        }
+        isHandlingThreeFingerGesture = true
+        if let delta = rotation.update(contacts) {
+            onThreeFingerOrbit?(delta.translation.width, delta.translation.height, delta.roll)
+        }
+    }
+
     override func swipe(with event: NSEvent) {
+        guard onThreeFingerOrbit == nil else { return }
         // Three-finger trackpad swipe.
         if event.deltaX > 0 {
             MainActor.assumeIsolated { onNavigateBack?() }

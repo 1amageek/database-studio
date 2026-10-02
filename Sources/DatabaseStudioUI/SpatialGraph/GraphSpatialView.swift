@@ -42,7 +42,9 @@ struct GraphSpatialView: View {
     private func viewport(layout: GraphSpatialLayout, size: CGSize) -> some View {
         CanvasInteractionView(onScroll: { x, y in
             state.spatialCamera.pan(dx: x, dy: y, height: size.height)
-        }, onMagnify: { delta, _ in state.spatialCamera.zoom(delta) }) {
+        }, onMagnify: { delta, _ in state.spatialCamera.zoom(delta) }, onThreeFingerOrbit: { x, y, roll in
+            state.spatialCamera.orbit(dx: x, dy: y, roll: roll)
+        }) {
             ZStack {
                 RealityView { content in
                     content.add(scene.root)
@@ -71,7 +73,7 @@ struct GraphSpatialView: View {
                         }
                     }.onEnded { _ in draggedNode = nil; dragPlane = nil })
                     .accessibilityIdentifier("graph.spatial.viewport")
-                    .accessibilityLabel("Relationship network. Drag to orbit, scroll to pan, pinch to zoom. Option-drag moves a display point.")
+                    .accessibilityLabel("Relationship network. Three-finger drag to orbit and twist to roll. Mouse drag to orbit, scroll to pan, pinch to zoom. Option-drag moves a display point.")
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -83,7 +85,7 @@ struct GraphSpatialView: View {
                     Text("Up to 32 labels · Zoom in or select a point for details")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
-                Text("Drag to orbit · Option-drag to arrange")
+                Text("Three-finger drag / twist to rotate · Option-drag to arrange")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             .padding(10).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)).padding(12)

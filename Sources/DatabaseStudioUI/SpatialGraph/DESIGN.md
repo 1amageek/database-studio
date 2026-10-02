@@ -17,6 +17,7 @@ storage access, query execution, reasoning, membership or authorization.
 | Existing owner | Revised responsibility | Reason to change |
 |---|---|---|
 | [GraphSpatialLayout](GraphSpatialLayout.swift) | Deterministic bounded network coordinates and presentation offsets | Layout/readability; never domain hierarchy |
+| [ThreeFingerRotation](ThreeFingerRotation.swift) | Bounded contact identity, translation and twist deltas | Contact count, movement and cancellation |
 | [GraphSpatialCamera](GraphSpatialCamera.swift) | Shared world-to-screen basis, orbit, pan, zoom and Fit | Camera behavior and numerical limits |
 | [GraphSpatialScene](GraphSpatialScene.swift) | Retained native relationship geometry, batched into normal and emphasized meshes | Document/position changes; camera motion updates only transforms |
 | [GraphSpatialView](GraphSpatialView.swift) | Screen-facing point glyphs, label priorities and picking | Presentation and user interaction |
@@ -130,6 +131,33 @@ filter; it is distinct from visual emphasis. Orbit, pan, pinch and Fit affect on
 the camera. Ordinary pointer drag orbits; an explicit modifier-drag moves a node
 on the camera-facing plane through its starting position. Drag pins a presentation
 offset only and does not change any data. Existing sidebar navigation is retained.
+
+### Three-finger camera input
+
+```text
+Indirect NSTouch events -> exactly three stable identities on one device
+    -> centroid displacement + signed twist -> normalized camera quaternion
+        -> identical native camera transform / glyph projection / picking
+```
+
+The existing CanvasInteractionResponder platform adapter opts into indirect and
+resting touches only for the spatial viewport. Two-finger scroll/pinch retain
+pan/zoom; 2D keeps its existing swipe navigation. Three-finger displacement
+rotates about the current screen axes; twist rotates about the viewing axis.
+The quaternion permits full turns without pitch clamps or a world-up pole.
+Retain at most three prior contact positions. Contact-count/identity changes,
+cancellation and disabling the callback discard the baseline, preventing jumps.
+Once three-finger input starts, consume competing pan/zoom until contacts end.
+This input state is view-owned and MainActor-isolated. Rotation changes camera
+presentation only and never rebuilds layout or native relationship geometry.
+Native rendering must apply the complete orientation including roll; projection
+and camera-facing dragging use that same basis. The platform must deliver raw
+indirect touches; OS-reserved gestures cannot be overridden by this viewport.
+
+Headless behavioral tests own contact deltas/reset and free-rotation/native
+alignment evidence. Computer use owns rendered regression checks; its pointer
+API cannot synthesize three simultaneous physical contacts. Hardware touch
+recognition requires a physical trackpad observation and is reported separately.
 
 Camera motion projects cached coordinates and updates native transforms, with
 O(V log V + E) projection/drawing work for admitted visible data. It does not run layout,
@@ -248,3 +276,22 @@ RealityKit boundary, after a coordinate/visibility/selection revision. Camera
 motion retains those meshes. Failed mesh construction reports an unavailable
 presentation and cannot mark the revision ready. Computer use verifies the
 visible point/line result, picking, orbit, Fit and 2D/query restoration.
+
+### Three-finger revision evidence
+
+The three-finger tracker and complete quaternion basis have two new focused
+behavioral checks. Focused.xcresult reports 2 passes; Integrated.xcresult reports
+61 package passes (12 native SpatialGraphTests plus 49 existing tests), with
+zero failures, skips, expected failures and runtime warnings. The headless
+command-line xctest host opens no application window. Swift 6.4.0 release,
+macOS 27.0 arm64, Xcode 27 SDK, existing default traits and unchanged URL pins
+are used. AppBuild2.xcresult succeeds. Raw evidence: `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-three-finger-t0gc_swl`.
+
+Computer use opens the fresh app's automotive graph (5 points / 6 relationships),
+confirms the three-finger help text and native point/line drawing, visibly rotates
+with pointer drag, and switches 3D -> 2D -> 3D. It does not synthesize raw touches.
+Physical three-finger event delivery and OS gesture interception remain awaiting
+a user trackpad observation; no hardware-input success is claimed. Build logs
+retain existing duplicate-rpath and AppIntents metadata warnings; test result
+bundles contain no runtime warnings. All mutable input/native state is MainActor
+owned; this macOS-only path introduces no Embedded branch or unsafe isolation.

@@ -3,15 +3,21 @@ import simd
 
 /// The camera basis shared by native rendering and screen-space picking.
 struct GraphSpatialCamera: Equatable {
-    var yaw: Float = 0.22
-    var pitch: Float = 0.4
+    private(set) var orientation: simd_quatf
     var distance: Float = 18
     var target = SIMD3<Float>.zero
     static let fieldOfView: Float = 45
 
-    var backward: SIMD3<Float> { SIMD3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) }
-    var right: SIMD3<Float> { simd_normalize(simd_cross(SIMD3<Float>(0, 1, 0), backward)) }
-    var up: SIMD3<Float> { simd_cross(backward, right) }
+    init(yaw: Float = 0.22, pitch: Float = 0.4, distance: Float = 18, target: SIMD3<Float> = .zero) {
+        orientation = simd_quatf(angle: yaw, axis: SIMD3(0, 1, 0))
+            * simd_quatf(angle: -pitch, axis: SIMD3(1, 0, 0))
+        self.distance = distance
+        self.target = target
+    }
+
+    var backward: SIMD3<Float> { orientation.act(SIMD3(0, 0, 1)) }
+    var right: SIMD3<Float> { orientation.act(SIMD3(1, 0, 0)) }
+    var up: SIMD3<Float> { orientation.act(SIMD3(0, 1, 0)) }
     var eye: SIMD3<Float> { target + backward * distance }
 
     func project(_ point: SIMD3<Float>, size: CGSize) -> (point: CGPoint, depth: Float)? {
@@ -38,9 +44,13 @@ struct GraphSpatialCamera: Equatable {
         return result
     }
 
-    mutating func orbit(dx: CGFloat, dy: CGFloat) {
-        yaw += Float(dx) * 0.006
-        pitch = min(1.25, max(0.08, pitch + Float(dy) * 0.006))
+    mutating func orbit(dx: CGFloat, dy: CGFloat, roll: CGFloat = 0) {
+        let horizontal = Float(dx) * 0.006, vertical = Float(dy) * 0.006, twist = Float(roll)
+        guard horizontal.isFinite, vertical.isFinite, twist.isFinite else { return }
+        orientation = simd_normalize(orientation
+            * simd_quatf(angle: horizontal, axis: SIMD3(0, 1, 0))
+            * simd_quatf(angle: -vertical, axis: SIMD3(1, 0, 0))
+            * simd_quatf(angle: twist, axis: SIMD3(0, 0, 1)))
     }
 
     mutating func zoom(_ delta: CGFloat) { distance = min(500, max(3, distance * Float(exp(-delta)))) }

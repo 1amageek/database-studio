@@ -46,7 +46,8 @@ final class GraphSpatialScene {
 
     func update(camera view: GraphSpatialCamera, layout: GraphSpatialLayout, revision: UInt64,
                 edges: [GraphEdge], selectedID: String?, dark: Bool) throws {
-        camera.look(at: view.target, from: view.eye, relativeTo: nil)
+        camera.position = view.eye
+        camera.orientation = view.orientation
         guard geometryRevision != revision || geometryAppearance != dark else { return }
         var batches: [ModelEntity] = []
         for emphasized in [false, true] {
