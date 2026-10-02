@@ -144,6 +144,87 @@ final class SpatialGraphTests: XCTestCase {
 
     }
 
+    func testResearchedDatasetProvenanceFailuresAndFullVisibility() async throws {
+        let document = try AutomotiveGraphSnapshot.load()
+        XCTAssertEqual(document.nodes.count, 1000)
+        XCTAssertEqual(document.edges.count, 2584)
+        XCTAssertEqual(Set(document.nodes.map(\.id)).count, 1000)
+        XCTAssertEqual(Set(document.edges.map(\.id)).count, 2584)
+        XCTAssertTrue(document.nodes.allSatisfy { $0.metadata["License"] == "CC0-1.0" && $0.metadata["Source URL"]?.hasPrefix("https://www.wikidata.org/wiki/Q") == true })
+        XCTAssertTrue(document.edges.allSatisfy { $0.ontologyProperty?.hasPrefix("http://www.wikidata.org/prop/direct/P") == true })
+        XCTAssertTrue(document.edges.contains { $0.label == "manufacturer" })
+        XCTAssertTrue(document.edges.contains { $0.label == "owned by" })
+        XCTAssertEqual(document.nodes.first { $0.id == "http://www.wikidata.org/entity/Q3231690" }?.role, .type)
+        let state = GraphViewState(document: document, showsAllNodes: true)
+        XCTAssertEqual(state.visibleNodes.count, 1000)
+        XCTAssertEqual(state.visibleEdges.count, 2584)
+        XCTAssertFalse(state.isSpatial)
+        XCTAssertFalse(state.isBackboneActive)
+        XCTAssertNil(state.spatialUnavailableReason)
+        let typeEdge = try XCTUnwrap(document.edges.first { $0.edgeKind == .instanceOf })
+        XCTAssertTrue(state.nodeTypeMap[typeEdge.sourceID]?.contains(typeEdge.targetID) == true)
+        let queryable = SPARQLDataset(document: document)
+        XCTAssertEqual(queryable.match(subject: nil, predicate: "http://www.wikidata.org/prop/direct/P176", object: nil).count, 833)
+        XCTAssertEqual(GraphSpatialLayout.iterationLimit(nodeCount: 1000), 31)
+        XCTAssertEqual(GraphSpatialLayout.iterationLimit(nodeCount: 512), 120)
+        XCTAssertLessThanOrEqual(1000 * 999 / 2 * GraphSpatialLayout.iterationLimit(nodeCount: 1000), GraphSpatialLayout.maximumRepulsionPairs)
+        let window = GraphWindowState()
+        window.showExample()
+        XCTAssertTrue(window.showsAllNodes)
+        XCTAssertNil(window.document)
+        let load = try XCTUnwrap(window.loadDocument)
+        window.loadDocument = { GraphDocument() }
+        XCTAssertFalse(window.showsAllNodes)
+        let loaded = try await load()
+        XCTAssertEqual(loaded?.nodes.count, 1000)
+        XCTAssertThrowsError(try AutomotiveGraphSnapshot.decode(Data("{}".utf8)))
+        let first = try XCTUnwrap(document.nodes.first)
+        let rows = try document.edges.map { [$0.sourceID, try XCTUnwrap($0.ontologyProperty), $0.targetID] }
+        let properties = try Dictionary(document.edges.map { (try XCTUnwrap($0.ontologyProperty), $0.label) }, uniquingKeysWith: { first, _ in first })
+        let payload: [String: Any] = ["source": "Wikidata", "sourceURL": "https://www.wikidata.org/", "license": "CC0-1.0",
+                                     "retrievedAt": try XCTUnwrap(first.metadata["Retrieved"]),
+                                     "selection": try XCTUnwrap(first.metadata["Sampling"]),
+                                     "labels": Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, $0.label) }),
+                                     "triples": rows, "propertyLabels": properties]
+        XCTAssertEqual(try AutomotiveGraphSnapshot.decode(JSONSerialization.data(withJSONObject: payload)), document)
+        var malformed = payload; malformed["triples"] = [["missing"]] + rows
+        var duplicated = payload; duplicated["triples"] = rows + [rows[0]]
+        var missingEndpoint = payload; var changed = rows; changed[0][2] = "http://www.wikidata.org/entity/Q0"; missingEndpoint["triples"] = changed
+        var wrongCount = payload; var labels = try XCTUnwrap(payload["labels"] as? [String: String]); labels.removeValue(forKey: first.id); wrongCount["labels"] = labels
+        let degree = GraphMetricsComputer.compute(document: document).degree
+        let leaf = try XCTUnwrap(document.nodes.first { degree[$0.id] == 1 })
+        var disconnected = payload; disconnected["triples"] = rows.filter { $0[0] != leaf.id && $0[2] != leaf.id }
+        for invalid in [malformed, duplicated, missingEndpoint, wrongCount, disconnected] {
+            XCTAssertThrowsError(try AutomotiveGraphSnapshot.decode(JSONSerialization.data(withJSONObject: invalid))) { error in
+                XCTAssertTrue(error is AutomotiveGraphSnapshot.Failure)
+            }
+        }
+    }
+
+    func testThousandResearchedEntitiesRenderWithinRetainedWorkBudget() async throws {
+        let document = try AutomotiveGraphSnapshot.load()
+        let clock = ContinuousClock(), start = clock.now
+        let layout = try await GraphSpatialLayout.compute(document: document)
+        let nativeStart = clock.now
+        XCTAssertEqual(layout.positions.count, 1000)
+        XCTAssertTrue(layout.positions.values.allSatisfy(GraphSpatialLayout.finite))
+        let size = CGSize(width: 1600, height: 1000)
+        let bounds = layout.bounds(for: document.nodes)
+        var camera = GraphSpatialCamera()
+        camera.fit(center: bounds.center, radius: bounds.radius, size: size)
+        let scene = GraphSpatialScene()
+        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: true)
+        let projectionStart = clock.now
+        scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
+        XCTAssertEqual(scene.glyphs.count, 1000)
+        let nearest = try XCTUnwrap(scene.glyphs.last)
+        XCTAssertEqual(scene.hit(at: nearest.point), nearest.node.id)
+        camera.orbit(dx: 90, dy: 120, roll: 0.2)
+        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: true)
+        XCTAssertEqual(scene.geometryBuildCount, 1)
+        print("Researched dataset: 1000 entities / 2584 relationships; layout \(start.duration(to: nativeStart)); native geometry \(nativeStart.duration(to: projectionStart)); projection/checks \(projectionStart.duration(to: clock.now))")
+    }
+
     func testNodeDragChangesOnlyPresentationOnCameraFacingPlane() async throws {
         let document = network()
         let state = GraphViewState(document: document)

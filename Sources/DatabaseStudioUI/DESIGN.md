@@ -37,6 +37,11 @@ Its animation is not evidence of database semantics or runtime performance.
   explicit states. Visual grouping is not permission, inference or membership.
 
 The researched bundled example is owned by [GraphDataset](GraphDataset/DESIGN.md).
+GraphView's `showsAllNodes` initial-visibility input admits the example's complete
+node/class set while retaining 2D default and existing visibility for other sources.
+GraphWindowState resets this example policy when its load source changes.
+Instance classification consumes GraphEdge's semantic kind, preserving the
+original Wikidata predicate IRI and readable label.
 
 ## Responsibilities and Boundaries
 

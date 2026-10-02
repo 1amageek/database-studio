@@ -53,7 +53,8 @@ File / Open Example Graph -> clear prior publication -> load-generation advance
 The snapshot is immutable and bundled. GraphWindowState owns publication and
 source generation on MainActor; GraphViewState owns filters, selection and layout.
 No live database or developer service is modified. Startup performs no network
-request; source acquisition belongs to the offline dataset-generation script.
+request. Source queries and response hashes record acquisition; the offline
+dataset-generation script owns deterministic sampling.
 
 ## Failure, Concurrency, and Constraints
 
@@ -91,3 +92,15 @@ The frozen artifact is [Resources/automotive.json](Resources/automotive.json);
 its acquisition/selection generator is
 [prepare-automotive-dataset.py](../../../scripts/prepare-automotive-dataset.py).
 Application loading performs no new query against the public endpoint.
+
+### Loading and application evidence
+
+Focused headless verification passed 1 test, zero failures/skips/expected failures
+and runtime warnings. Final package test products and application build passed.
+Computer use opened File / Open Example Graph: 20 classes, 980 individuals and
+2584 edges, initially in 2D; explicit 3D displayed all 1000 points and 2584
+relationships. Selecting Chevrolet Corvette exposed its original Q56166 IRI,
+source URL, retrieval time and CC0 license; clearing focus restored all points.
+No XCTest UI runner or developer database was used. This is evidence for this
+bundled snapshot and this Mac, not a frame-rate or physical-touch claim.
+Build/test evidence: `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-dataset-verification-l3pt2rkr`.

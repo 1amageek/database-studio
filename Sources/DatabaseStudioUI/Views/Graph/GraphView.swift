@@ -9,9 +9,9 @@ public struct GraphView: View {
     private let initialFocusNodeID: String?
     private let initialFocusHops: Int?
 
-    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil) {
+    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil, showsAllNodes: Bool = false) {
         sourceDocument = document
-        _state = State(initialValue: GraphViewState(document: document))
+        _state = State(initialValue: GraphViewState(document: document, showsAllNodes: showsAllNodes))
         self.initialFocusNodeID = focusNodeID
         self.initialFocusHops = focusHops
     }

@@ -794,7 +794,7 @@ final class GraphViewState {
 
     // MARK: - 初期化
 
-    init(document: GraphDocument) {
+    init(document: GraphDocument, showsAllNodes: Bool = false) {
         let cleaned = document.removingOwlThing()
         let metrics = GraphMetricsComputer.compute(document: cleaned)
         var enriched = cleaned
@@ -806,7 +806,8 @@ final class GraphViewState {
         self.cachedMetrics = metrics
         self.activeEdgeLabels = Set(enriched.edges.map(\.label))
         self.cachedNodeMap = Dictionary(uniqueKeysWithValues: enriched.nodes.map { ($0.id, $0) })
-        self.isBackboneActive = enriched.nodes.count >= 50
+        self.isBackboneActive = !showsAllNodes && enriched.nodes.count >= 50
+        self.showClassNodes = showsAllNodes
     }
 
     // MARK: - ドキュメント更新
@@ -1045,7 +1046,7 @@ final class GraphViewState {
     var nodeTypeMap: [String: Set<String>] {
         if let cached = cachedNodeTypeMap { return cached }
         var map: [String: Set<String>] = [:]
-        for edge in document.edges where Self.typeEdgeLabels.contains(edge.label) {
+        for edge in document.edges where edge.edgeKind == .instanceOf || Self.typeEdgeLabels.contains(edge.label) {
             map[edge.sourceID, default: []].insert(edge.targetID)
         }
         cachedNodeTypeMap = map

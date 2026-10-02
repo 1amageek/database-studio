@@ -193,10 +193,20 @@ snapshot with its error and scope; it is not a successful fresh read.
 
 ## Failure, Concurrency, and Constraints
 
-The initial limits are 512 nodes, 4,096 edges, 120 iterations, a 10-second elapsed
+The revised admission limits are 1,000 nodes, 4,096 edges, at most 120 iterations, a 10-second elapsed
 layout budget, a yield every 32 pairwise rows and 32 node labels. These are
 private operational defaults, not database limits. Acceptance records measurements
 and rejects defaults that fail responsiveness or retained-memory checks.
+The 1000-entity revision retains the original 512-node/120-iteration pair-work
+budget: at most 15,697,920 repulsion pairs. Per-snapshot iterations are the
+smaller of 120 and that budget divided by unordered node pairs (at least one
+iteration); 1000 nodes receive 31 iterations. Approximate finite layout remains
+presentation-only. Elapsed-limit and cancellation failures remain explicit.
+Per-turn yielding occurs every 32 rows; larger graphs still receive no more
+pair work than the previously measured maximum. Measure the researched graph's
+actual layout/geometry/projection and confirm rendering before accepting this
+admission increase. No spatial tree or new solver is needed for this bound.
+
 The presentation owner owns limits on supported Macs: admitted nodes/edges/bytes, iterations, per-turn work, total elapsed layout
 time, glyph/label budgets and retained geometry. Record defaults, measured graph
 sizes, compiler/SDK and frame/allocation costs before implementation acceptance.

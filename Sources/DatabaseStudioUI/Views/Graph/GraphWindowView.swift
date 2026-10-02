@@ -10,26 +10,24 @@ public final class GraphWindowState {
     public var entityName: String = ""
     public var isLoading: Bool = false
     public var loadFailureMessage: String?
+    public private(set) var showsAllNodes = false
 
     /// Loads the document after the graph window appears.
     public private(set) var loadGeneration: UInt64 = 0
     public var loadDocument: (@MainActor () async throws -> GraphDocument?)? {
-        didSet { loadGeneration &+= 1 }
+        didSet { loadGeneration &+= 1; showsAllNodes = false }
     }
 
     /// Reloads the document from its data source.
     public var refreshDocument: (@MainActor () async throws -> GraphDocument?)?
 
     public func showExample() {
-        let individuals = GraphSampleData.rdfDocument
-        let ontology = GraphSampleData.ontologyDocument
-        let classIDs = Set(ontology.nodes.map(\.id))
-        document = GraphDocument(nodes: ontology.nodes + individuals.nodes.filter { !classIDs.contains($0.id) },
-                                 edges: ontology.edges + individuals.edges)
-        entityName = "Example · Automotive ontology"
-        loadDocument = nil
+        document = nil
+        entityName = "Wikidata · Automotive · 1,000 entities"
+        loadDocument = { try AutomotiveGraphSnapshot.load() }
+        showsAllNodes = true
         refreshDocument = nil
-        isLoading = false
+        isLoading = true
         loadFailureMessage = nil
     }
 
@@ -44,7 +42,7 @@ public struct GraphWindowView: View {
 
     public var body: some View {
         if let document = state.document {
-            GraphView(document: document)
+            GraphView(document: document, showsAllNodes: state.showsAllNodes)
                 .navigationTitle("\(state.entityName) – Graph")
         } else if let loadFailureMessage = state.loadFailureMessage {
             ContentUnavailableView(

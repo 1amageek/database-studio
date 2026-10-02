@@ -8,7 +8,7 @@ struct GraphSpatialLayout {
 
         var errorDescription: String? {
             switch self {
-            case .capacity: "3D supports up to 512 nodes and 4,096 relationships. Load a smaller graph or use 2D."
+            case .capacity: "3D supports up to 1,000 nodes and 4,096 relationships. Load a smaller graph or use 2D."
             case .duplicateIdentity: "The graph contains duplicate node or relationship identities."
             case .missingEndpoint: "A relationship refers to a node outside this graph."
             case .invalidPosition: "The network contains a nonfinite display position."
@@ -17,9 +17,17 @@ struct GraphSpatialLayout {
         }
     }
 
-    static let maximumNodes = 512
+    static let maximumNodes = 1000
     static let maximumEdges = 4_096
     static let maximumIterations = 120
+    static let maximumRepulsionPairs = 512 * 511 / 2 * maximumIterations
+
+    static func iterationLimit(nodeCount: Int) -> Int {
+        guard nodeCount > 1 else { return maximumIterations }
+        let pairs = nodeCount * (nodeCount - 1) / 2
+        return min(maximumIterations, max(1, maximumRepulsionPairs / pairs))
+    }
+
     static let elapsedLimit: Duration = .seconds(10)
     private(set) var positions: [String: SIMD3<Float>]
     let nodeIDs: [String]
@@ -60,8 +68,9 @@ struct GraphSpatialLayout {
         var velocities = forces
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: elapsedLimit)
-        // ponytail: pairwise repulsion is bounded to 512 nodes; use a measured spatial tree if larger graphs are required.
-        for iteration in 0..<maximumIterations where !ids.isEmpty {
+        // ponytail: adapt iterations to retain the measured pair-work budget through 1000 nodes;
+        // use a measured spatial tree when larger or more refined layouts are required.
+        for iteration in 0..<iterationLimit(nodeCount: ids.count) where !ids.isEmpty {
             try Task.checkCancellation()
             for index in points.indices { forces[index] = -points[index] * 0.002 }
             for first in points.indices {

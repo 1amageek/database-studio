@@ -42,6 +42,7 @@ let package = Package(
                 .product(name: "SQLiteStorage", package: "storage-kit"),
             ],
             path: "Sources/DatabaseStudioUI",
+            resources: [.copy("GraphDataset/Resources/automotive.json")],
             swiftSettings: [
                 .unsafeFlags(["-Xfrontend", "-enable-cross-import-overlays"])
             ],
