@@ -36,6 +36,8 @@ Its animation is not evidence of database semantics or runtime performance.
 - Unknown provenance, missing runtime access and unsupported capabilities are
   explicit states. Visual grouping is not permission, inference or membership.
 
+The researched bundled example is owned by [GraphDataset](GraphDataset/DESIGN.md).
+
 ## Responsibilities and Boundaries
 
 | Owner | Responsibility | Boundary |
