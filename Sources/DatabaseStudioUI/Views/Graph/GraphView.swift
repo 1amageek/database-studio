@@ -8,55 +8,42 @@ public struct GraphView: View {
     private let sourceDocument: GraphDocument
     private let initialFocusNodeID: String?
     private let initialFocusHops: Int?
-    private let onSelectNode: ((String?) -> Void)?
-    private let showsSidebar: Bool
-    private let numericAnalysis: Bool
-    private let allowsSourceRefresh: Bool
 
-    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil, showsAllNodes: Bool = false, numericAnalysis: Bool = false, allowsSourceRefresh: Bool = true, showsSidebar: Bool = true, onSelectNode: ((String?) -> Void)? = nil) {
+    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil, showsAllNodes: Bool = false) {
         sourceDocument = document
-        let state = GraphViewState(document: document, showsAllNodes: showsAllNodes, numericAnalysis: numericAnalysis)
-        _state = State(initialValue: state)
-        self.onSelectNode = onSelectNode
-        self.showsSidebar = showsSidebar
-        self.numericAnalysis = numericAnalysis
-        self.allowsSourceRefresh = allowsSourceRefresh
+        _state = State(initialValue: GraphViewState(document: document, showsAllNodes: showsAllNodes))
         self.initialFocusNodeID = focusNodeID
         self.initialFocusHops = focusHops
     }
 
     public var body: some View {
-        Group {
-            if showsSidebar {
-                NavigationSplitView(columnVisibility: $sidebarVisibility) {
-                    GraphSidebarView(state: state)
-                        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
-                } detail: {
-                    inspectedDetail
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            GraphSidebarView(state: state)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
+        } detail: {
+            detailContent
+                .inspector(isPresented: $showInspector) {
+                    inspectorContent
                 }
-            } else {
-                inspectedDetail
-            }
         }
         .alert("Unable to Refresh Graph", isPresented: Binding(
-            get: { allowsSourceRefresh && GraphWindowState.shared.loadFailureMessage != nil },
-            set: { if allowsSourceRefresh && !$0 { GraphWindowState.shared.loadFailureMessage = nil } }
+            get: { GraphWindowState.shared.loadFailureMessage != nil },
+            set: { if !$0 { GraphWindowState.shared.loadFailureMessage = nil } }
         )) {
             Button("OK") { GraphWindowState.shared.loadFailureMessage = nil }
         } message: {
             Text(GraphWindowState.shared.loadFailureMessage ?? "")
         }
-        .navigationSubtitle(showsSidebar ? toolbarSubtitle : "")
+        .navigationSubtitle(toolbarSubtitle)
         .toolbar {
-            if showsSidebar {
-                ToolbarItemGroup(placement: .navigation) { navigationActions }
-                ToolbarItemGroup(placement: .primaryAction) { toolbarActions }
-            } else {
-                ToolbarItemGroup(placement: .primaryAction) { analysisActions }
+            ToolbarItemGroup(placement: .navigation) {
+                navigationActions
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                toolbarActions
             }
         }
         .onChange(of: state.selectedNodeID) { _, newValue in
-            onSelectNode?(newValue)
             if newValue != nil {
                 showInspector = true
             }
@@ -72,26 +59,6 @@ public struct GraphView: View {
                 }
                 state.focusOnNode(id)
             }
-        }
-    }
-
-    private var inspectedDetail: some View {
-        detailContent.inspector(isPresented: $showInspector) { inspectorContent }
-    }
-
-    private var analysisActions: some View {
-        Group {
-            Picker("Projection", selection: $state.isSpatial) {
-                Text("2D").tag(false)
-                Text("3D").tag(true).disabled(state.spatialUnavailableReason != nil)
-            }.pickerStyle(.segmented).frame(width: 90).contentShape(Rectangle())
-                .accessibilityIdentifier("analysis.projection.view")
-            Button("Fit", systemImage: "arrow.up.left.and.arrow.down.right") {
-                if state.isSpatial { state.zoomToFit() }
-                else { state.clusterSession.cameraScale = 1; state.clusterSession.cameraOffset = .zero }
-            }.contentShape(Rectangle())
-            Button("Inspector", systemImage: "sidebar.trailing") { showInspector.toggle() }
-                .contentShape(Rectangle())
         }
     }
 
@@ -325,7 +292,6 @@ public struct GraphView: View {
         }
         .contentShape(Rectangle())
         .accessibilityIdentifier("graph.cluster.mode")
-        .disabled(numericAnalysis)
         .help(state.usesFeatureClusters ? "Return to Relationship Layout" : "Analyze Feature Clusters")
 
         Picker("Projection", selection: $state.isSpatial) {
@@ -339,7 +305,6 @@ public struct GraphView: View {
 
         Button {
             Task {
-                guard allowsSourceRefresh else { return }
                 guard let refreshDocument = GraphWindowState.shared.refreshDocument else {
                     return
                 }
@@ -360,7 +325,6 @@ public struct GraphView: View {
         } label: {
             Image(systemName: "arrow.clockwise")
         }
-        .disabled(!allowsSourceRefresh)
         .disabled(GraphWindowState.shared.refreshDocument == nil)
         .help("Refresh")
         .keyboardShortcut("r", modifiers: .command)
