@@ -130,3 +130,20 @@ This measures analysis, not GPU frame time or end-to-end application launch.
 Ready results are reused by both surfaces; camera/filter/selection changes do not
 invoke analysis. Known pre-existing duplicate-rpath/AppIntents build warnings are
 preserved in logs; no compiler internal error was observed.
+
+The consolidated package lane `IntegratedAfterLoad.xcresult` executes exactly
+79 tests: 79 passed, zero failures, skips, expected failures and runtime warnings.
+All 16 changed production/test source files match the isolated verification copy
+(`verified-source-hashes.json`); 22 external URL dependency pins are retained in
+`PackageDerivedData-resolved-pins.json`. The native app composes the local Studio
+package and the same external URL graph; no external local-path override was used.
+Package.swift and dependency traits were not changed by this task.
+
+Two earlier consolidated runs each recorded 78 passes and one ordinary-network
+elapsed-limit failure during heavy concurrent host work (observed load up to
+141.98). That case passed alone in 3.26 seconds. With the busy build finished and
+load reduced to 25.66, the unchanged consolidated artifact passed all 79 tests;
+ordinary layout took 1.72 seconds and feature analysis 0.206 seconds. The original
+10-second deadlines remain intact. Failure bundles and logs are preserved;
+focused timings are not generalized to a loaded machine. All required gaps are
+closed; further unchanged verification is unnecessary.
