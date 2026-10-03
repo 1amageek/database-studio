@@ -8,6 +8,7 @@ relationship network. Native verification and its limits are recorded in
 
 Parent: [Database Studio](../../DESIGN.md).
 Children: [SpatialGraph](SpatialGraph/DESIGN.md),
+[GraphClustering](GraphClustering/DESIGN.md),
 [RuntimeConnection](RuntimeConnection/DESIGN.md).
 Existing folders are source navigation locations, not newly declared component
 boundaries. Studio integrates the existing database runtime through DatabaseClient; it does
@@ -24,11 +25,13 @@ Its animation is not evidence of database semantics or runtime performance.
 
 - Flat class and individual glyphs retain distinguishable silhouettes, icons,
   labels and domain colors; they have no extrusion, bevel or volumetric body.
-- Spatial network coordinates are presentation layout, not class depth, physical
-  distance, similarity, chronology or source ownership. Spatial layout and drawing
-  contracts are owned by [SpatialGraph](SpatialGraph/DESIGN.md).
+- Ordinary network coordinates remain presentation layout. Feature analysis is
+  independently owned by [GraphClustering](GraphClustering/DESIGN.md); its XY and
+  membership are retained when [SpatialGraph](SpatialGraph/DESIGN.md) lifts them
+  onto explicit semantic role layers. No inferred source nodes are created.
 - The graph viewport defaults to 2D. An explicit spatial network view is available
-  for relationship exploration; hierarchy-only and timeline views remain 2D.
+  for relationship exploration; hierarchy-only and timeline network views remain 2D. Feature analysis can lift
+  any admitted analyzed graph onto role layers; timeline remains a separate mode.
 - Base selection, when available, is a source control independent of projection.
 - The lower pane remains the SPARQL editor and Table/Raw result panel.
 - Changing projection preserves data identity, selection, filters, query text,
@@ -122,7 +125,7 @@ These observations come from source, not a live-data rendering verification.
 | Domain family | Restrained inherited color; color never stands for Base authorization |
 | Selection / search | Separate outline treatments; selection does not overwrite domain color |
 | Relationship | Directed line with original predicate; show readable labels primarily near focus or at close zoom |
-| Spatial overview and focus | Point density, line contrast and label priority follow [SpatialGraph](SpatialGraph/DESIGN.md); no ontology-height planes |
+| Spatial overview and focus | Point density, line contrast and label priority follow [SpatialGraph](SpatialGraph/DESIGN.md); ordinary network retains no ontology-height planes; analyzed layers follow GraphClustering |
 | Base | Independently bounded peer region containing its graph |
 | Composition | Separate association to participating Base regions, never a relationship triple or containment edge |
 

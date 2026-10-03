@@ -4,13 +4,14 @@
 
 Status: perspective Canvas performance revision 2026-10-03; focused native
 behavior and Computer use interaction verified; evidence and limits are recorded below. Parent: [DatabaseStudioUI](../DESIGN.md). Children: none.
-This component owns relationship-network presentation coordinates, camera,
+This component owns relationship-network and analyzed-layer presentation coordinates, camera,
 spatial drawing and identity-based picking. Presentation eligibility belongs to
 the parent. The video is a visual reference, not an executable specification.
 
 ## Responsibilities and Boundaries
 
 Consume one admitted immutable graph snapshot, shared visibility and selection.
+Consume [GraphClustering](../GraphClustering/DESIGN.md) results for semantic layers.
 Return identity-based selection, focus and presentation-drag intents. Own no
 storage access, query execution, reasoning, membership or authorization.
 
@@ -426,3 +427,26 @@ Computer use restarts the updated app (PID 36239), restores the full 1000-point
 3D graph and observes actual points/lines. It does not deliver physical touches.
 Task sources/tests match the native test copy. Unrelated edits are retained;
 push is withheld because unrelated pre-existing commits remain unpushed.
+
+### Feature-analysis layer contract (2026-10-03)
+
+This explicit analyzed mode supersedes the ordinary-network no-layer rule only
+while feature clusters are enabled. GraphClustering owns the same-role analysis
+and immutable XY/membership; the original network path remains separately usable.
+Lift result XY to world (x, role height, y), with instances above types, properties
+and literals. Show only occupied role layers, with restrained boundaries and
+direct role labels; no axis ticks or artificial source nodes/links. Layer height
+is categorical and does not assert subclass depth or source authority.
+Context XY is identified as an original-neighbor aggregate, not a classified sample.
+Unpositioned nodes retain their explicit gutter. Display filters hide points
+without moving coordinates or changing membership. Selected clusters emphasize
+original incident edges and their context. Layer geometry/camera motion never
+reruns analysis. Node arrangement is unavailable in analyzed mode so display
+drags cannot destroy shared XY alignment. Picking/three-finger camera conventions,
+query pane and shared node identity remain unchanged. The 2D analysis surface
+has an independent retained camera; projection switching preserves its result.
+
+[GraphClusterCompositionTests](../../../Tests/GraphDocumentTests/GraphClusterCompositionTests.swift)
+own exact XY lifting, occupied roles and original endpoint
+retention. Native headless SpatialGraph tests remain ordinary-network regressions;
+Computer use owns actual layered rendering, cluster emphasis and 2D restoration.
