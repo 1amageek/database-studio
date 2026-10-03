@@ -6,7 +6,6 @@ struct ConnectionSettingsView: View {
     var isRequired: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var connectionHistory = ConnectionHistoryStore.shared
-    @State private var refreshTrigger = false
     @State private var isConnecting = false
     @State private var connectTask: Task<Void, Never>?
 
@@ -15,6 +14,9 @@ struct ConnectionSettingsView: View {
             Form {
                 connectingSection
                 errorSection
+                if let failure = connectionHistory.failure {
+                    Section("Connection History") { Text(failure).foregroundStyle(.red) }
+                }
                 favoritesSection
                 recentsSection
                 connectionSection
@@ -24,7 +26,6 @@ struct ConnectionSettingsView: View {
             .toolbar(content: connectionToolbar)
         }
         .frame(minWidth: 500, idealWidth: 550, minHeight: 350, idealHeight: 450)
-        .id(refreshTrigger)
     }
 
     @ViewBuilder
@@ -163,22 +164,21 @@ struct ConnectionSettingsView: View {
     private func connectAndSaveHistory() async {
         await studioState.connect()
         if case .connected = studioState.connectionState {
-            connectionHistory.addOrUpdate(
-                filePath: studioState.filePath,
-                rootDirectoryPath: studioState.rootDirectoryPath
-            )
-            dismiss()
+            do {
+                try connectionHistory.addOrUpdate(filePath: studioState.filePath, rootDirectoryPath: studioState.rootDirectoryPath)
+                dismiss()
+            } catch { return }
         }
     }
 
     private func toggleFavorite(_ connection: SavedDatabaseConnection) {
-        connectionHistory.toggleFavorite(connection)
-        refreshTrigger.toggle()
+        do { try connectionHistory.toggleFavorite(connection) }
+        catch { return }
     }
 
     private func deleteConnection(_ connection: SavedDatabaseConnection) {
-        connectionHistory.remove(connection)
-        refreshTrigger.toggle()
+        do { try connectionHistory.remove(connection) }
+        catch { return }
     }
 
     private func startConnectionAttempt() {

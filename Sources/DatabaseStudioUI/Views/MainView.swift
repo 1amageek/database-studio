@@ -4,6 +4,10 @@ import DatabaseKit
 
 /// メインビュー（3ペイン構成 + Inspector）
 public struct MainView: View {
+    @Environment(\.openWindow) private var openWindow
+    private let recentConnection: SavedDatabaseConnection?
+    @State private var didRestore = false
+    @State private var historyFailure: String?
     @State private var studioState = DatabaseStudioState()
     @State private var metricsDashboardState: MetricsDashboardState
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -15,7 +19,8 @@ public struct MainView: View {
         return true
     }
 
-    public init() {
+    public init(recentConnection: SavedDatabaseConnection? = nil) {
+        self.recentConnection = recentConnection
         let studioState = DatabaseStudioState()
         _studioState = State(initialValue: studioState)
         _metricsDashboardState = State(
@@ -24,20 +29,29 @@ public struct MainView: View {
     }
 
     private func restoreLastConnection() async {
-        let connectionHistory = ConnectionHistoryStore.shared
-        if let last = connectionHistory.mostRecent {
-            studioState.filePath = last.filePath
-            studioState.rootDirectoryPath = last.rootDirectoryPath
-            await studioState.connect()
-            if case .connected = studioState.connectionState {
-                connectionHistory.addOrUpdate(
-                    filePath: last.filePath,
-                    rootDirectoryPath: last.rootDirectoryPath
-                )
-                return
+        guard !didRestore else { return }
+        didRestore = true
+        do {
+            let databases = ConnectionHistoryStore.shared
+            let servers = RuntimeConnectionHistory.shared
+            try databases.load()
+            try servers.load()
+            let destination = recentConnection.map(ConnectionRestoration.local)
+                ?? ConnectionRestoration.destination(local: databases.mostRecent, server: servers.connections.first)
+            switch destination {
+            case .server(let id):
+                openWindow(id: "runtime-workspace", value: id)
+            case .local(let entry):
+                studioState.filePath = entry.filePath
+                studioState.rootDirectoryPath = entry.rootDirectoryPath
+                await studioState.connect()
+                if case .connected = studioState.connectionState {
+                    try databases.addOrUpdate(filePath: entry.filePath, rootDirectoryPath: entry.rootDirectoryPath)
+                } else { showingConnectionSettings = true }
+            case nil:
+                showingConnectionSettings = true
             }
-        }
-        showingConnectionSettings = true
+        } catch { historyFailure = "Unable to Restore Connection: " + error.localizedDescription }
     }
 
     public var body: some View {
@@ -66,6 +80,8 @@ public struct MainView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Menu("Open Recent", systemImage: "clock.arrow.circlepath") { RecentConnectionsMenu() }
+                    .contentShape(Rectangle()).accessibilityIdentifier("connection.recents")
                 Button {
                     showInspector.toggle()
                 } label: {
@@ -81,6 +97,9 @@ public struct MainView: View {
         .sheet(isPresented: $showingConnectionSettings) {
             ConnectionSettingsView(studioState: studioState, isRequired: isConnectionRequired)
         }
+        .alert("Connection History", isPresented: Binding(get: { historyFailure != nil }, set: { if !$0 { historyFailure = nil } })) {
+            Button("OK") { historyFailure = nil }.contentShape(Rectangle())
+        } message: { Text(historyFailure ?? "") }
         .interactiveDismissDisabled(isConnectionRequired)
     }
 }

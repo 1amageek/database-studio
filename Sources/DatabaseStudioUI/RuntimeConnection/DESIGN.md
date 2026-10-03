@@ -78,3 +78,11 @@ The connected workspace composes the Data, Schema and Query tabs using
 [Runtime Query](../RuntimeQuery/DESIGN.md). Operation request metadata is forwarded
 unchanged to DatabaseClient; explicit mutations own one idempotency key per
 submission. Authentication and authorization remain with their existing owners.
+
+## Recent Access and Restoration
+[Connection Access](../ConnectionAccess/DESIGN.md) owns the native recent menu and
+startup destination choice. Server scenes accept a non-secret history UUID, restore
+its exact endpoint/database/tenant/workspace and attempt one handshake if a token
+already exists in Keychain. Missing tokens show a prefilled form. History selections
+use the same path; successful handshake alone updates lastUsed. Explicit Disconnect
+does not initiate automatic reconnect. Closing a scene retains its saved history.

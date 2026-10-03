@@ -3,6 +3,7 @@ import DatabaseClientHTTP
 
 /// A server workspace whose connection is owned by this window.
 public struct RuntimeConnectionView: View {
+    @Binding private var connectionID: UUID?
     @State private var connection = RuntimeConnection()
     @State private var endpoint = ""
     @State private var databaseID = "main"
@@ -16,7 +17,7 @@ public struct RuntimeConnectionView: View {
     private let credentials = RuntimeCredentialStore()
     @State private var selectedEntity: String?
 
-    public init() {}
+    public init(connectionID: Binding<UUID?> = .constant(nil)) { _connectionID = connectionID }
 
     public var body: some View {
         NavigationSplitView {
@@ -54,8 +55,16 @@ public struct RuntimeConnectionView: View {
             }
         }
         .task {
-            do { try history.load() }
-            catch { failure = error.localizedDescription }
+            do {
+                try history.load()
+                if let connectionID {
+                    guard let entry = history.connections.first(where: { $0.id == connectionID }) else {
+                        failure = "This saved server connection is no longer available."
+                        return
+                    }
+                    select(entry)
+                }
+            } catch { failure = error.localizedDescription }
         }
         .onDisappear { disconnect() }
     }
@@ -71,7 +80,7 @@ public struct RuntimeConnectionView: View {
                                     Text(entry.databaseID)
                                     Text(entry.endpoint.absoluteString).font(.caption).foregroundStyle(.secondary)
                                 }
-                            }.buttonStyle(.plain)
+                            }.buttonStyle(.plain).contentShape(Rectangle())
                             Spacer()
                             Button("Remove", systemImage: "trash", role: .destructive) {
                                 do {
@@ -161,6 +170,7 @@ public struct RuntimeConnectionView: View {
                     try Task.checkCancellation()
                     let entry = try history.record(endpoint: configuration.endpoint, databaseID: configuration.databaseID,
                                                    tenantID: configuration.tenantID, workspaceID: configuration.workspaceID)
+                    connectionID = entry.id
                     if rememberToken { try credentials.save(configuration.accessToken, for: entry.id) }
                     else { try credentials.remove(entry.id) }
                     accessToken = ""
@@ -188,6 +198,7 @@ public struct RuntimeConnectionView: View {
             if let token = try credentials.token(for: entry.id) {
                 accessToken = token
                 rememberToken = true
+                connect()
             }
         } catch { failure = error.localizedDescription }
     }

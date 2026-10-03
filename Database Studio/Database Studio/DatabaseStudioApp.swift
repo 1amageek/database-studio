@@ -6,11 +6,12 @@ struct DatabaseStudioApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        WindowGroup {
-            MainView()
+        WindowGroup(id: "database-workspace", for: SavedDatabaseConnection.self) { $connection in
+            MainView(recentConnection: connection)
         }
         .commands {
             CommandGroup(after: .newItem) {
+                Menu("Open Recent") { RecentConnectionsMenu() }
                 Button("Connect to Server…") {
                     openWindow(id: "runtime-workspace")
                 }
@@ -23,8 +24,8 @@ struct DatabaseStudioApp: App {
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
 
-        Window("Database Server", id: "runtime-workspace") {
-            RuntimeConnectionView()
+        WindowGroup("Database Server", id: "runtime-workspace", for: UUID.self) { $connectionID in
+            RuntimeConnectionView(connectionID: $connectionID)
         }
         .defaultSize(width: 1100, height: 750)
 
