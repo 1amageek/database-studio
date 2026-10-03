@@ -69,7 +69,7 @@ struct GraphSpatialView: View {
                     }.onEnded { _ in draggedNode = nil; dragPlane = nil })
                     .accessibilityIdentifier("graph.spatial.viewport")
                     .accessibilityLabel(state.usesFeatureClusters
-                        ? "Feature layers. Three-finger drag to orbit and twist to roll. Mouse drag to orbit, scroll to pan, pinch to zoom. Layer height represents node role; planar positions preserve the two-dimensional feature projection."
+                        ? "Feature layers. Three-finger drag to orbit and twist to roll. Mouse drag to orbit, scroll to pan, pinch to zoom. Layer height represents the configured category or node role; planar positions preserve the two-dimensional feature projection."
                         : "Relationship network. Three-finger drag to orbit and twist to roll. Mouse drag to orbit, scroll to pan, pinch to zoom. Option-drag moves a display point.")
             }
         }
@@ -113,12 +113,12 @@ struct GraphSpatialView: View {
                 context.fill(path, with: .color(.primary.opacity(0.018)))
                 context.stroke(path, with: .color(.primary.opacity(0.09)), lineWidth: 0.5)
                 let labelPoint = CGPoint(x: points[0].x + 8, y: points[0].y - 10)
-                context.draw(Text("\(layer.role.displayName) · \(layer.count)").font(.caption2).foregroundColor(.secondary), at: labelPoint, anchor: .leading)
+                context.draw(Text("\(layer.title) · \(layer.count)").font(.caption2).foregroundColor(.secondary), at: labelPoint, anchor: .leading)
             }
         }
         if state.usesFeatureClusters, let result = state.clusterSession.result {
             for layer in layout.layers {
-                let points = state.document.nodes.lazy.filter { $0.role == layer.role && result.unpositionedIDs.contains($0.id) }
+                let points = state.document.nodes.lazy.filter { layer.nodeIDs.contains($0.id) && result.unpositionedIDs.contains($0.id) }
                     .compactMap { layout.positions[$0.id] }
                 if let first = points.first {
                     let lower = points.reduce(first) { SIMD3(min($0.x, $1.x), layer.height, min($0.z, $1.z)) }

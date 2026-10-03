@@ -36,9 +36,36 @@ struct GraphSpatialLayout: Sendable {
     private(set) var layers: [GraphSemanticLayer] = []
 
     static func layered(document: GraphDocument, result: GraphClusterResult) throws -> Self {
-        guard document.nodes.count <= maximumNodes, document.edges.count <= maximumEdges else { throw Failure.capacity }
+        let maximum = result.configuration.mode == .numeric ? GraphNumericAnalyzer.maximumNodes : maximumNodes
+        guard document.nodes.count <= maximum, document.edges.count <= maximumEdges else { throw Failure.capacity }
         let ids = document.nodes.map(\.id).sorted()
         guard Set(ids).count == ids.count, Set(document.edges.map(\.id)).count == document.edges.count else { throw Failure.duplicateIdentity }
+        if let key = result.configuration.layerKey, result.configuration.mode == .numeric {
+            let groups = Dictionary(grouping: document.nodes, by: { node in
+                node.metadata[key].flatMap { $0.isEmpty ? nil : $0 } ?? "(Missing)"
+            })
+            guard groups.count <= 64 else { throw Failure.analysis("Layer comparison supports up to 64 categories. Choose a coarser category.") }
+            var lower = SIMD2<Float>(repeating: .infinity), upper = SIMD2<Float>(repeating: -.infinity)
+            for id in ids {
+                guard let point = result.positions[id], point.x.isFinite, point.y.isFinite else { throw Failure.invalidPosition }
+                lower = simd_min(lower, SIMD2(Float(point.x), Float(point.y)))
+                upper = simd_max(upper, SIMD2(Float(point.x), Float(point.y)))
+            }
+            var positions: [String: SIMD3<Float>] = [:], layers: [GraphSemanticLayer] = []
+            for (index, category) in groups.keys.sorted().enumerated() {
+                let height = Float(Double(groups.count - 1) / 2 - Double(index)) * 3.5
+                let nodes = groups[category]!
+                for node in nodes {
+                    let xy = result.positions[node.id]!
+                    let point = SIMD3(Float(xy.x), height, Float(xy.y))
+                    guard finite(point) else { throw Failure.invalidPosition }; positions[node.id] = point
+                }
+                layers.append(GraphSemanticLayer(role: .instance, height: height, lower: lower - SIMD2(repeating: 0.4), upper: upper + SIMD2(repeating: 0.4), count: nodes.count,
+                                                 categoryName: key + " = " + category, nodeIDs: Set(nodes.map(\.id))))
+            }
+            for edge in document.edges where positions[edge.sourceID] == nil || positions[edge.targetID] == nil { throw Failure.missingEndpoint }
+            return Self(positions: positions, nodeIDs: ids, layers: layers)
+        }
         let roles = [GraphNodeRole.instance, .type, .property, .literal].filter { role in document.nodes.contains { $0.role == role } }
         var positions: [String: SIMD3<Float>] = [:], layers: [GraphSemanticLayer] = []
         for (index, role) in roles.enumerated() {
@@ -51,7 +78,8 @@ struct GraphSpatialLayout: Sendable {
                 positions[node.id] = point
                 lower = simd_min(lower, SIMD2(point.x, point.z)); upper = simd_max(upper, SIMD2(point.x, point.z)); count += 1
             }
-            layers.append(GraphSemanticLayer(role: role, height: height, lower: lower - SIMD2(repeating: 0.4), upper: upper + SIMD2(repeating: 0.4), count: count))
+            layers.append(GraphSemanticLayer(role: role, height: height, lower: lower - SIMD2(repeating: 0.4), upper: upper + SIMD2(repeating: 0.4), count: count,
+                                             nodeIDs: Set(document.nodes.filter { $0.role == role }.map(\.id))))
         }
         for edge in document.edges where positions[edge.sourceID] == nil || positions[edge.targetID] == nil { throw Failure.missingEndpoint }
         return Self(positions: positions, nodeIDs: ids, layers: layers)

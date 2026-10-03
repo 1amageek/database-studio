@@ -451,3 +451,13 @@ has an independent retained camera; projection switching preserves its result.
 own exact XY lifting, occupied roles and original endpoint
 retention. Native headless SpatialGraph tests remain ordinary-network regressions;
 Computer use owns actual layered rendering, cluster emphasis and 2D restoration.
+
+### Numeric category layers
+Consume the immutable GraphClustering numeric result. Layered rendering admits
+its 10000-node numeric bound, while ordinary relationship-network solving retains
+1000 nodes. A selected metadata key defines up to 64 categorical layers with
+common XY bounds; missing values are a labeled category. Node-role layering is
+the default when no category key is chosen. All source identities and edges are
+retained, XY is exact, and no cluster/similarity edge is synthesized. Category
+planes reuse the existing camera, Canvas and picking path. Composition tests
+verify these contracts; actual 2000-point native rendering is an acceptance gate.

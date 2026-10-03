@@ -27,17 +27,19 @@ struct GraphClusterView: View {
                             } else { state.clusterSession.selectedCluster = nil; state.selectNode(nil) }
                         })
                         .accessibilityIdentifier("graph.cluster.viewport")
-                        .accessibilityLabel("Feature clusters. Positions are a two-dimensional PCA projection. Scroll to pan, pinch to zoom, select a cluster for its features and members.")
+                        .accessibilityLabel("Feature clusters. Positions use the configured axes or a PCA projection. Scroll to pan, pinch to zoom, select a cluster for its features and members.")
                 }
             } else if let failure = state.clusterSession.failure {
                 ContentUnavailableView("Feature Analysis Unavailable", systemImage: "exclamationmark.triangle", description: Text(failure))
+            } else if !state.clusterSession.isLoading {
+                ContentUnavailableView("Configure Your Analysis", systemImage: "chart.xyaxis.line", description: Text("Choose numeric columns or graph features, then run the analysis."))
             } else {
                 ProgressView("Analyzing graph features…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottomLeading) { GraphClusterControls(state: state) }
-        .task(id: state.clusterSession.revision) { await state.clusterSession.prepare(document: state.document) }
+        .task(id: state.clusterSession.revision) { if state.clusterSession.configuration.mode != .numeric || !state.clusterSession.configuration.numericFeatures.isEmpty { await state.clusterSession.prepare(document: state.document) } }
         .onDisappear { state.clusterSession.cancel() }
     }
 
@@ -56,6 +58,18 @@ struct GraphClusterView: View {
     }
 
     private func draw(result: GraphClusterResult, context: inout GraphicsContext, size: CGSize) {
+        if result.axes.count == 2 {
+            let origin = screen(SIMD2(-4, -4), size: size), right = screen(SIMD2(4, -4), size: size), top = screen(SIMD2(-4, 4), size: size)
+            var path = Path(); path.move(to: top); path.addLine(to: origin); path.addLine(to: right)
+            context.stroke(path, with: .color(.secondary.opacity(0.35)), lineWidth: 0.7)
+            for tick in [-4.0, -2, 0, 2, 4] {
+                let x = screen(SIMD2(tick, -4), size: size), y = screen(SIMD2(-4, tick), size: size)
+                context.draw(Text(result.axes[0].value(at: tick), format: .number.precision(.significantDigits(3))).font(.caption2).foregroundColor(.secondary), at: CGPoint(x: x.x, y: x.y + 12))
+                context.draw(Text(result.axes[1].value(at: tick), format: .number.precision(.significantDigits(3))).font(.caption2).foregroundColor(.secondary), at: CGPoint(x: y.x - 8, y: y.y), anchor: .trailing)
+            }
+            context.draw(Text(result.axes[0].title).font(.caption2).foregroundColor(.secondary), at: CGPoint(x: (origin.x + right.x) / 2, y: origin.y + 30))
+            context.draw(Text(result.axes[1].title).font(.caption2).foregroundColor(.secondary), at: CGPoint(x: top.x, y: top.y - 16), anchor: .leading)
+        }
         let selected = state.clusterSession.selectedCluster
         for id in sampleIDs(result: result) {
             guard let position = result.positions[id] else { continue }

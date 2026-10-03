@@ -10,11 +10,13 @@ enum TimelineOrientation: String, CaseIterable, Sendable {
 @Observable @MainActor
 final class GraphViewState {
 
+    private let preservesInputMetrics: Bool
     let clusterSession = GraphClusterSession()
     var usesFeatureClusters = false {
         didSet {
             guard usesFeatureClusters != oldValue else { return }
             stopSimulation(); clusterSession.cancel(); cancelSpatialLayout()
+            invalidateVisibleCache()
             spatialLayout = nil; spatialFailureMessage = nil; spatialAnalysisRevision = nil
             hasSpatialCamera = false
             spatialDocumentRevision &+= 1; spatialGeometryRevision &+= 1
@@ -50,7 +52,8 @@ final class GraphViewState {
     var spatialUnavailableReason: String? {
         if timelineOrientation != .off { return "Timeline exploration uses 2D." }
         if usesFeatureClusters {
-            return document.nodes.count > 1000 || document.edges.count > 4096 ? GraphSpatialLayout.Failure.capacity.errorDescription : nil
+            let maximum = clusterSession.configuration.mode == .numeric ? GraphNumericAnalyzer.maximumNodes : 1000
+            return document.nodes.count > maximum || document.edges.count > 4096 ? "This analysis exceeds its node or relationship capacity." : nil
         }
         if !document.edges.contains(where: { $0.edgeKind == .relationship }) {
             return "Hierarchy-only graphs use 2D. 3D is available for relationship networks."
@@ -683,6 +686,20 @@ final class GraphViewState {
 
     var visibleNodeIDs: Set<String> {
         if let cached = cachedVisibleNodeIDs { return cached }
+        if usesFeatureClusters && clusterSession.configuration.mode == .numeric {
+            let types = nodeTypeMap
+            let matched = isSearchActive ? searchMatchedNodeIDs : nil
+            let tokens = filterTokens
+            let ids = Set(document.nodes.lazy.filter { node in
+                if let matched, !matched.contains(node.id) { return false }
+                return tokens.allSatisfy { token in
+                    let matches = token.facet.matchesNode(node, nodeTypeMap: types)
+                    return token.mode == .include ? matches : !matches
+                }
+            }.map(\.id))
+            cachedVisibleNodeIDs = ids
+            return ids
+        }
         let edges = visibleEdges
         var ids = Set(edges.flatMap { [$0.sourceID, $0.targetID] })
         // 選択ノード自身は常に含める
@@ -823,11 +840,12 @@ final class GraphViewState {
 
     // MARK: - 初期化
 
-    init(document: GraphDocument, showsAllNodes: Bool = false) {
-        let cleaned = document.removingOwlThing()
+    init(document: GraphDocument, showsAllNodes: Bool = false, numericAnalysis: Bool = false) {
+        self.preservesInputMetrics = numericAnalysis
+        let cleaned = numericAnalysis ? document : document.removingOwlThing()
         let metrics = GraphMetricsComputer.compute(document: cleaned)
         var enriched = cleaned
-        for i in enriched.nodes.indices {
+        for i in enriched.nodes.indices where !numericAnalysis {
             let id = enriched.nodes[i].id
             enriched.nodes[i].metrics["degree"] = metrics.degree[id] ?? 0
         }
@@ -837,12 +855,19 @@ final class GraphViewState {
         self.cachedNodeMap = Dictionary(uniqueKeysWithValues: enriched.nodes.map { ($0.id, $0) })
         self.isBackboneActive = !showsAllNodes && enriched.nodes.count >= 50
         self.showClassNodes = showsAllNodes
+        if numericAnalysis {
+            self.clusterSession.configuration.mode = .numeric
+            self.usesFeatureClusters = true
+            self.focusHops = 0
+        }
     }
+
+    func invalidateAnalysisVisibility() { invalidateVisibleCache() }
 
     // MARK: - ドキュメント更新
 
     func updateDocument(_ newDocument: GraphDocument) {
-        let cleaned = newDocument.removingOwlThing()
+        let cleaned = preservesInputMetrics ? newDocument : newDocument.removingOwlThing()
         let previousNodeIDs = Set(document.nodes.map(\.id))
         let previousLabels = allEdgeLabels
         queryGeneration += 1
@@ -854,7 +879,7 @@ final class GraphViewState {
         // メトリクス計算 → ノードに設定
         let metrics = GraphMetricsComputer.compute(document: cleaned)
         var enriched = cleaned
-        for i in enriched.nodes.indices {
+        for i in enriched.nodes.indices where !preservesInputMetrics {
             let id = enriched.nodes[i].id
             enriched.nodes[i].metrics["degree"] = metrics.degree[id] ?? 0
         }

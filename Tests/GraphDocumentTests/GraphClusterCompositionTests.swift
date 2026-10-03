@@ -95,4 +95,33 @@ final class GraphClusterCompositionTests: XCTestCase {
         XCTAssertNotNil(state.spatialUnavailableReason)
     }
 
+    func testNumericCategoryLayersPreserveSharedCoordinatesAndIsolatedRows() async throws {
+        let document = GraphDocument(nodes: (0..<12).map { index in
+            GraphNode(id: "row-\(index)", label: "Row", role: .instance, metadata: ["category": index < 6 ? "A" : "B"], metrics: ["x": Double(index), "degree": 123])
+        })
+        let state = GraphViewState(document: document, showsAllNodes: true, numericAnalysis: true)
+        XCTAssertEqual(state.document.nodes[0].metrics["degree"], 123)
+        XCTAssertEqual(state.visibleNodeIDs.count, 12)
+        var c = state.clusterSession.configuration; c.clusterCount = 2; c.numericFeatures = [.init(numerator: "x")]; c.layerKey = "category"
+        state.clusterSession.configuration = c
+        await state.clusterSession.prepare(document: state.document)
+        let result = try XCTUnwrap(state.clusterSession.result)
+        let layout = try GraphSpatialLayout.layered(document: state.document, result: result)
+        XCTAssertEqual(layout.layers.map(\.title), ["category = A", "category = B"])
+        XCTAssertEqual(layout.layers[0].lower, layout.layers[1].lower)
+        XCTAssertEqual(layout.layers[0].upper, layout.layers[1].upper)
+        XCTAssertEqual(layout.positions.count, 12)
+        for node in document.nodes {
+            let point = try XCTUnwrap(layout.positions[node.id]), xy = try XCTUnwrap(result.positions[node.id])
+            XCTAssertEqual(Double(point.x), xy.x, accuracy: 1e-6); XCTAssertEqual(Double(point.z), xy.y, accuracy: 1e-6)
+        }
+        state.selectNode("row-0"); XCTAssertEqual(state.visibleNodeIDs.count, 12)
+        state.queryText = "retained query"
+        state.isSpatial = true; await state.prepareSpatialLayout(); state.isSpatial = false
+        XCTAssertEqual(state.clusterSession.result?.membership, result.membership)
+        XCTAssertEqual(state.selectedNodeID, "row-0"); XCTAssertEqual(state.queryText, "retained query")
+        state.updateDocument(document)
+        XCTAssertEqual(state.document.nodes[0].metrics["degree"], 123)
+    }
+
 }

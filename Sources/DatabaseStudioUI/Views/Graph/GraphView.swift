@@ -8,42 +8,69 @@ public struct GraphView: View {
     private let sourceDocument: GraphDocument
     private let initialFocusNodeID: String?
     private let initialFocusHops: Int?
+    private let onSelectNode: ((String?) -> Void)?
+    private let showsSidebar: Bool
+    private let numericAnalysis: Bool
+    private let allowsSourceRefresh: Bool
 
-    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil, showsAllNodes: Bool = false) {
+    public init(document: GraphDocument, focusNodeID: String? = nil, focusHops: Int? = nil, showsAllNodes: Bool = false, numericAnalysis: Bool = false, allowsSourceRefresh: Bool = true, showsSidebar: Bool = true, onSelectNode: ((String?) -> Void)? = nil) {
         sourceDocument = document
-        _state = State(initialValue: GraphViewState(document: document, showsAllNodes: showsAllNodes))
+        let state = GraphViewState(document: document, showsAllNodes: showsAllNodes, numericAnalysis: numericAnalysis)
+        _state = State(initialValue: state)
+        self.onSelectNode = onSelectNode
+        self.showsSidebar = showsSidebar
+        self.numericAnalysis = numericAnalysis
+        self.allowsSourceRefresh = allowsSourceRefresh
         self.initialFocusNodeID = focusNodeID
         self.initialFocusHops = focusHops
     }
 
     public var body: some View {
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            GraphSidebarView(state: state)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
-        } detail: {
-            detailContent
-                .inspector(isPresented: $showInspector) {
-                    inspectorContent
+        Group {
+            if showsSidebar {
+                NavigationSplitView(columnVisibility: $sidebarVisibility) {
+                    GraphSidebarView(state: state)
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
+                } detail: {
+                    inspectedDetail
                 }
+            } else {
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        Picker("Projection", selection: $state.isSpatial) {
+                            Text("2D").tag(false)
+                            Text("3D").tag(true).disabled(state.spatialUnavailableReason != nil)
+                        }.pickerStyle(.segmented).frame(width: 90).contentShape(Rectangle())
+                            .accessibilityIdentifier("analysis.projection.view")
+                        Button("Fit", systemImage: "arrow.up.left.and.arrow.down.right") {
+                            if state.isSpatial { state.zoomToFit() }
+                            else { state.clusterSession.cameraScale = 1; state.clusterSession.cameraOffset = .zero }
+                        }.contentShape(Rectangle())
+                        Spacer()
+                        Button("Inspector", systemImage: "sidebar.trailing") { showInspector.toggle() }.contentShape(Rectangle())
+                    }.padding(.horizontal, 12).padding(.vertical, 8)
+                    Divider()
+                    inspectedDetail
+                }
+            }
         }
         .alert("Unable to Refresh Graph", isPresented: Binding(
-            get: { GraphWindowState.shared.loadFailureMessage != nil },
-            set: { if !$0 { GraphWindowState.shared.loadFailureMessage = nil } }
+            get: { allowsSourceRefresh && GraphWindowState.shared.loadFailureMessage != nil },
+            set: { if allowsSourceRefresh && !$0 { GraphWindowState.shared.loadFailureMessage = nil } }
         )) {
             Button("OK") { GraphWindowState.shared.loadFailureMessage = nil }
         } message: {
             Text(GraphWindowState.shared.loadFailureMessage ?? "")
         }
-        .navigationSubtitle(toolbarSubtitle)
+        .navigationSubtitle(showsSidebar ? toolbarSubtitle : "")
         .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                navigationActions
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                toolbarActions
+            if showsSidebar {
+                ToolbarItemGroup(placement: .navigation) { navigationActions }
+                ToolbarItemGroup(placement: .primaryAction) { toolbarActions }
             }
         }
         .onChange(of: state.selectedNodeID) { _, newValue in
+            onSelectNode?(newValue)
             if newValue != nil {
                 showInspector = true
             }
@@ -51,6 +78,7 @@ public struct GraphView: View {
         .onChange(of: sourceDocument) { _, updatedDocument in
             state.updateDocument(updatedDocument)
         }
+        .onChange(of: state.clusterSession.revision) { _, _ in state.invalidateAnalysisVisibility() }
         .task {
             if let id = initialFocusNodeID {
                 if let hops = initialFocusHops {
@@ -59,6 +87,10 @@ public struct GraphView: View {
                 state.focusOnNode(id)
             }
         }
+    }
+
+    private var inspectedDetail: some View {
+        detailContent.inspector(isPresented: $showInspector) { inspectorContent }
     }
 
     // MARK: - Detail Content
@@ -291,6 +323,7 @@ public struct GraphView: View {
         }
         .contentShape(Rectangle())
         .accessibilityIdentifier("graph.cluster.mode")
+        .disabled(numericAnalysis)
         .help(state.usesFeatureClusters ? "Return to Relationship Layout" : "Analyze Feature Clusters")
 
         Picker("Projection", selection: $state.isSpatial) {
@@ -304,6 +337,7 @@ public struct GraphView: View {
 
         Button {
             Task {
+                guard allowsSourceRefresh else { return }
                 guard let refreshDocument = GraphWindowState.shared.refreshDocument else {
                     return
                 }
@@ -324,6 +358,7 @@ public struct GraphView: View {
         } label: {
             Image(systemName: "arrow.clockwise")
         }
+        .disabled(!allowsSourceRefresh)
         .disabled(GraphWindowState.shared.refreshDocument == nil)
         .help("Refresh")
         .keyboardShortcut("r", modifiers: .command)

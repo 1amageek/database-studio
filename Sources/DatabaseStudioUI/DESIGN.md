@@ -7,7 +7,8 @@ relationship network. Native verification and its limits are recorded in
 [SpatialGraph](SpatialGraph/DESIGN.md); broader Studio acceptance remains pending.
 
 Parent: [Database Studio](../../DESIGN.md).
-Children: [SpatialGraph](SpatialGraph/DESIGN.md),
+Children: [AnalysisWorkspace](AnalysisWorkspace/DESIGN.md),
+[SpatialGraph](SpatialGraph/DESIGN.md),
 [GraphClustering](GraphClustering/DESIGN.md),
 [RuntimeConnection](RuntimeConnection/DESIGN.md).
 Existing folders are source navigation locations, not newly declared component

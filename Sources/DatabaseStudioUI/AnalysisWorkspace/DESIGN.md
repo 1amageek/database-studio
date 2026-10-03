@@ -1,68 +1,99 @@
 # AnalysisWorkspace
 
 ## Purpose and Scope
-Parent: [DatabaseStudioUI](../DESIGN.md). Children: none. Own standalone,
-presentation-only numeric dataset intake and workspace composition. No database
-write, server query or application-specific financial schema is introduced.
+Parent: [DatabaseStudioUI](../DESIGN.md). Children: none. Own presentation-only
+analysis of one canonical server result page. Analysis is a Table/Raw sibling in
+existing Data and Query results, not a separate application or file importer.
 
 ## Responsibilities and Boundaries
-`AnalysisDatasetReading` defines immutable local-file intake. `AnalysisDatasetReader`
-validates CSV/JSON and retains original row identities, scalar columns, missingness,
-quality flags and envelope provenance. `AnalysisWorkspaceView` owns one cancellable,
-generation-guarded import and source summary. GraphClustering owns analysis;
-GraphView and SpatialGraph own existing navigation, selection and rendering.
+RecordAnalysisSource owns bounded projection of retained QueryColumn/QueryRow
+values into measurement paths, categories and page-local row identities.
+RecordAnalysisView owns cancellable preparation. AnalysisWorkspaceView owns
+source coverage and returning a selected point to the original row inspector.
+GraphClustering owns computation; GraphView and SpatialGraph own rendering.
+The query owner retains canonical data, authorization, filters and pagination.
 
 ## Related Designs
 | Design | Relationship | Contract Used | Summary | Cautions |
 |---|---|---|---|---|
-| [DatabaseStudioUI](../DESIGN.md) | parent | Workspace composition | Separate analysis window | Existing sidebar composition remains unchanged |
-| [GraphClustering](../GraphClustering/DESIGN.md) | depends on | Numeric configuration/result/session | Analyze imported metrics or graph metrics | Explicit exclusion and bounded computation |
-| [SpatialGraph](../SpatialGraph/DESIGN.md) | coordinates with | Common XY category planes | Optional comparative layers | No inferred relationships |
+| [DatabaseStudioUI](../DESIGN.md) | parent | Existing result composition | Preserve original sidebar and database controls | No standalone analysis window |
+| [RuntimeQuery](../RuntimeQuery/DESIGN.md) | depends on | Immutable typed current page and page revision | Data/Query source and original row inspector | A page is not a whole collection |
+| [GraphClustering](../GraphClustering/DESIGN.md) | depends on | Numeric configuration/result/session | Staged features and partitions | Explicit exclusions and bounded computation |
+| [SpatialGraph](../SpatialGraph/DESIGN.md) | coordinates with | Shared XY category planes | Comparative layers | No inferred relationships |
 
 ## Architecture
 ```text
-Local CSV / JSON -> validated immutable GraphDocument + source receipt
-    -> GraphView (numeric analysis mode)
-        -> staged features / transforms / ratios / weights / peers / XY / layers
-            -> Run -> GraphClustering result -> 2D or category layers
+Server Data / Query -> canonical retained current page
+    -> Table / Raw / Analysis
+        -> typed scalar projection -> staged numeric settings -> Run
+            -> 2D / 3D -> select point -> Open Row -> original Table inspector
 ```
 
 ## Contracts and Invariants
-JSON accepts an array of row objects or an object with a `rows` array. Row numeric
-scalars, nested `metrics`, string categories, `id`, and label/name/company are
-retained. Null is absent, boolean is categorical. Nested non-scalar fields are
-reported as omitted, except preserved quality flags. Explicit duplicate or empty
-IDs fail. Missing IDs receive source-scoped row identities, not durable issuer IDs.
-CSV is UTF-8 comma- or semicolon-separated with quoted fields, doubled quotes and
-embedded newlines; header names must be nonempty/unique and widths must match.
-Columns whose nonempty values are all finite numeric values become metrics;
-other columns remain categories. No currency/unit conversion is inferred.
-At most 32 MiB of file bytes, 10000 rows, and 128 scalar columns per row are
-admitted. Malformed structure/encoding/nonfinite numeric values fail explicitly.
-Source display includes row count, numeric columns, null counts, flags and
-available envelope units/period/provenance. Import never silently replaces a
-working document on failure and never calls GraphWindowState refresh.
+Projection/fit/inspection controls stay within the analysis result area and do
+not replace the server toolbar or expose a second local query console.
+The original sidebar, connection, entity selection, query, filter and request
+remain owned by existing views. Switching display sends no database request.
+The analyzed set is exactly the current retained page. Coverage states whether a
+continuation exists; it never claims full-collection coverage. Replacing the page
+resets display and clears analysis/selection, including identical-value pages.
+Nodes identify page row indices, not guessed persisted IDs. Open Row returns the
+exact canonical row in the same page and opens its original typed inspector.
+Nested document objects use escaped JSON Pointer paths, preventing delimiter
+collisions. Null and unsupported values remain missing, never zero. Booleans and
+strings remain categorical. Exact integers unrepresentable in Double are excluded
+with warnings. Decimal coordinates explicitly approximate the retained exact
+values. Nonfinite values, ambiguous columns/paths and exceeded budgets fail.
+At most 10000 rows, 128 visited fields per row, eight nested levels and 32 MiB of
+scalar text are admitted. Canonical rows are retained without parsing display
+strings or JSON round trips. Arrays, vectors and bytes are reported as excluded.
+No file import, writes, new query, continuation accumulation or core semantics.
 
 ## Runtime Flows
-Open workspace -> import CSV/JSON -> source summary -> choose features -> Run
--> results -> selection/profile -> 2D/3D. New import cancels the old task and
-publishes only the latest generation. Closing cancels the pending task.
+Select Analysis -> concurrently project immutable page -> choose features -> Run
+-> inspect profile/member -> Open Row -> Table/typed inspector. Leaving the
+analysis projection cancels preparation; page revision removes obsolete state.
 
 ## State, Ownership, and Lifecycle
-View state is MainActor-owned; immutable parsing runs on the concurrent executor.
-Security-scoped URL access is acquired/released in the same task. Imported rows
-remain window-local; no mutation of the original file or another graph window.
+SwiftUI state is MainActor-owned. RecordAnalysisSource is immutable Sendable and
+prepares on the concurrent executor. Original FieldValue ownership stays with the
+query owner; scalar materialization occurs once at the presentation boundary.
+Camera changes and selection never reparse or query the source.
 
 ## Failure, Concurrency, and Constraints
-Typed reader failures and native file errors are shown in the workspace.
-Cancellation publishes no error or stale document. Imports are serialized by
-one retained task and generation. Bounded Data and scalar materialization are
-required at the external file/GraphNode ownership boundary; no repeated parsing
-occurs on camera or selection changes.
+Typed projection failures appear in the analysis area. Cancellation publishes no
+stale source. Original Table/Raw remains available for all unsupported values.
+Analysis adds no database authority or transport lifecycle.
 
 ## Verification and Change Impact
-`AnalysisDatasetTests` verifies CSV quotes/newlines, scalar typing, nulls,
-provenance, all 2000 retained rows, malformed data, IDs and input budgets. Numeric
-behavior belongs to GraphClustering tests; category geometry to composition tests.
-Computer use verifies real file import, settings, Run, inspection and source
-replacement. App builds and headless tests do not substitute for native UI checks.
+RecordAnalysisSourceTests verifies typed nested fields, escaped paths, missingness,
+integer/decimal handling, invalid structure, budgets, cancellation and 2000 rows.
+GraphNumericAnalysisTests owns numerical behavior. Composition tests own common XY
+and original identity preservation. Computer use must verify an authenticated
+Data/Query result changing Table/Raw/Analysis, profile/member selection, Open Row,
+page invalidation and the unchanged sidebar. Builds alone are not native proof.
+
+## Verified Result-Page Integration
+
+The final URL-dependent package run `FinalPackageTests.xcresult` reports 89
+passes, zero failures, skips, expected failures and runtime warnings. It includes
+canonical 2000-row projection, exact page identity mapping, capacity and cancellation,
+real financial-fixture analysis and shared 2D/3D category composition.
+`FinalServerAppBuild.xcresult` builds the actual application. Both use Swift 6.4.0.
+Evidence is retained at
+`/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-generic-analysis-ugntvedq`.
+
+Computer Use verified the original Entities sidebar and Data/Schema/Query controls,
+an authenticated SQL result and the embedded Analysis Setup. The isolated
+26.0904.0 server rejected fixture INSERT with ACCESS_DENIED; this existing write
+path was not changed. A temporary native harness linked the exact built UI object
+and called RuntimeQueryResultsView against four real QueryIR VALUES result rows
+from that server. These are query values, not persisted entity records. The
+workflow verified feature selection, original-value profiles, member selection,
+category layers and unchanged selection in 3D, Open Row returning the exact
+canonical negative integer and row metadata in the Table inspector, and a new
+failed query clearing the old analysis and selection. No UI XCTest ran.
+
+The harness server stopped with exit zero; an endpoint probe failed with curl
+exit seven. Native Data entity selection is not separately exercised: Data and
+Query compose the same RuntimeQueryResultsView, whose row path is verified above.

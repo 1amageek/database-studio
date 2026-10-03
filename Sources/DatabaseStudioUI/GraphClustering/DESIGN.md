@@ -188,7 +188,7 @@ Verification: `GraphNumericAnalysisTests` owns transforms, ratios, nonzero and
 zero-median samples, missing/quality exclusion, deterministic membership, peer
 centering, display-only changes, the real 2000-row fixture, capacity and cancelled
 work. Composition tests own exact category lifting and source/selection state.
-Native Computer use owns staged settings, import, inspection and 2D/3D behavior.
+Native Computer use owns staged settings, retained-page inspection and 2D/3D behavior.
 
 Core evidence: `CoreFocused3.xcresult` in
 `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-generic-analysis-ugntvedq`
@@ -196,5 +196,5 @@ reports 9 passed, zero failures/skips/expected failures/runtime warnings. Native
 Swift 6.4 release compilation uses Xcode Default for package-manifest tool lookup,
 with explicit release SWIFT_EXEC for target builds. The full retained 2000-row
 snapshot yields 1996 assigned and four explicitly flagged exclusions, retaining
-all identities; measured analysis was 0.55 seconds / 47 iterations. Native UI and
-category composition acceptance remain pending in the next sprint.
+all identities; measured analysis was 0.55 seconds / 47 iterations. The integrated result-page evidence is recorded in
+[AnalysisWorkspace](../AnalysisWorkspace/DESIGN.md).

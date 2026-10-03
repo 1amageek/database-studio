@@ -4,14 +4,18 @@ struct GraphClusterControls: View {
     @Bindable var state: GraphViewState
     @State private var showFeatures = false
     @State private var showMembers = false
+    @State private var showExcluded = false
+    @State private var openedInitialSettings = false
 
     var body: some View {
         @Bindable var session = state.clusterSession
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
-                Button("Features…", systemImage: "slider.horizontal.3") { showFeatures = true }
+                Button("Configure…", systemImage: "slider.horizontal.3") { showFeatures = true }
                     .contentShape(Rectangle()).accessibilityIdentifier("graph.cluster.features")
-                    .popover(isPresented: $showFeatures) { featureEditor }
+                    .sheet(isPresented: $showFeatures) {
+                        GraphAnalysisSettings(document: state.document, configuration: session.configuration) { session.configuration = $0; session.invalidate() }
+                    }
                 if let result = session.result {
                     Menu {
                         Button("All Clusters") { session.selectedCluster = nil }
@@ -30,67 +34,50 @@ struct GraphClusterControls: View {
                 }
             }
             if state.isSpatial {
-                Text("Layers show node roles · Context follows analyzed neighbors")
+                Text(session.configuration.layerKey.map { "Layers: " + $0 + " · Shared XY coordinates" } ?? "Layers show node roles · Shared XY coordinates")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+            if session.isLoading {
+                HStack { ProgressView().controlSize(.small); Button("Cancel Analysis") { session.cancel() }.contentShape(Rectangle()) }
+            } else if session.result == nil && !session.configuration.numericFeatures.isEmpty {
+                Button("Run Analysis") { session.invalidate() }.contentShape(Rectangle())
+            }
             if let result = session.result {
-                Text("\(result.membership.count) analyzed · \(result.featureCount) features · PCA retains \(Int(result.retainedVariance * 100))% of variance")
+                Text("\(result.membership.count) analyzed · \(result.featureCount) features" + (result.axes.isEmpty ? " · PCA retains \(Int(result.retainedVariance * 100))% of variance" : " · Selected axes"))
                     .font(.caption2).foregroundStyle(.secondary)
                 if !result.unassignedIDs.isEmpty || !result.unpositionedIDs.isEmpty {
-                    Text("\(result.unassignedIDs.count) without informative features · \(result.unpositionedIDs.count) unpositioned in gutter")
+                    Button("\(result.unassignedIDs.count) excluded · \(result.unpositionedIDs.count) unpositioned") { showExcluded = true }
+                        .buttonStyle(.plain).contentShape(Rectangle())
+                        .popover(isPresented: $showExcluded) { excludedRows(result) }
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
         .padding(10).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
         .padding(12)
-    }
-
-    private var featureEditor: some View {
-        @Bindable var session = state.clusterSession
-        let metadata = Set(state.document.nodes.flatMap { $0.metadata.keys }).sorted()
-        let metrics = Set(state.document.nodes.flatMap { $0.metrics.keys }).sorted()
-        return ScrollView {
-            Form {
-                Text("Feature Analysis").font(.headline)
-                Picker("Compare", selection: $session.configuration.role) {
-                    ForEach(GraphNodeRole.allCases, id: \.self) { role in Text(role.displayName).tag(role) }
-                }
-                Stepper("Requested clusters: \(session.configuration.clusterCount)", value: $session.configuration.clusterCount, in: 2...24)
-                weight("Types", value: $session.configuration.typeWeight)
-                weight("Relationships", value: $session.configuration.relationshipWeight)
-                weight("Attributes", value: $session.configuration.attributeWeight)
-                Section("Categorical Attributes") {
-                    if metadata.isEmpty { Text("No metadata attributes in this graph").foregroundStyle(.secondary) }
-                    ForEach(metadata, id: \.self) { name in
-                        Toggle(name, isOn: membership(name, set: $session.configuration.metadataKeys))
-                    }
-                }
-                Section("Numeric Metrics") {
-                    if metrics.isEmpty { Text("No numeric metrics in this graph").foregroundStyle(.secondary) }
-                    ForEach(metrics, id: \.self) { name in
-                        Toggle(name, isOn: membership(name, set: $session.configuration.metricKeys))
-                    }
-                }
-                Text("Clusters use weighted features. PCA is a display approximation; overlapping points retain distinct identities.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button("Done") { showFeatures = false }.contentShape(Rectangle())
-            }.formStyle(.grouped).padding(8)
-        }.frame(width: 340, height: 460)
-    }
-
-    private func weight(_ title: String, value: Binding<Double>) -> some View {
-        HStack {
-            Text(title)
-            Slider(value: value, in: 0...3, step: 0.5).accessibilityLabel(title + " weight")
-            Text(value.wrappedValue, format: .number.precision(.fractionLength(1))).monospacedDigit().frame(width: 28)
+        .onAppear {
+            if !openedInitialSettings && session.configuration.mode == .numeric && session.configuration.numericFeatures.isEmpty {
+                openedInitialSettings = true; showFeatures = true
+            }
         }
     }
 
-    private func membership(_ name: String, set: Binding<Set<String>>) -> Binding<Bool> {
-        Binding(get: { set.wrappedValue.contains(name) }, set: { value in
-            if value { set.wrappedValue.insert(name) } else { set.wrappedValue.remove(name) }
-        })
+    private func excludedRows(_ result: GraphClusterResult) -> some View {
+        let labels = Dictionary(uniqueKeysWithValues: state.document.nodes.map { ($0.id, $0.label) })
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                Text("Excluded Rows").font(.headline)
+                ForEach(result.unassignedIDs.sorted(), id: \.self) { id in
+                    Button { state.selectNode(id); showExcluded = false } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(labels[id] ?? id)
+                            Text(result.exclusionReasons[id] ?? "No informative features").font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    Divider()
+                }
+            }.padding(16)
+        }.frame(width: 420, height: 350)
     }
 
     private func clusterDetails(result: GraphClusterResult) -> some View {
@@ -99,9 +86,19 @@ struct GraphClusterControls: View {
         return VStack(alignment: .leading, spacing: 10) {
             if let cluster {
                 Text("Cluster \(cluster.id + 1) · \(cluster.members.count) nodes").font(.headline)
+                if let profiles = result.profiles[cluster.id] {
+                    Text("Original-value profile · Median [Q1, Q3]").font(.caption).foregroundStyle(.secondary)
+                    ForEach(profiles) { profile in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(profile.title).font(.caption.weight(.medium))
+                            Text("\(profile.median.formatted(.number.precision(.significantDigits(4)))) [\(profile.lowerQuartile.formatted(.number.precision(.significantDigits(4)))), \(profile.upperQuartile.formatted(.number.precision(.significantDigits(4))))] · population \(profile.populationMedian.formatted(.number.precision(.significantDigits(4))))").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
                 Text("Strongest Mean Features").font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(cluster.features.enumerated()), id: \.offset) { _, feature in
                     Text(feature).font(.caption).lineLimit(2).help(feature).textSelection(.enabled)
+                }
                 }
                 Divider()
                 ScrollView {
@@ -122,6 +119,6 @@ struct GraphClusterControls: View {
                     }
                 }
             }
-        }.padding(16).frame(width: 360, height: 380)
+        }.padding(16).frame(width: 460, height: 500)
     }
 }
