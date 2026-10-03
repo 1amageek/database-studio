@@ -198,3 +198,12 @@ with explicit release SWIFT_EXEC for target builds. The full retained 2000-row
 snapshot yields 1996 assigned and four explicitly flagged exclusions, retaining
 all identities; measured analysis was 0.55 seconds / 47 iterations. The integrated result-page evidence is recorded in
 [AnalysisWorkspace](../AnalysisWorkspace/DESIGN.md).
+
+### Native Settings Presentation
+
+GraphAnalysisSettings owns a NavigationStack with navigationTitle and row-count
+navigationSubtitle. Cancel and Run Analysis use the native cancellationAction
+and confirmationAction placements. The content does not recreate a sheet title
+bar or action footer. The draft is applied only by confirmation; cancellation
+dismisses it unchanged. Native verification evidence is linked from
+[AnalysisWorkspace](../AnalysisWorkspace/DESIGN.md#native-header-correction).

@@ -25,73 +25,72 @@ struct GraphAnalysisSettings: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Analysis Setup").font(.title2.weight(.semibold))
-                    Text("Choose what makes rows comparable, then choose how to view the result.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text("\(nodeCount) rows").font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-            }.padding(20)
-            Picker("Analysis", selection: $draft.mode) {
-                ForEach(GraphClusterConfiguration.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).padding(.horizontal, 20).padding(.bottom, 16).contentShape(Rectangle())
-            Divider()
-            HStack(alignment: .top, spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(draft.mode == .numeric ? "MEASUREMENTS" : "ATTRIBUTES").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        if metrics.isEmpty { Text("This source has no numeric columns.").foregroundStyle(.secondary) }
-                        ForEach(metrics, id: \.self) { key in
-                            HStack {
-                                Toggle(isOn: metricSelection(key)) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(key).font(.callout).lineLimit(2)
-                                        Text("\(counts[key, default: 0]) / \(nodeCount) available").font(.caption2).foregroundStyle(.secondary)
-                                    }
-                                }.contentShape(Rectangle()).accessibilityIdentifier("analysis.metric." + key)
-                                    .disabled(draft.mode == .numeric && draft.numericFeatures.count >= 32 && !draft.numericFeatures.contains { $0.numerator == key && $0.denominator == nil })
-                            }
-                            Divider()
-                        }
-                        if draft.mode == .graph {
-                            Text("CATEGORIES").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8)
-                            ForEach(categories, id: \.self) { key in
-                                Toggle(key, isOn: Binding(get: { draft.metadataKeys.contains(key) }, set: { if $0 { draft.metadataKeys.insert(key) } else { draft.metadataKeys.remove(key) } }))
-                                    .contentShape(Rectangle())
-                            }
-                        }
-                    }.padding(18)
-                }.frame(width: 270)
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("Analysis", selection: $draft.mode) {
+                    ForEach(GraphClusterConfiguration.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).padding(.horizontal, 20).padding(.vertical, 16).contentShape(Rectangle())
                 Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if draft.mode == .numeric { numericSettings } else { graphSettings }
-                        Divider()
-                        HStack {
-                            Text("Clusters").font(.callout.weight(.medium))
-                            Spacer()
-                            Stepper("\(draft.clusterCount)", value: $draft.clusterCount, in: 2...24).fixedSize().contentShape(Rectangle())
-                                .accessibilityIdentifier("analysis.clusterCount")
-                        }
-                        Text("The requested count defines a partition, not evidence that natural groups exist. Inspect group profiles and compare nearby counts.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }.padding(18)
-                }.frame(maxWidth: .infinity)
+                HStack(alignment: .top, spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(draft.mode == .numeric ? "MEASUREMENTS" : "ATTRIBUTES").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            if metrics.isEmpty { Text("This source has no numeric columns.").foregroundStyle(.secondary) }
+                            ForEach(metrics, id: \.self) { key in
+                                HStack {
+                                    Toggle(isOn: metricSelection(key)) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(key).font(.callout).lineLimit(2)
+                                            Text("\(counts[key, default: 0]) / \(nodeCount) available").font(.caption2).foregroundStyle(.secondary)
+                                        }
+                                    }.contentShape(Rectangle()).accessibilityIdentifier("analysis.metric." + key)
+                                        .disabled(draft.mode == .numeric && draft.numericFeatures.count >= 32 && !draft.numericFeatures.contains { $0.numerator == key && $0.denominator == nil })
+                                }
+                                Divider()
+                            }
+                            if draft.mode == .graph {
+                                Text("CATEGORIES").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8)
+                                ForEach(categories, id: \.self) { key in
+                                    Toggle(key, isOn: Binding(get: { draft.metadataKeys.contains(key) }, set: { if $0 { draft.metadataKeys.insert(key) } else { draft.metadataKeys.remove(key) } }))
+                                        .contentShape(Rectangle())
+                                }
+                            }
+                        }.padding(18)
+                    }.frame(width: 270)
+                    Divider()
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            if draft.mode == .numeric { numericSettings } else { graphSettings }
+                            Divider()
+                            HStack {
+                                Text("Clusters").font(.callout.weight(.medium))
+                                Spacer()
+                                Stepper("\(draft.clusterCount)", value: $draft.clusterCount, in: 2...24).fixedSize().contentShape(Rectangle())
+                                    .accessibilityIdentifier("analysis.clusterCount")
+                            }
+                            Text("The requested count defines a partition, not evidence that natural groups exist. Inspect group profiles and compare nearby counts.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }.padding(18)
+                    }.frame(maxWidth: .infinity)
+                }
             }
-            Divider()
-            HStack {
-                Text(draft.mode == .numeric ? "\(draft.numericFeatures.count) features · \(draft.numericFeatures.reduce(0) { $0 + ($1.denominator == nil ? 0 : 1) }) ratios" : "Weighted graph features")
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).contentShape(Rectangle())
-                Button("Run Analysis") { apply(draft); dismiss() }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).contentShape(Rectangle())
-                    .disabled(draft.mode == .numeric && (draft.numericFeatures.isEmpty || !draft.numericFeatures.contains { $0.weight > 0 }))
-                    .accessibilityIdentifier("analysis.run")
-            }.padding(16)
+            .navigationTitle("Analysis Setup")
+            .navigationSubtitle("\(nodeCount) rows")
+            .toolbar {
+                ToolbarItem(placement: .status) {
+                    Text(draft.mode == .numeric ? "\(draft.numericFeatures.count) features · \(draft.numericFeatures.reduce(0) { $0 + ($1.denominator == nil ? 0 : 1) }) ratios" : "Weighted graph features")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).contentShape(Rectangle())
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Run Analysis") { apply(draft); dismiss() }
+                        .keyboardShortcut(.defaultAction).contentShape(Rectangle())
+                        .disabled(draft.mode == .numeric && (draft.numericFeatures.isEmpty || !draft.numericFeatures.contains { $0.weight > 0 }))
+                        .accessibilityIdentifier("analysis.run")
+                }
+            }
         }.frame(width: 800, height: 650)
     }
 

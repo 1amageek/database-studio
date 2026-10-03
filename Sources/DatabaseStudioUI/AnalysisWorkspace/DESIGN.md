@@ -30,8 +30,11 @@ Server Data / Query -> canonical retained current page
 ```
 
 ## Contracts and Invariants
-Projection/fit/inspection controls stay within the analysis result area and do
-not replace the server toolbar or expose a second local query console.
+Analysis content contains no custom title or control header. Source coverage,
+Open Row and projection/fit/inspection actions use the enclosing SwiftUI toolbar.
+The server owns the navigation title, sidebar and existing toolbar actions;
+analysis adds contextual items without replacing them. The native settings
+sheet contract belongs to [GraphClustering](../GraphClustering/DESIGN.md).
 The original sidebar, connection, entity selection, query, filter and request
 remain owned by existing views. Switching display sends no database request.
 The analyzed set is exactly the current retained page. Coverage states whether a
@@ -97,3 +100,21 @@ failed query clearing the old analysis and selection. No UI XCTest ran.
 The harness server stopped with exit zero; an endpoint probe failed with curl
 exit seven. Native Data entity selection is not separately exercised: Data and
 Query compose the same RuntimeQueryResultsView, whose row path is verified above.
+
+### Native Header Correction
+
+The analysis workspace and embedded GraphView render content directly and
+contribute contextual native toolbar items. Source coverage uses Form/Section
+headers. Native Computer Use against the exact rebuilt UI object verified that
+source details, 2D/3D, Fit, Inspector and selected Open Row appear in the enclosing
+toolbar alongside the unchanged server title, sidebar, Refresh Schema and
+Disconnect. Cancel discarded the draft; confirming computed four typed server
+QueryIR rows; Open Row returned the exact canonical row and removed the analysis
+toolbar. This is shared result-view verification in a temporary native host, not
+a separate Data entity CRUD run. No analysis logic test was repeated.
+
+Evidence: `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-native-toolbar-vs_3rdsu`.
+HeaderBuild and AppBuild xcresult summaries report successful builds, zero errors;
+the package test-product link has one existing duplicate-rpath warning, the app
+build has zero warnings. All three edited source hashes match the verified copy.
+The isolated server stopped with exit zero and a negative endpoint probe.

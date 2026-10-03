@@ -35,23 +35,7 @@ public struct GraphView: View {
                     inspectedDetail
                 }
             } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 12) {
-                        Picker("Projection", selection: $state.isSpatial) {
-                            Text("2D").tag(false)
-                            Text("3D").tag(true).disabled(state.spatialUnavailableReason != nil)
-                        }.pickerStyle(.segmented).frame(width: 90).contentShape(Rectangle())
-                            .accessibilityIdentifier("analysis.projection.view")
-                        Button("Fit", systemImage: "arrow.up.left.and.arrow.down.right") {
-                            if state.isSpatial { state.zoomToFit() }
-                            else { state.clusterSession.cameraScale = 1; state.clusterSession.cameraOffset = .zero }
-                        }.contentShape(Rectangle())
-                        Spacer()
-                        Button("Inspector", systemImage: "sidebar.trailing") { showInspector.toggle() }.contentShape(Rectangle())
-                    }.padding(.horizontal, 12).padding(.vertical, 8)
-                    Divider()
-                    inspectedDetail
-                }
+                inspectedDetail
             }
         }
         .alert("Unable to Refresh Graph", isPresented: Binding(
@@ -67,6 +51,8 @@ public struct GraphView: View {
             if showsSidebar {
                 ToolbarItemGroup(placement: .navigation) { navigationActions }
                 ToolbarItemGroup(placement: .primaryAction) { toolbarActions }
+            } else {
+                ToolbarItemGroup(placement: .primaryAction) { analysisActions }
             }
         }
         .onChange(of: state.selectedNodeID) { _, newValue in
@@ -91,6 +77,22 @@ public struct GraphView: View {
 
     private var inspectedDetail: some View {
         detailContent.inspector(isPresented: $showInspector) { inspectorContent }
+    }
+
+    private var analysisActions: some View {
+        Group {
+            Picker("Projection", selection: $state.isSpatial) {
+                Text("2D").tag(false)
+                Text("3D").tag(true).disabled(state.spatialUnavailableReason != nil)
+            }.pickerStyle(.segmented).frame(width: 90).contentShape(Rectangle())
+                .accessibilityIdentifier("analysis.projection.view")
+            Button("Fit", systemImage: "arrow.up.left.and.arrow.down.right") {
+                if state.isSpatial { state.zoomToFit() }
+                else { state.clusterSession.cameraScale = 1; state.clusterSession.cameraOffset = .zero }
+            }.contentShape(Rectangle())
+            Button("Inspector", systemImage: "sidebar.trailing") { showInspector.toggle() }
+                .contentShape(Rectangle())
+        }
     }
 
     // MARK: - Detail Content
