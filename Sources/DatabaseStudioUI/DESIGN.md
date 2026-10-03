@@ -347,3 +347,8 @@ focus target publication must check cancellation before starting interpolation.
 Headless tests verify nonblocking startup, cancellation and preserved identities;
 Computer use verifies 2D restoration. No background access to mutable 2D state
 or unsafe isolation is permitted.
+
+The presentation owner currently uses one refinement tick per frame for more
+than 256 nodes; smaller graphs retain the existing alpha-based one-to-six tick
+policy. This private scheduling default changes only with measured per-tick and
+input latency evidence; cancellation/identity/camera tests remain mandatory.

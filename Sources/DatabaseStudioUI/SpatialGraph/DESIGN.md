@@ -19,7 +19,7 @@ storage access, query execution, reasoning, membership or authorization.
 | [GraphSpatialLayout](GraphSpatialLayout.swift) | Deterministic bounded network coordinates and presentation offsets | Layout/readability; never domain hierarchy |
 | [ThreeFingerRotation](ThreeFingerRotation.swift) | Bounded contact identity, translation and twist deltas | Contact count, movement and cancellation |
 | [GraphSpatialCamera](GraphSpatialCamera.swift) | Shared world-to-screen basis, orbit, pan, zoom and Fit | Camera behavior and numerical limits |
-| [GraphSpatialScene](GraphSpatialScene.swift) | Retained endpoint coordinates and normal/emphasized screen paths from the shared perspective projection | Document/position changes; camera motion updates only transforms |
+| [GraphSpatialScene](GraphSpatialScene.swift) | Retained endpoint coordinates and normal/emphasized screen paths from the shared perspective projection | Document/position changes; camera motion projects retained endpoints |
 | [GraphSpatialView](GraphSpatialView.swift) | Screen-facing point glyphs, label priorities and picking | Presentation and user interaction |
 | [GraphViewState](../Views/Graph/GraphViewState.swift) | Snapshot revision, filters, selection, retained cameras and layout lifetime | Shared presentation state |
 
@@ -374,3 +374,19 @@ The 20.1698-second interval containing two short opposing Computer use drags
 consumed 0.38 CPU seconds; `ps` peaked at 21.1% during input and returned to
 0.0% afterward. This interval includes idle time and AX observation; it is not
 a sustained-rotation throughput benchmark.
+
+### Integrated performance acceptance
+
+Integrated.xcresult passes exactly 65 tests (16 spatial + 49 existing) with
+zero failures, skips, expected failures or runtime warnings. Raw logs contain
+no compiler/testing-runtime internal error. The final package run measures the
+same 1000-entity path at layout 1.020254s, retained endpoints 0.001621s, 120 CPU
+frames p50 0.004806s / p95 0.005335s. Host contention differs from the focused
+run; report both rather than a fixed universal timing. These measurements omit
+rasterization/presentation and cannot establish FPS. Committed source/test files
+match the compiled isolated copy and all 22 URL dependency revisions match
+Package.resolved; no path or edited dependency is in that graph.
+The real app remains open with all 1000 points and 2584 relationships in 3D.
+Build warnings are the existing duplicate-rpath and AppIntents metadata warnings.
+Unrelated edits and four pre-existing unpushed commits remain outside the change;
+push is withheld to avoid including those commits.
