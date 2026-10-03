@@ -110,3 +110,23 @@ and profiles. SpatialGraph verifies exact XY lifting and retained topology.
 verify layer lifting, emphasis, projection/config refresh and original query state.
 Native Computer use verifies controls, result selection, 2D/3D switching and
 unchanged sidebar/inspector/query behavior. No UI XCTest is introduced.
+
+### Native behavior evidence (2026-10-03)
+
+Evidence directory: `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-feature-clusters-5b2b2z3h`.
+macOS 27 arm64, Xcode 27 and Swift 6.4.0 release; default traits and URL
+package dependencies. No UI XCTest or external database service was used.
+
+| Verification owner | Observed behavior | Limit |
+|---|---|---|
+| Analyzer/session focused tests | 10 pass; numeric missingness, exact relationship profiles and superseded completion rechecks pass; updated session framing passes | Native fixture, not arbitrary future graph sizes |
+| Composition tests | 3 pass; exact XY lifting, original paths, occupied roles, configuration refresh and query/selection preservation; focused label/emphasis recheck passes | Headless native geometry/state execution |
+| Computer use | 1000 entities yield 939 assigned, 41 explicitly unassigned, 352 features, 8 clusters and 18% retained variance; K 8→7→8 refreshes; cluster profiles expose original predicate/neighbor IRIs | Low retained variance limits planar-distance interpretation |
+| Computer use | Cluster 4 member Daimler Truck opens the existing Inspector; 2D→3D retains Cluster 4, its node selection, query text and five executed SPARQL results | Local graph query path, not server query evidence |
+| Computer use | Instances 980 and Types 20 planes, original inter-layer edges, neutral labeled unpositioned gutter and cluster emphasis render; cluster-wide predicate clutter is removed | Inherited three-finger input is unchanged; this task does not claim a new physical-touch verification |
+
+Analysis took 0.084–0.086 seconds for this fixture in the focused native runs.
+This measures analysis, not GPU frame time or end-to-end application launch.
+Ready results are reused by both surfaces; camera/filter/selection changes do not
+invoke analysis. Known pre-existing duplicate-rpath/AppIntents build warnings are
+preserved in logs; no compiler internal error was observed.

@@ -1,8 +1,8 @@
 # Progress
 
 - [x] CLUSTER-01 Deterministic bounded native feature analysis, separate PCA, contextual XY and generation-safe session; focused behavioral tests and 1000-entity analysis pass; reviewed (`fb256b2`) `depends:none` `parallel:none`
-- [x] CLUSTER-02 Shared analysis presentation, local 2D controls and semantic 3D layers implemented; original XY/identities/edges, query/selection and configuration invalidation verified by 3 composition tests; member-button accessibility and focused predicate labeling repaired and verified; reviewed and included in this commit `depends:CLUSTER-01` `parallel:none`
-- [ ] CLUSTER-03 Complete native 1000-entity control, member-selection, layer/emphasis and projection-restoration verification; record behavior evidence and limits; review and commit `depends:CLUSTER-02` `parallel:none`
+- [x] CLUSTER-02 Shared analysis presentation, local 2D controls and semantic 3D layers implemented; original XY/identities/edges, query/selection and configuration invalidation verified by 3 composition tests; member-button accessibility and focused predicate labeling repaired and verified; reviewed (`ee25ce4`) `depends:CLUSTER-01` `parallel:none`
+- [x] CLUSTER-03 Computer use verifies 1000-entity 2D analysis/K refresh, exact cluster profiles, member-button Inspector selection, 2D/3D shared selection and five SPARQL results, role layers, original relationship emphasis and explicit unpositioned gutter; native evidence/limitations reviewed and included in this commit `depends:CLUSTER-02` `parallel:none`
 - [ ] CLUSTER-04 Run one consolidated native headless package lane and actual application workflow with 1000 entities; verify source/dependency snapshot, record limits and scoped commits `depends:CLUSTER-01,CLUSTER-02,CLUSTER-03` `parallel:none`
 
 - [x] STUDIO-01 Restore application launch using released URL dependencies and the installed September 4 Swift snapshot; focused launch test passes; existing UI and session edits remain outside this commit (`dac8799`) `depends:none` `parallel:none`
