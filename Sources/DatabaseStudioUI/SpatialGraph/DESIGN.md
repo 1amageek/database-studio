@@ -143,6 +143,13 @@ The existing CanvasInteractionResponder platform adapter opts into indirect and
 resting touches only for the spatial viewport. Two-finger scroll/pinch retain
 pan/zoom; 2D keeps its existing swipe navigation. Three-finger displacement
 rotates about the current screen axes; twist rotates about the viewing axis.
+The input boundary rotates the displayed network in the direction of the fingers:
+rightward contacts move foreground points right, downward contacts move them
+down, and clockwise contact twist turns the displayed network clockwise.
+GraphSpatialCamera owns this conversion from touch displacement to camera orbit;
+the view invokes that intent for three-finger input. Camera orbit itself retains
+its existing convention for mouse dragging. Contact tracking retains raw screen
+translation and signed twist; no natural-scroll preference changes raw contacts.
 The quaternion permits full turns without pitch clamps or a world-up pole.
 Retain at most three prior contact positions. Contact-count/identity changes,
 cancellation and disabling the callback discard the baseline, preventing jumps.
@@ -390,3 +397,21 @@ The real app remains open with all 1000 points and 2584 relationships in 3D.
 Build warnings are the existing duplicate-rpath and AppIntents metadata warnings.
 Unrelated edits and four pre-existing unpushed commits remain outside the change;
 push is withheld to avoid including those commits.
+
+### Touch direction correction (2026-10-03)
+
+The direction regression fails against the prior production mapping: rightward
+contacts project the foreground point from x=450 to x=436.98, and clockwise
+contact twist projects the right-hand point above the viewport center. The
+vertical direction already follows contacts and must not be inverted.
+`GraphSpatialCamera.rotateNetwork` converts three-finger motion to camera orbit
+by negating horizontal movement and twist, preserving vertical movement. The
+spatial view invokes this intent; mouse drag continues using `orbit` directly.
+One focused native headless test now passes both unrotated and tilted/rolled
+camera cases for horizontal, vertical and twist screen displacement. Contact
+reset, quaternion freedom, numeric rejection and document semantics are unchanged.
+AppBuild and PackageBuild succeed; Computer use opens the updated app and checks
+all 1000 points / 2584 relationships in 3D. It cannot synthesize physical contacts,
+so the corrected real-trackpad direction itself is not claimed as observed.
+Raw red/green commands, logs and result bundles are retained at
+`/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-touch-direction-34kv8kzv`.

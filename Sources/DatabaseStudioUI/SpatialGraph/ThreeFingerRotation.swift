@@ -25,7 +25,7 @@ struct ThreeFingerRotation {
             cross += x * nextY - y * nextX
             dot += x * nextX + y * nextY
         }
-        // Screen y points down; positive camera roll follows counterclockwise touch rotation.
+        // Screen y points down; positive twist denotes counterclockwise contact rotation.
         let roll = cross == 0 && dot == 0 ? 0 : -atan2(cross, dot)
         return (CGSize(width: after.x - before.x, height: after.y - before.y), roll)
     }

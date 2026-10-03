@@ -93,6 +93,12 @@ struct GraphSpatialCamera: Equatable {
             * simd_quatf(angle: twist, axis: SIMD3(0, 0, 1)))
     }
 
+    /// Makes the displayed network follow physical three-finger movement and twist.
+    mutating func rotateNetwork(dx: CGFloat, dy: CGFloat, roll: CGFloat) {
+        // Camera yaw and roll oppose content motion; screen-y pitch already follows it.
+        orbit(dx: -dx, dy: dy, roll: -roll)
+    }
+
     mutating func zoom(_ delta: CGFloat) { distance = min(500, max(3, distance * Float(exp(-delta)))) }
 
     mutating func pan(dx: CGFloat, dy: CGFloat, height: CGFloat) {

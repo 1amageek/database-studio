@@ -39,7 +39,7 @@ struct GraphSpatialView: View {
         CanvasInteractionView(onScroll: { x, y in
             state.spatialCamera.pan(dx: x, dy: y, height: size.height)
         }, onMagnify: { delta, _ in state.spatialCamera.zoom(delta) }, onThreeFingerOrbit: { x, y, roll in
-            state.spatialCamera.orbit(dx: x, dy: y, roll: roll)
+            state.spatialCamera.rotateNetwork(dx: x, dy: y, roll: roll)
         }) {
             ZStack {
                 Canvas { context, size in draw(context: &context, layout: layout, size: size) }

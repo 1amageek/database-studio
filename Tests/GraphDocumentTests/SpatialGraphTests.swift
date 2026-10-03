@@ -107,6 +107,40 @@ final class SpatialGraphTests: XCTestCase {
         XCTAssertNil(input.update(initial))
     }
 
+    func testThreeFingerMotionAndTwistMoveTheDisplayedNetworkWithTheFingers() throws {
+        let size = CGSize(width: 900, height: 600)
+        let contacts: [AnyHashable: CGPoint] = [0: CGPoint(x: -10, y: -10),
+                                                1: CGPoint(x: 10, y: -10), 2: CGPoint(x: 0, y: 20)]
+        var rolled = GraphSpatialCamera(yaw: 0.4, pitch: 0.6, distance: 10)
+        rolled.orbit(dx: 0, dy: 0, roll: 0.7)
+        for initial in [GraphSpatialCamera(yaw: 0, pitch: 0, distance: 10), rolled] {
+            let foreground = initial.target + initial.backward * 2
+            let before = try XCTUnwrap(initial.project(foreground, size: size)).point
+            for movement in [CGSize(width: 12, height: 0), CGSize(width: 0, height: 12)] {
+                var input = ThreeFingerRotation()
+                XCTAssertNil(input.update(contacts))
+                let moved = contacts.mapValues { CGPoint(x: $0.x + movement.width, y: $0.y + movement.height) }
+                let delta = try XCTUnwrap(input.update(moved))
+                var camera = initial
+                camera.rotateNetwork(dx: delta.translation.width, dy: delta.translation.height, roll: delta.roll)
+                let after = try XCTUnwrap(camera.project(foreground, size: size)).point
+                if movement.width > 0 { XCTAssertGreaterThan(after.x, before.x) }
+                if movement.height > 0 { XCTAssertGreaterThan(after.y, before.y) }
+            }
+            var input = ThreeFingerRotation()
+            XCTAssertNil(input.update(contacts))
+            // In screen coordinates this is a clockwise quarter turn.
+            let clockwise = contacts.mapValues { CGPoint(x: -$0.y, y: $0.x) }
+            let delta = try XCTUnwrap(input.update(clockwise))
+            var camera = initial
+            camera.rotateNetwork(dx: delta.translation.width, dy: delta.translation.height, roll: delta.roll)
+            let point = initial.target + initial.right * 2
+            let after = try XCTUnwrap(camera.project(point, size: size)).point
+            XCTAssertEqual(after.x, size.width / 2, accuracy: 0.0001)
+            XCTAssertGreaterThan(after.y, size.height / 2)
+        }
+    }
+
     func testFullCameraRotationAndRollShareEdgeAndGlyphProjectionBasis() async throws {
         var camera = GraphSpatialCamera(yaw: 0, pitch: 0, distance: 10)
         let initial = camera
