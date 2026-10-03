@@ -1,7 +1,7 @@
 import SwiftUI
 import DatabaseClientHTTP
 
-/// A server workspace whose connection is owned by this window.
+/// Authenticated server access within the base database workspace.
 public struct RuntimeConnectionView: View {
     @Binding private var connectionID: UUID?
     @State private var connection = RuntimeConnection()
@@ -16,41 +16,79 @@ public struct RuntimeConnectionView: View {
     @State private var rememberToken = false
     private let credentials = RuntimeCredentialStore()
     @State private var selectedEntity: String?
+    @State private var showsQuery = false
+    @State private var showsDatabaseInfo = false
 
     public init(connectionID: Binding<UUID?> = .constant(nil)) { _connectionID = connectionID }
 
     public var body: some View {
         NavigationSplitView {
-            List(selection: $selectedEntity) {
-                Section("Entities") {
-                    ForEach(connection.schema?.entities ?? [], id: \.name) { entity in
-                        Label(entity.name, systemImage: "tablecells").tag(entity.name)
+            VStack(spacing: 0) {
+                List(selection: $selectedEntity) {
+                    Section("Entities") {
+                        ForEach(connection.schema?.entities ?? [], id: \.name) { entity in
+                            DisclosureGroup {
+                                Section("Fields") {
+                                    ForEach(entity.fields, id: \.number) { field in
+                                        LabeledContent(field.name, value: String(describing: field.type))
+                                            .font(.caption).help(field.nullable ? "Nullable" : "Required")
+                                    }
+                                }
+                                Section("Indexes") {
+                                    ForEach(entity.indexes, id: \.name) { index in
+                                        Label(index.name, systemImage: "list.bullet.indent").font(.caption)
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Label(entity.name, systemImage: "cube.box.fill")
+                                    Spacer()
+                                    Text("\(entity.fields.count) fields").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }.tag(entity.name)
+                        }
                     }
-                }
+                }.listStyle(.sidebar).navigationTitle("Browser")
+                    .accessibilityIdentifier("workspace.browser")
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(connection.isConnected ? databaseID : "Not Connected", systemImage: connection.isConnected ? "circle.fill" : "circle")
+                        .foregroundStyle(connection.isConnected ? Color.green : Color.secondary)
+                    if !endpoint.isEmpty { Text(endpoint).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 240)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 350)
         } detail: {
             if connection.isConnected {
-                TabView {
-                    Group {
-                        if let selectedEntity {
-                            RuntimeRecordsView(connection: connection, entityName: selectedEntity)
-                                .id(selectedEntity)
-                        } else {
-                            ContentUnavailableView("Select an Entity", systemImage: "tablecells")
-                        }
-                    }.tabItem { Label("Data", systemImage: "list.bullet.rectangle") }
-                    catalog.tabItem { Label("Schema", systemImage: "tablecells") }
-                    RuntimeQueryView(connection: connection, historyScope: [endpoint, databaseID, tenantID, workspaceID])
-                        .tabItem { Label("Query", systemImage: "terminal") }
+                Group {
+                    if showsQuery {
+                        RuntimeQueryView(connection: connection, historyScope: [endpoint, databaseID, tenantID, workspaceID])
+                    } else if let selectedEntity {
+                        RuntimeRecordsView(connection: connection, entityName: selectedEntity).id(selectedEntity)
+                    } else {
+                        ContentUnavailableView("Select an Entity", systemImage: "tablecells", description: Text("Select a database entity in the browser, or open Query."))
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Picker("Source", selection: $showsQuery) {
+                            Text("Data").tag(false)
+                            Text("Query").tag(true)
+                        }.pickerStyle(.segmented).frame(width: 130).contentShape(Rectangle())
+                            .accessibilityIdentifier("workspace.source")
+                    }
                 }
             } else {
                 connectionForm
             }
         }
-        .navigationTitle(connection.isConnected ? databaseID : "Connect to Server")
+        .navigationTitle(connection.isConnected ? databaseID : "Database Studio")
+        .navigationSubtitle(connection.isConnected ? ([selectedEntity, tenantID.isEmpty ? nil : tenantID, workspaceID.isEmpty ? nil : workspaceID].compactMap { $0 }.joined(separator: " / ")) : "Connect to Server")
         .toolbar {
             if connection.isConnected {
+                Button("Database Info", systemImage: "info.circle") { showsDatabaseInfo = true }
+                    .contentShape(Rectangle()).accessibilityIdentifier("workspace.databaseInfo")
+                    .popover(isPresented: $showsDatabaseInfo) { catalog.frame(width: 460, height: 560) }
                 Button("Disconnect", systemImage: "network.slash") { disconnect() }
             }
         }
@@ -66,6 +104,7 @@ public struct RuntimeConnectionView: View {
                 }
             } catch { failure = error.localizedDescription }
         }
+        .onChange(of: selectedEntity) { _, _ in showsQuery = false }
         .onDisappear { disconnect() }
     }
 

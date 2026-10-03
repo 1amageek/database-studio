@@ -4,7 +4,6 @@ import DatabaseKit
 
 /// メインビュー（3ペイン構成 + Inspector）
 public struct MainView: View {
-    @Environment(\.openWindow) private var openWindow
     private let recentConnection: SavedDatabaseConnection?
     @State private var didRestore = false
     @State private var historyFailure: String?
@@ -33,22 +32,15 @@ public struct MainView: View {
         didRestore = true
         do {
             let databases = ConnectionHistoryStore.shared
-            let servers = RuntimeConnectionHistory.shared
             try databases.load()
-            try servers.load()
-            let destination = recentConnection.map(ConnectionRestoration.local)
-                ?? ConnectionRestoration.destination(local: databases.mostRecent, server: servers.connections.first)
-            switch destination {
-            case .server(let id):
-                openWindow(id: "runtime-workspace", value: id)
-            case .local(let entry):
+            if let entry = recentConnection ?? databases.mostRecent {
                 studioState.filePath = entry.filePath
                 studioState.rootDirectoryPath = entry.rootDirectoryPath
                 await studioState.connect()
                 if case .connected = studioState.connectionState {
                     try databases.addOrUpdate(filePath: entry.filePath, rootDirectoryPath: entry.rootDirectoryPath)
                 } else { showingConnectionSettings = true }
-            case nil:
+            } else {
                 showingConnectionSettings = true
             }
         } catch { historyFailure = "Unable to Restore Connection: " + error.localizedDescription }
@@ -80,8 +72,6 @@ public struct MainView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Menu("Open Recent", systemImage: "clock.arrow.circlepath") { RecentConnectionsMenu() }
-                    .contentShape(Rectangle()).accessibilityIdentifier("connection.recents")
                 Button {
                     showInspector.toggle()
                 } label: {
@@ -94,6 +84,7 @@ public struct MainView: View {
         .task {
             await restoreLastConnection()
         }
+        .onDisappear { Task { await studioState.disconnect() } }
         .sheet(isPresented: $showingConnectionSettings) {
             ConnectionSettingsView(studioState: studioState, isRequired: isConnectionRequired)
         }

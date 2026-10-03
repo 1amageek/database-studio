@@ -60,8 +60,9 @@ verification. Test transport responses alone are not server integration evidence
 
 ## Runtime Flows
 
-File > Connect to Server opens a server workspace separate from direct-storage
-inspection. The window owns its connection. Connect validates the endpoint,
+File > Connect to Server (Command-K) selects server access in the base database
+window, through [Workspace](../Workspace/DESIGN.md). The connected view owns its
+connection independently from the local catalog-inspection session. Connect validates the endpoint,
 performs the authenticated handshake, then displays the returned entity and
 feature catalogs. Cancel/window disappearance clears the token, cancels connection
 work and disconnects. Successful connections record endpoint/database/tenant/workspace/last-used metadata in a separate
@@ -74,14 +75,15 @@ History decode errors and Keychain OSStatus failures remain visible and do not
 reset history silently. Recording history before saving a token means a failed
 Keychain write leaves a usable history entry requiring manual credentials.
 
-The connected workspace composes the Data, Schema and Query tabs using
+The connected workspace composes Data and Query with a persistent database
+browser, connection status and native Database Info inspection using
 [Runtime Query](../RuntimeQuery/DESIGN.md). Operation request metadata is forwarded
 unchanged to DatabaseClient; explicit mutations own one idempotency key per
 submission. Authentication and authorization remain with their existing owners.
 
 ## Recent Access and Restoration
 [Connection Access](../ConnectionAccess/DESIGN.md) owns the native recent menu and
-startup destination choice. Server scenes accept a non-secret history UUID, restore
+startup destination choice. Base workspace server destinations accept a non-secret history UUID, restore
 its exact endpoint/database/tenant/workspace and attempt one handshake if a token
 already exists in Keychain. Missing tokens show a prefilled form. History selections
 use the same path; successful handshake alone updates lastUsed. Explicit Disconnect

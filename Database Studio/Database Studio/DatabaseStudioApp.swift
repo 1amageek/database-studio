@@ -4,17 +4,25 @@ import DatabaseStudioUI
 @main
 struct DatabaseStudioApp: App {
     @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.workspaceNavigation) private var workspaceNavigation
+
+    private func open(_ destination: WorkspaceDestination) {
+        if let workspaceNavigation { workspaceNavigation.open(destination) }
+        else { openWindow(id: "database-workspace", value: destination) }
+    }
 
     var body: some Scene {
-        WindowGroup(id: "database-workspace", for: SavedDatabaseConnection.self) { $connection in
-            MainView(recentConnection: connection)
+        WindowGroup(id: "database-workspace", for: WorkspaceDestination.self) { $destination in
+            DatabaseWorkspaceView(destination: $destination)
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Menu("Open Recent") { RecentConnectionsMenu() }
+                Menu("Open Recent") { RecentConnectionsMenu(openDestination: workspaceNavigation?.open) }
                 Button("Connect to Server…") {
-                    openWindow(id: "runtime-workspace")
+                    open(.server(nil))
                 }
+                .keyboardShortcut("k", modifiers: .command)
+                Button("Open Database…") { open(.database(nil)) }
                 Button("Open Example Graph") {
                     GraphWindowState.shared.showExample()
                     openWindow(id: "graph-viewer")
@@ -23,11 +31,6 @@ struct DatabaseStudioApp: App {
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
-
-        WindowGroup("Database Server", id: "runtime-workspace", for: UUID.self) { $connectionID in
-            RuntimeConnectionView(connectionID: $connectionID)
-        }
-        .defaultSize(width: 1100, height: 750)
 
         Window("Graph Viewer", id: "graph-viewer") {
             GraphWindowView()

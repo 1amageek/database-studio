@@ -7,7 +7,7 @@ Own native access to previously successful server and file-backed database conne
 ## Responsibilities and Boundaries
 ConnectionRestoration selects the last successful destination across the two existing
 history stores. RecentConnectionsMenu routes stable server IDs or saved local paths
-into native SwiftUI scenes. ConnectionHistoryStore owns local path persistence within this component;
+into the base workspace. ConnectionHistoryStore owns local path persistence within this component;
 RuntimeConnectionHistory owns server persistence. Credentials stay
 in Keychain. Connection/session owners perform handshake, reads and shutdown.
 Existing sidebar and result presentation are unchanged.
@@ -15,7 +15,7 @@ Existing sidebar and result presentation are unchanged.
 ## Related Designs
 | Design | Relationship | Contract Used | Summary | Cautions |
 |---|---|---|---|---|
-| [Module](../DESIGN.md) | parent | Native app composition | Startup and File menu | Preserve existing scenes and sidebars |
+| [Module](../DESIGN.md) | parent | Native app composition | Startup and File menu | Preserve connection scopes and original sidebars |
 | [RuntimeConnection](../RuntimeConnection/DESIGN.md) | depends on | Successful scoped history, credential lookup, handshake | Server destination | Missing tokens require entry; credentials never enter history |
 | [Package](../../../DESIGN.md) | used by | Scene lifecycle | Main app opens native scenes | Scene arguments are history identity/path, never credentials |
 
@@ -23,8 +23,8 @@ Existing sidebar and result presentation are unchanged.
 ```text
 Successful server handshake -> RuntimeConnectionHistory + optional Keychain token
 Successful local connection -> ConnectionHistoryStore(path + root)
-Startup -> newest successful destination -> native server/local scene
-File/Open Recent -> existing history -> native server/local scene
+Startup -> newest successful destination -> base workspace destination
+File/Open Recent -> existing history -> base workspace destination
 Server scene -> history UUID -> endpoint/scope -> Keychain lookup -> reconnect
 Local scene -> saved path/root -> existing StudioDatabaseSession.connect
 ```
@@ -37,9 +37,10 @@ Server identity includes endpoint, database, tenant and workspace. Local identit
 includes normalized file path and exact root path. Update recency only after
 successful connection. Preserve local names, favorites, IDs and usage counts.
 A history reload or mutation must not erase malformed stored history. Present
-read/write failures explicitly. A new typed local scene opens the selected path;
-a new typed server scene opens the selected scoped server. The untyped initial
-main scene restores whichever history is newest, with local winning equal dates.
+read/write failures explicitly. The typed base scene accepts either destination. Open Recent replaces the focused
+workspace destination; a new base window is opened only when no focused workspace
+is available. Startup restores whichever history is newest, with local winning
+equal dates. [Workspace](../Workspace/DESIGN.md) owns this route contract.
 No saved token means show the prefilled form; a saved token means attempt one
 existing authenticated handshake. Do not retry or save new tokens automatically.
 After successful server access, update the scene binding to the recorded UUID so

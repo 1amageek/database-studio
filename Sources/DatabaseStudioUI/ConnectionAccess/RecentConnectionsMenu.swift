@@ -6,8 +6,11 @@ public struct RecentConnectionsMenu: View {
     @State private var servers = RuntimeConnectionHistory.shared
     @State private var databases = ConnectionHistoryStore.shared
     @State private var failure: String?
+    private let openDestination: ((WorkspaceDestination) -> Void)?
 
-    public init() {}
+    public init(openDestination: ((WorkspaceDestination) -> Void)? = nil) {
+        self.openDestination = openDestination
+    }
 
     public var body: some View {
         Group {
@@ -16,7 +19,7 @@ public struct RecentConnectionsMenu: View {
             Section("Servers") {
                 ForEach(servers.connections) { entry in
                     Button {
-                        openWindow(id: "runtime-workspace", value: entry.id)
+                        open(.server(entry.id))
                     } label: {
                         Text(entry.databaseID + " — " + entry.endpoint.absoluteString + scope(entry))
                     }.contentShape(Rectangle())
@@ -25,7 +28,7 @@ public struct RecentConnectionsMenu: View {
             Section("Databases") {
                 ForEach(databases.connections.sorted { $0.lastUsed > $1.lastUsed }) { entry in
                     Button {
-                        openWindow(id: "database-workspace", value: entry)
+                        open(.database(entry))
                     } label: {
                         Text(entry.name + " — " + entry.displayDescription)
                     }.contentShape(Rectangle())
@@ -43,5 +46,10 @@ public struct RecentConnectionsMenu: View {
 
     private func scope(_ entry: SavedRuntimeConnection) -> String {
         [entry.tenantID, entry.workspaceID].compactMap { $0 }.map { " / " + $0 }.joined()
+    }
+
+    private func open(_ destination: WorkspaceDestination) {
+        if let openDestination { openDestination(destination) }
+        else { openWindow(id: "database-workspace", value: destination) }
     }
 }

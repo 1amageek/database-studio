@@ -7,7 +7,8 @@ relationship network. Native verification and its limits are recorded in
 [SpatialGraph](SpatialGraph/DESIGN.md); broader Studio acceptance remains pending.
 
 Parent: [Database Studio](../../DESIGN.md).
-Children: [ConnectionAccess](ConnectionAccess/DESIGN.md),
+Children: [Workspace](Workspace/DESIGN.md),
+[ConnectionAccess](ConnectionAccess/DESIGN.md),
 [ResultPresentation](ResultPresentation/DESIGN.md),
 [AnalysisWorkspace](AnalysisWorkspace/DESIGN.md),
 [SpatialGraph](SpatialGraph/DESIGN.md),
@@ -74,6 +75,10 @@ wrapping canonical values, with exact API shape decided at its integration gate.
 | [Workspace specification](../../../SPEC.md) | authority | Sections 8, 15, 16, 19 | Directory/Partition, Base, grants and Composition | Base partitions remain independent; federation has no global snapshot |
 | [DatabaseKit](../../../database-kit/DESIGN.md) | depends on | Graph semantics and optional MultiBase values | Owns domain representation | Projection does not redefine canonical identity |
 | [DatabaseFramework](../../../database-framework/DESIGN.md) | depends on | Execution, authorization and ontology reads | Supplies permitted data | Current Studio record access is unavailable |
+
+## Base Database Workspace
+
+[Workspace](Workspace/DESIGN.md) owns the base-window composition. DB navigation and source information remain available while Table and analysis are shown together. Query is a source operation in the lower pane; Table/Document/Analysis/Relationships are representations of the same canonical result. Native navigation, toolbar and Inspector own titles and controls. Existing standalone graph navigation is unchanged. The historical separate-server-window decision is superseded by this contract.
 
 ## Architecture
 

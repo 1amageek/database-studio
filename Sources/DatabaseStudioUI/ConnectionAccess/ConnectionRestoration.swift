@@ -5,6 +5,13 @@ enum ConnectionRestoration: Equatable {
     case local(SavedDatabaseConnection)
     case server(UUID)
 
+    var workspaceDestination: WorkspaceDestination {
+        switch self {
+        case .local(let entry): .database(entry)
+        case .server(let id): .server(id)
+        }
+    }
+
     static func destination(local: SavedDatabaseConnection?, server: SavedRuntimeConnection?) -> Self? {
         if let server {
             if let local {

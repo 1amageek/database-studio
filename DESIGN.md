@@ -39,6 +39,10 @@ Those contracts remain with `storage-kit`, `database-framework`, and
 | `storage-kit` `StorageEngine` | depends on | `requestShutdown()` plus `waitUntilShutdown()` | Requesting shutdown closes admission; waiting proves backend cleanup is complete. | `requestShutdown()` alone is not a disconnected state. |
 | `database-framework` `SchemaRegistry` | used by | `loadAll()` and catalog validation | The registry loads typed schema metadata through the selected engine. | Results from a superseded generation must not be published. |
 
+## Base Window Composition
+
+The product entry point is one base database workspace. [Workspace](Sources/DatabaseStudioUI/Workspace/DESIGN.md) owns scene routing; server and local connection owners retain separate resource lifetimes inside that workspace. Analysis shares the current canonical result and selection with the visible Table. Direct storage remains catalog-only.
+
 ## Architecture
 
 ```text
