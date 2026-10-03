@@ -1,7 +1,7 @@
 # Progress
 
-- [x] CLUSTER-01 Deterministic bounded native feature analysis, separate PCA, contextual XY and generation-safe session implemented; 10 focused tests pass, 3 review checks pass, updated session check passes; 1000 entities analyze in 0.084–0.086 seconds with explicit unassigned/variance reporting; reviewed and included in this commit `depends:none` `parallel:none`
-- [ ] CLUSTER-02 Integrate one shared analysis presentation into canvas-local 2D controls and semantic 3D layers; preserve sidebar, source/query/selection, exact XY, original identities/edges and bounded drawing; review and commit `depends:CLUSTER-01` `parallel:none`
+- [x] CLUSTER-01 Deterministic bounded native feature analysis, separate PCA, contextual XY and generation-safe session; focused behavioral tests and 1000-entity analysis pass; reviewed (`fb256b2`) `depends:none` `parallel:none`
+- [x] CLUSTER-02 Shared analysis presentation, local 2D controls and semantic 3D layers implemented; original XY/identities/edges, query/selection and configuration invalidation verified by 3 composition tests; member-button accessibility and focused predicate labeling repaired and verified; reviewed and included in this commit `depends:CLUSTER-01` `parallel:none`
 - [ ] CLUSTER-03 Complete native 1000-entity control, member-selection, layer/emphasis and projection-restoration verification; record behavior evidence and limits; review and commit `depends:CLUSTER-02` `parallel:none`
 - [ ] CLUSTER-04 Run one consolidated native headless package lane and actual application workflow with 1000 entities; verify source/dependency snapshot, record limits and scoped commits `depends:CLUSTER-01,CLUSTER-02,CLUSTER-03` `parallel:none`
 

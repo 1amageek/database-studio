@@ -27,6 +27,7 @@ final class GraphSpatialScene {
     private var projectionRevision: UInt64?
     private var projectionCamera: GraphSpatialCamera?
     private var projectionSize = CGSize.zero
+    private var projectionEmphasis: Set<String> = []
     private var positions: [SIMD3<Float>] = []
     private var indices: [String: Int] = [:]
     private var endpoints: [(source: Int, target: Int, edge: GraphEdge)] = []
@@ -61,11 +62,12 @@ final class GraphSpatialScene {
     }
 
     func project(camera: GraphSpatialCamera, layout: GraphSpatialLayout, revision: UInt64,
-                 nodes: [GraphNode], selectedID: String?, size: CGSize) {
-        guard projectionRevision != revision || projectionCamera != camera || projectionSize != size else { return }
+                 nodes: [GraphNode], selectedID: String?, size: CGSize, emphasizedIDs: Set<String> = []) {
+        guard projectionRevision != revision || projectionCamera != camera || projectionSize != size || projectionEmphasis != emphasizedIDs else { return }
         projectionRevision = revision
         projectionCamera = camera
         projectionSize = size
+        projectionEmphasis = emphasizedIDs
         let frame = GraphSpatialCamera.Projection(camera: camera, size: size)
         projected.removeAll(keepingCapacity: true)
         for position in positions { projected.append(frame.project(position)) }
@@ -95,6 +97,7 @@ final class GraphSpatialScene {
         edgeLabels.removeAll(keepingCapacity: true)
         for endpoint in endpoints {
             let selected = endpoint.edge.sourceID == selectedID || endpoint.edge.targetID == selectedID
+                || emphasizedIDs.contains(endpoint.edge.sourceID) || emphasizedIDs.contains(endpoint.edge.targetID)
             let start: CGPoint, end: CGPoint
             if let a = projected[endpoint.source], let b = projected[endpoint.target] {
                 start = a.point; end = b.point
@@ -120,7 +123,8 @@ final class GraphSpatialScene {
                 arrowPath.addLine(to: tip)
                 arrowPath.addLine(to: CGPoint(x: tip.x - ux * 5 + uy * 2, y: tip.y - uy * 5 - ux * 2))
             }
-            if edgeLabels.count < 32, glyphIndices[endpoint.edge.sourceID] != nil,
+            let focused = endpoint.edge.sourceID == selectedID || endpoint.edge.targetID == selectedID
+            if focused, edgeLabels.count < 32, glyphIndices[endpoint.edge.sourceID] != nil,
                glyphIndices[endpoint.edge.targetID] != nil {
                 edgeLabels.append((endpoint.edge.label, CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 7)))
             }

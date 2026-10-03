@@ -82,6 +82,8 @@ public struct GraphView: View {
         ZStack(alignment: .bottomTrailing) {
             if state.isSpatial {
                 GraphSpatialView(state: state)
+            } else if state.usesFeatureClusters {
+                GraphClusterView(state: state)
             } else {
                 GraphCanvas(state: state)
                 MinimapView(state: state)
@@ -282,6 +284,15 @@ public struct GraphView: View {
 
     @ViewBuilder
     private var toolbarActions: some View {
+        Button {
+            state.usesFeatureClusters.toggle()
+        } label: {
+            Image(systemName: state.usesFeatureClusters ? "circle.grid.cross.fill" : "circle.grid.cross")
+        }
+        .contentShape(Rectangle())
+        .accessibilityIdentifier("graph.cluster.mode")
+        .help(state.usesFeatureClusters ? "Return to Relationship Layout" : "Analyze Feature Clusters")
+
         Picker("Projection", selection: $state.isSpatial) {
             Text("2D").tag(false)
             Text("3D").tag(true).disabled(state.spatialUnavailableReason != nil)

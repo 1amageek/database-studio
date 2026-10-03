@@ -10,6 +10,17 @@ enum TimelineOrientation: String, CaseIterable, Sendable {
 @Observable @MainActor
 final class GraphViewState {
 
+    let clusterSession = GraphClusterSession()
+    var usesFeatureClusters = false {
+        didSet {
+            guard usesFeatureClusters != oldValue else { return }
+            stopSimulation(); clusterSession.cancel(); cancelSpatialLayout()
+            spatialLayout = nil; spatialFailureMessage = nil; spatialAnalysisRevision = nil
+            hasSpatialCamera = false
+            spatialDocumentRevision &+= 1; spatialGeometryRevision &+= 1
+        }
+    }
+
     var isSpatial = false {
         didSet {
             guard isSpatial != oldValue else { return }
@@ -34,9 +45,13 @@ final class GraphViewState {
     private var spatialLayoutTask: Task<Void, Never>?
     private var spatialLayoutGeneration: UInt64 = 0
     private var spatialSeeds: [String: SIMD3<Float>] = [:]
+    private var spatialAnalysisRevision: UInt64?
 
     var spatialUnavailableReason: String? {
         if timelineOrientation != .off { return "Timeline exploration uses 2D." }
+        if usesFeatureClusters {
+            return document.nodes.count > 1000 || document.edges.count > 4096 ? GraphSpatialLayout.Failure.capacity.errorDescription : nil
+        }
         if !document.edges.contains(where: { $0.edgeKind == .relationship }) {
             return "Hierarchy-only graphs use 2D. 3D is available for relationship networks."
         }
@@ -47,17 +62,32 @@ final class GraphViewState {
     }
 
     func prepareSpatialLayout() async {
+        if usesFeatureClusters && spatialAnalysisRevision != clusterSession.revision {
+            cancelSpatialLayout(); spatialLayout = nil; spatialFailureMessage = nil
+            spatialAnalysisRevision = clusterSession.revision; spatialGeometryRevision &+= 1
+        }
         guard isSpatial, spatialLayout == nil, spatialUnavailableReason == nil else { return }
         if let task = spatialLayoutTask { await task.value; return }
         spatialLayoutGeneration &+= 1
         let generation = spatialLayoutGeneration
         let snapshot = document
         let seeds = spatialSeeds
+        let analyzed = usesFeatureClusters, analysis = clusterSession
         isSpatialLoading = true
         spatialFailureMessage = nil
         let task = Task { @MainActor [weak self] in
             do {
-                let layout = try await GraphSpatialLayout.compute(document: snapshot, initialPositions: seeds)
+                let layout: GraphSpatialLayout
+                if analyzed {
+                    await analysis.prepare(document: snapshot)
+                    try Task.checkCancellation()
+                    guard let result = analysis.result else {
+                        throw GraphSpatialLayout.Failure.analysis(analysis.failure ?? "Feature analysis was cancelled.")
+                    }
+                    layout = try GraphSpatialLayout.layered(document: snapshot, result: result)
+                } else {
+                    layout = try await GraphSpatialLayout.compute(document: snapshot, initialPositions: seeds)
+                }
                 guard !Task.isCancelled, let self, self.isSpatial,
                       self.spatialLayoutGeneration == generation else { return }
                 self.spatialLayout = layout
@@ -91,6 +121,7 @@ final class GraphViewState {
     }
 
     func moveSpatialNode(_ id: String, screen: CGPoint, planePoint: SIMD3<Float>) {
+        guard !usesFeatureClusters else { return }
         guard let next = spatialCamera.point(onPlaneThrough: planePoint, screen: screen, size: spatialViewport),
               spatialLayout != nil else { return }
         do {
@@ -110,6 +141,7 @@ final class GraphViewState {
 
     var document: GraphDocument {
         didSet {
+            clusterSession.invalidate()
             spatialSeeds = spatialLayout?.positions ?? spatialSeeds
             cancelSpatialLayout()
             spatialLayout = nil
@@ -345,7 +377,7 @@ final class GraphViewState {
 
     /// フォーカスモードの切り替えに応じてレイアウトを更新
     private func updateFocusLayout() {
-        guard !isSpatial else { return }
+        guard !isSpatial && !usesFeatureClusters else { return }
         if isFocusMode {
             enterFocusMode()
         } else {
@@ -899,7 +931,7 @@ final class GraphViewState {
     }
 
     func startSimulation(size: CGSize) {
-        guard !isSpatial else { return }
+        guard !isSpatial && !usesFeatureClusters else { return }
         viewportSize = size
         hasUserAdjustedCamera = false
         let nodeIDs = document.nodes.map(\.id)
@@ -956,7 +988,7 @@ final class GraphViewState {
 
     /// ドラッグ後に位置を保ったまま微調整シミュレーションを再開
     func resumeSimulation(size: CGSize) {
-        guard !isSpatial else { return }
+        guard !isSpatial && !usesFeatureClusters else { return }
         let layout = activeLayout
         layout.reheat()
 
@@ -1005,6 +1037,7 @@ final class GraphViewState {
 
     func zoomToFit(padding: CGFloat = 60) {
         if isSpatial { fitSpatialCamera(); return }
+        if usesFeatureClusters { clusterSession.cameraScale = 1; clusterSession.cameraOffset = .zero; return }
         let nodeIDs = visibleNodeIDs
         let nodePositions = nodeIDs.compactMap { activeLayout.positions[$0] }
         guard !nodePositions.isEmpty, viewportSize.width > 0, viewportSize.height > 0,

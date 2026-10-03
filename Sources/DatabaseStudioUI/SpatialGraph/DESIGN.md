@@ -440,7 +440,8 @@ is categorical and does not assert subclass depth or source authority.
 Context XY is identified as an original-neighbor aggregate, not a classified sample.
 Unpositioned nodes retain their explicit gutter. Display filters hide points
 without moving coordinates or changing membership. Selected clusters emphasize
-original incident edges and their context. Layer geometry/camera motion never
+original incident edges and their context. Predicate labels are reserved for
+selected-node incident edges, avoiding cluster-wide label congestion. Layer geometry/camera motion never
 reruns analysis. Node arrangement is unavailable in analyzed mode so display
 drags cannot destroy shared XY alignment. Picking/three-finger camera conventions,
 query pane and shared node identity remain unchanged. The 2D analysis surface

@@ -5,6 +5,7 @@ import simd
 struct GraphSpatialLayout: Sendable {
     enum Failure: LocalizedError {
         case capacity, duplicateIdentity, missingEndpoint, invalidPosition, elapsedLimit
+        case analysis(String)
 
         var errorDescription: String? {
             switch self {
@@ -13,6 +14,7 @@ struct GraphSpatialLayout: Sendable {
             case .missingEndpoint: "A relationship refers to a node outside this graph."
             case .invalidPosition: "The network contains a nonfinite display position."
             case .elapsedLimit: "The network layout exceeded its time budget. Use 2D or load a smaller graph."
+            case .analysis(let message): message
             }
         }
     }
@@ -31,6 +33,29 @@ struct GraphSpatialLayout: Sendable {
     static let elapsedLimit: Duration = .seconds(10)
     private(set) var positions: [String: SIMD3<Float>]
     let nodeIDs: [String]
+    private(set) var layers: [GraphSemanticLayer] = []
+
+    static func layered(document: GraphDocument, result: GraphClusterResult) throws -> Self {
+        guard document.nodes.count <= maximumNodes, document.edges.count <= maximumEdges else { throw Failure.capacity }
+        let ids = document.nodes.map(\.id).sorted()
+        guard Set(ids).count == ids.count, Set(document.edges.map(\.id)).count == document.edges.count else { throw Failure.duplicateIdentity }
+        let roles = [GraphNodeRole.instance, .type, .property, .literal].filter { role in document.nodes.contains { $0.role == role } }
+        var positions: [String: SIMD3<Float>] = [:], layers: [GraphSemanticLayer] = []
+        for (index, role) in roles.enumerated() {
+            let height = Float(Double(roles.count - 1) / 2 - Double(index)) * 3.5
+            var lower = SIMD2<Float>(repeating: .infinity), upper = SIMD2<Float>(repeating: -.infinity), count = 0
+            for node in document.nodes where node.role == role {
+                guard let xy = result.positions[node.id] else { throw Failure.missingEndpoint }
+                let point = SIMD3(Float(xy.x), height, Float(xy.y))
+                guard finite(point) else { throw Failure.invalidPosition }
+                positions[node.id] = point
+                lower = simd_min(lower, SIMD2(point.x, point.z)); upper = simd_max(upper, SIMD2(point.x, point.z)); count += 1
+            }
+            layers.append(GraphSemanticLayer(role: role, height: height, lower: lower - SIMD2(repeating: 0.4), upper: upper + SIMD2(repeating: 0.4), count: count))
+        }
+        for edge in document.edges where positions[edge.sourceID] == nil || positions[edge.targetID] == nil { throw Failure.missingEndpoint }
+        return Self(positions: positions, nodeIDs: ids, layers: layers)
+    }
 
     @concurrent static func compute(document: GraphDocument,
                         initialPositions: [String: SIMD3<Float>] = [:]) async throws -> Self {
