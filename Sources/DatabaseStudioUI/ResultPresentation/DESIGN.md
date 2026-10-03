@@ -82,6 +82,8 @@ Document/Raw/Analysis selection, source coverage and original sidebar preservati
 A temporary result-only host is insufficient evidence of application composition.
 
 Query passes its source editor as view content. ResultPageView composes that editor
-and the viewport before applying the native Inspector; the Inspector belongs to
+below the viewport before applying the native Inspector; the Inspector belongs to
 the complete screen rather than an embedded lower split pane. This keeps native
 scroll-view safe areas aligned with the enclosing toolbar. Data passes no editor.
+
+Editor placement is owned by [Runtime Query](../RuntimeQuery/DESIGN.md#query-pane-placement).

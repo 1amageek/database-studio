@@ -14,9 +14,17 @@ struct RuntimeQueryResultsView: View {
             case .rdfGraph(let page):
                 ResultPageView(quads: query.quads, hasNextPage: page.continuation != nil, sourceContent: sourceContent)
             case .boolean(let value):
-                VStack { sourceContent; Text(value ? "true" : "false").font(.system(.title, design: .monospaced)) }
+                VStack(spacing: 0) {
+                    Text(value ? "true" : "false").font(.system(.title, design: .monospaced))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    sourceContent
+                }
             case nil:
-                VStack { sourceContent; ContentUnavailableView("Run a Query", systemImage: "terminal", description: Text("Results come from the connected server.")) }
+                VStack(spacing: 0) {
+                    ContentUnavailableView("Run a Query", systemImage: "terminal", description: Text("Results come from the connected server."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    sourceContent
+                }
             }
         }.id(query.pageRevision)
     }

@@ -32,8 +32,8 @@ struct ResultPageView: View {
         if let state {
             @Bindable var state = state
             VStack(spacing: 0) {
-                sourceContent
                 content(state).frame(maxWidth: .infinity, maxHeight: .infinity)
+                sourceContent
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationSubtitle(state.coverage)

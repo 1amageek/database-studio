@@ -18,11 +18,13 @@ struct RuntimeQueryView: View {
         VStack(spacing: 0) {
             if isMutation {
                 VStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        if let failure = mutation.failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
+                        if let response = mutation.response {
+                            ScrollView { Text(String(describing: response)).textSelection(.enabled) }
+                        }
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
                     editor
-                    if let failure = mutation.failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
-                    if let response = mutation.response {
-                        ScrollView { Text(String(describing: response)).textSelection(.enabled) }
-                    }
                 }
             } else {
                 RuntimeQueryResultsView(query: query, sourceContent: AnyView(editor))
@@ -85,15 +87,13 @@ struct RuntimeQueryView: View {
 
     private var editor: some View {
         VStack(spacing: 0) {
+            Divider()
             VStack(spacing: 8) {
                 if let historyFailure { Text(historyFailure).foregroundStyle(.red) }
-                TextEditor(text: $statement)
-                    .font(.system(.body, design: .monospaced))
-                    .accessibilityIdentifier("runtime.query.editor")
-            }.padding().frame(height: 180)
+                RuntimeQueryEditor(text: $statement)
+            }.frame(height: 180)
             if let failure = query.failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
             if query.wasCancelled { Text("Query cancelled").foregroundStyle(.secondary) }
-            Divider()
         }
     }
 

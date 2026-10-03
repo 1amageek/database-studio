@@ -135,3 +135,19 @@ Query language, mutation mode, history and Save are grouped in the native Query 
 menu. Run remains a primary action. The editor height is bounded to retain an
 initially usable result area. SwiftUI vertical composition prevents nested AppKit
 split-view safe-area overlays from covering native table/list headers.
+
+## Query Pane Placement
+
+The result or execution status occupies the upper content area. The bounded query
+editor remains at the bottom for empty, row, RDF, boolean and mutation responses.
+A divider separates the result from the editor. Switching display modes preserves
+this placement, the original sidebar and the native execution toolbar. Native
+verification executes a query and compares both positions before and after a mode
+change; layout changes do not alter request, cancellation or pagination ownership.
+
+The editor uses an AppKit NSTextView inside an edge-filling NSScrollView.
+NSTextView.textContainerInset owns the text margin; SwiftUI applies no outer
+padding to the editor. The native view owns selection, undo and scrolling.
+Its MainActor delegate publishes edits through the SwiftUI text binding; external
+text replacement updates only changed content. Dismantling clears the delegate.
+Verification checks typing, query execution, internal margins and mode changes.
