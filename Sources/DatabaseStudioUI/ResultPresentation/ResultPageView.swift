@@ -10,6 +10,7 @@ struct ResultPageView: View {
     @State private var showInspector = false
     @State private var showRaw = false
     @State private var showCoverage = false
+    @State private var showAnalysisSettings = false
 
     init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, sourceContent: AnyView = AnyView(EmptyView())) {
         self.sourceContent = sourceContent
@@ -45,6 +46,22 @@ struct ResultPageView: View {
                             .accessibilityIdentifier("result.mode")
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
+                        if state.mode == .analysis, let graph = state.analysis {
+                            Button("Configure Analysis", systemImage: "slider.horizontal.3") { showAnalysisSettings = true }
+                                .contentShape(Rectangle()).accessibilityIdentifier("result.analysis.configure")
+                            if let result = graph.clusterSession.result {
+                                Menu("Clusters", systemImage: "circle.grid.3x3") {
+                                    Button("Clear Selection") { state.selectAnalysisCluster(nil) }.contentShape(Rectangle())
+                                    ForEach(result.clusters) { cluster in
+                                        Button("Cluster \(cluster.id + 1) · \(cluster.members.count) rows") { state.selectAnalysisCluster(cluster.id); showInspector = true }
+                                            .contentShape(Rectangle())
+                                    }
+                                }.contentShape(Rectangle()).accessibilityIdentifier("result.analysis.clusters")
+                            }
+                            if graph.clusterSession.isLoading {
+                                Button("Cancel Analysis", systemImage: "stop.fill") { graph.clusterSession.cancel() }.contentShape(Rectangle())
+                            }
+                        }
                         if let graph = state.activeGraph {
                             Picker("Projection", selection: Binding(get: { graph.isSpatial }, set: { graph.isSpatial = $0 })) {
                                 Text("2D").tag(false)
@@ -64,7 +81,7 @@ struct ResultPageView: View {
                                 }
                             }.frame(maxWidth: 180).contentShape(Rectangle())
                         }
-                        if state.mode == .table {
+                        if state.mode != .document {
                             Menu("Columns", systemImage: "rectangle.split.3x1") {
                                 ForEach(state.columns.indices, id: \.self) { index in
                                     Toggle(state.columns[index], isOn: Binding(get: { state.visibleColumns.contains(index) }, set: { visible in
@@ -72,10 +89,6 @@ struct ResultPageView: View {
                                     })).contentShape(Rectangle())
                                 }
                             }.contentShape(Rectangle()).accessibilityIdentifier("result.columns")
-                        }
-                        if state.mode == .analysis && !state.selectedIDs.isEmpty {
-                            Button("Show in Table", systemImage: "tablecells") { state.mode = .table }
-                                .contentShape(Rectangle()).accessibilityIdentifier("result.showTable")
                         }
                         Button("Coverage", systemImage: "info.circle") { showCoverage = true }
                             .contentShape(Rectangle()).popover(isPresented: $showCoverage) { coverage(state) }
@@ -89,12 +102,23 @@ struct ResultPageView: View {
                     inspector(state).inspectorColumnWidth(min: 260, ideal: 340, max: 600)
                 }
                 .sheet(isPresented: $showRaw) { raw(state) }
+                .sheet(isPresented: $showAnalysisSettings) {
+                    if let graph = state.analysis {
+                        GraphAnalysisSettings(document: graph.document, configuration: graph.clusterSession.configuration) {
+                            graph.clusterSession.configuration = $0
+                            graph.clusterSession.invalidate()
+                        }
+                    }
+                }
                 .onChange(of: state.selectedIDs) { _, selection in
                     state.synchronizeGraphSelection()
                     if !selection.isEmpty { showInspector = true }
                 }
                 .task(id: state.mode) {
-                    if state.mode == .analysis { await state.prepareAnalysis() }
+                    if state.mode == .analysis {
+                        await state.prepareAnalysis()
+                        if let graph = state.analysis, graph.clusterSession.configuration.numericFeatures.isEmpty { showAnalysisSettings = true }
+                    }
                     else if state.mode == .relationships { state.prepareRelationship() }
                 }
                 .onChange(of: state.graphName) { _, _ in state.prepareRelationship() }
@@ -112,20 +136,44 @@ struct ResultPageView: View {
             case .table: ResultTableView(state: state)
             case .document: ResultDocumentView(state: state)
             case .analysis:
-                if let graph = state.analysis { ResultGraphViewport(graph: graph, onSelect: state.selectAnalysisNode) }
-                else if let failure = state.analysisFailure { ContentUnavailableView("Analysis Unavailable", systemImage: "chart.xyaxis.line", description: Text(failure)) }
-                else { ProgressView("Preparing measurements…") }
+                linkedTable(state) {
+                    if let graph = state.analysis { ResultGraphViewport(graph: graph, onSelect: state.selectAnalysisNode) }
+                    else if let failure = state.analysisFailure { ContentUnavailableView("Analysis Unavailable", systemImage: "chart.xyaxis.line", description: Text(failure)) }
+                    else { ProgressView("Preparing measurements…") }
+                }
             case .relationships:
-                if let graph = state.relationship { ResultGraphViewport(graph: graph, onSelect: state.selectRelationshipNode) }
-                else if let failure = state.relationshipFailure { ContentUnavailableView("Relationships Unavailable", systemImage: "exclamationmark.triangle", description: Text(failure)) }
-                else { ProgressView("Preparing relationships…") }
+                linkedTable(state) {
+                    if let graph = state.relationship { ResultGraphViewport(graph: graph, onSelect: state.selectRelationshipNode) }
+                    else if let failure = state.relationshipFailure { ContentUnavailableView("Relationships Unavailable", systemImage: "exclamationmark.triangle", description: Text(failure)) }
+                    else { ProgressView("Preparing relationships…") }
+                }
             }
         }
+    }
+
+    private func linkedTable<Viewport: View>(_ state: ResultPageState, @ViewBuilder viewport: () -> Viewport) -> some View {
+        HStack(spacing: 0) {
+            ResultTableView(state: state).frame(minWidth: 260, idealWidth: 340, maxWidth: 380)
+            Divider()
+            viewport().frame(maxWidth: .infinity, maxHeight: .infinity)
+        }.accessibilityIdentifier("result.linkedAnalysis")
     }
 
     @ViewBuilder private func inspector(_ state: ResultPageState) -> some View {
         if let row = state.selectedRows.first {
             Form {
+                if state.mode == .analysis, let session = state.analysis?.clusterSession,
+                   let result = session.result, let clusterID = session.selectedCluster,
+                   let cluster = result.clusters.first(where: { $0.id == clusterID }) {
+                    Section("Cluster \(clusterID + 1)") {
+                        LabeledContent("Members", value: "\(cluster.members.count)")
+                        Text("Selection highlights source rows; the analysis population is unchanged.").font(.caption).foregroundStyle(.secondary)
+                        ForEach(result.profiles[clusterID] ?? []) { profile in
+                            LabeledContent(profile.title, value: "\(profile.median.formatted(.number.precision(.significantDigits(4)))) [\(profile.lowerQuartile.formatted(.number.precision(.significantDigits(4)))), \(profile.upperQuartile.formatted(.number.precision(.significantDigits(4))))]")
+                        }
+                        Text("Original values: median [Q1, Q3]").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 if state.selectedIDs.count > 1 {
                     Section("Selection") { Text("\(state.selectedIDs.count) rows selected. Showing original row \(row.id + 1).") }
                 }
@@ -133,6 +181,9 @@ struct ResultPageView: View {
                     ForEach(state.columns.indices, id: \.self) { index in
                         ResultFieldView(name: state.columns[index], value: row.values[index])
                     }
+                }
+                if let reason = state.analysis?.clusterSession.result?.exclusionReasons["page-row:\(row.id)"] {
+                    Section("Analysis Exclusion") { Text(reason).foregroundStyle(.secondary) }
                 }
                 if let canonical = row.canonical {
                     Section("Metadata") {
@@ -159,6 +210,15 @@ struct ResultPageView: View {
                     ForEach(dataset.numericColumns, id: \.self) { key in
                         LabeledContent(key, value: "\(dataset.missingCounts[key, default: 0]) missing")
                     }
+                }
+            }
+            if let session = state.analysis?.clusterSession, let result = session.result {
+                Section("Analysis Coverage") {
+                    LabeledContent("Analyzed", value: "\(result.membership.count)")
+                    LabeledContent("Excluded", value: "\(result.unassignedIDs.count)")
+                    LabeledContent("Features", value: "\(result.featureCount)")
+                    Text(result.axes.isEmpty ? "PCA projection retains \(Int(result.retainedVariance * 100))% of variance. Membership uses all configured features." : "Selected axes show the configured measurements. Membership uses all configured features.").font(.caption)
+                    Text(session.configuration.layerKey.map { "Layers: " + $0 + " · Shared XY coordinates and scale" } ?? "Layers: node roles · Shared XY coordinates and scale").font(.caption)
                 }
             }
         }.formStyle(.grouped).frame(width: 440, height: 350)

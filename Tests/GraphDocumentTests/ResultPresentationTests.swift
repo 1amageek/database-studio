@@ -120,4 +120,36 @@ final class ResultPresentationTests: XCTestCase {
         XCTAssertFalse(pending.isPreparingAnalysis)
         XCTAssertNil(pending.analysisFailure)
     }
+
+    func testClusterSelectionHighlightsExactMembersWithoutChangingPopulation() async throws {
+        let input = (0..<20).map { DatabaseWire.QueryRow(values: [.int64(Int64($0 * $0 + 1)), .string($0 < 10 ? "A" : "B")]) }
+        let state = try ResultPageState(columns: columns, rows: input, hasNextPage: false)
+        state.mode = .analysis
+        await state.prepareAnalysis()
+        let graph = try XCTUnwrap(state.analysis)
+        graph.clusterSession.configuration.numericFeatures = [.init(numerator: "/sales")]
+        graph.clusterSession.configuration.clusterCount = 2
+        await graph.clusterSession.prepare(document: graph.document)
+        let result = try XCTUnwrap(graph.clusterSession.result)
+        let cluster = try XCTUnwrap(result.clusters.first { $0.members.count > 1 })
+        state.selectAnalysisCluster(cluster.id)
+        let members = Set(cluster.members.compactMap(RecordAnalysisSource.rowIndex))
+        XCTAssertEqual(state.selectedIDs, members)
+        state.synchronizeGraphSelection()
+        state.selectAnalysisNode(graph.selectedNodeID)
+        XCTAssertEqual(state.selectedIDs, members, "A programmatic point echo must preserve the cluster selection")
+        XCTAssertEqual(state.originalRows.count, 20)
+        XCTAssertEqual(graph.clusterSession.result?.membership.count, 20)
+        state.sortOrder = [.init(column: 0, order: .reverse)]
+        state.mode = .table
+        XCTAssertEqual(state.selectedIDs, members)
+        XCTAssertEqual(state.orderedRows.count, 20)
+        XCTAssertEqual(graph.clusterSession.configuration.numericFeatures.first?.numerator, "/sales")
+        let point = try XCTUnwrap(cluster.members.last)
+        state.selectAnalysisNode(point)
+        state.synchronizeGraphSelection()
+        XCTAssertEqual(state.selectedIDs, Set([try XCTUnwrap(RecordAnalysisSource.rowIndex(point))]))
+        XCTAssertNil(graph.clusterSession.selectedCluster)
+        XCTAssertEqual(state.selectedRows.first?.canonical, input[try XCTUnwrap(RecordAnalysisSource.rowIndex(point))])
+    }
 }

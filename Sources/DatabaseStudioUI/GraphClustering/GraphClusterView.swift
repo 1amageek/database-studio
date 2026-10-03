@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GraphClusterView: View {
     @Bindable var state: GraphViewState
+    var showsControls = true
 
     var body: some View {
         GeometryReader { proxy in
@@ -38,7 +39,7 @@ struct GraphClusterView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .bottomLeading) { GraphClusterControls(state: state) }
+        .overlay(alignment: .bottomLeading) { if showsControls { GraphClusterControls(state: state) } }
         .task(id: state.clusterSession.revision) { if state.clusterSession.configuration.mode != .numeric || !state.clusterSession.configuration.numericFeatures.isEmpty { await state.clusterSession.prepare(document: state.document) } }
         .onDisappear { state.clusterSession.cancel() }
     }

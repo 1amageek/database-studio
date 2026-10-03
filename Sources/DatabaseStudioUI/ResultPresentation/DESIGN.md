@@ -25,7 +25,7 @@ and standalone GraphView retain their original sidebars. No new window or sideba
 ```text
 Data / Query -> immutable canonical page + revision -> ResultPageView
     toolbar: Table (default) / Document / Relationships (RDF only) / Analysis (rows only)
-    content: native Table / structured values / relationship viewport / analysis viewport
+    content: native Table / structured values / linked Table + relationship or analysis viewport
     selection: fixed original page indices <-> Inspector / viewport
     supplemental actions: Columns / Raw / Coverage / Inspector
 Parent sidebar, title, source filter, pagination and request execution remain intact.
@@ -43,17 +43,24 @@ Only explicitly returned RDF quads enable Relationships. A graph selector isolat
 one named/default graph; different graphs are not merged. Graph selection maps to
 all matching incident quads within that graph. Unsupported quoted terms fail
 explicitly; Table/Document/Raw remain available. Numeric Analysis uses only the
-current row page, reports capacity/missing/precision failures and never fetches
+currently published rows (one page or an explicitly collected bounded query result), reports capacity/missing/precision failures and never fetches
 additional records or claims full-collection coverage from a missing continuation.
 Mode, source coverage, projection, fit and Inspector actions live in the enclosing
 SwiftUI toolbar. Display modes use primaryAction so the native TabView navigation
 can retain its own placement. Query settings/history/save share a native menu,
-and the editor is bounded to leave room for results. Content has no custom title/control header. No persisted identity
+and the editor is bounded to leave room for results. Content has no custom title/control header. Native analysis setup and cluster selection belong to the enclosing toolbar, not
+an overlay content header. The Inspector shows cluster profiles and original row
+values. Selecting a cluster highlights all member rows without filtering the source;
+selecting a point or Table row highlights that exact row. Programmatic graph-selection
+echoes cannot collapse a multi-row selection. Returning to Table retains selection,
+columns and ordering. No persisted identity
 or mutation authority is inferred from an aggregate result or a page-local index.
 
 ## Runtime Flows
 Page publication -> one row-wrapper array retaining canonical backing -> Table.
-Mode switch retains selection/order and sends no request. Analysis selection maps
+Mode switch retains selection/order and sends no request. Analysis and Relationships
+keep the same Table beside the viewport in one SwiftUI horizontal composition,
+so selected values remain visible without a representation round trip. Analysis selection maps
 via page-row identity. Returning to Table highlights the original selected row.
 Replacing the page destroys presentation state via page revision, cancels pending
 preparation and discards the prior selection. Failed continuation retains the page.
@@ -73,7 +80,8 @@ cell indexing. No failure becomes an empty successful dataset. A page cannot gra
 edit/delete authority. Empty rows are distinguishable from failures.
 
 ## Verification and Change Impact
-ResultPresentationTests own native-page identity across typed sorting (including
+ResultPresentationTests own exact cluster-member highlighting, multi-selection echo
+rejection, preserved ordering/configuration and native-page identity across typed sorting (including
 UInt64 boundaries and duplicate rows), selection/mode changes, graph isolation and
 incident quad mapping, exact formatting, invalid shape, numeric preparation and
 cancellation. Existing numeric/spatial tests remain valid when their code is

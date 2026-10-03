@@ -38,6 +38,8 @@ final class ResultPageState {
     private var preparationGeneration: UInt64 = 0
     private var synchronizedRelationshipID: String?
     private var hasRelationshipSelectionEcho = false
+    private var synchronizedAnalysisID: String?
+    private var hasAnalysisSelectionEcho = false
 
     init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool) throws {
         guard rows.allSatisfy({ $0.values.count == columns.count }) else { throw Failure.invalidRow }
@@ -87,7 +89,23 @@ final class ResultPageState {
     }
 
     func selectAnalysisNode(_ id: String?) {
+        if hasAnalysisSelectionEcho, id == synchronizedAnalysisID {
+            hasAnalysisSelectionEcho = false; synchronizedAnalysisID = nil; return
+        }
+        hasAnalysisSelectionEcho = false
+        synchronizedAnalysisID = nil
         selectedIDs = id.flatMap(RecordAnalysisSource.rowIndex).map { originalRows.indices.contains($0) ? Set([$0]) : [] } ?? []
+    }
+
+    /// Selecting a cluster highlights its original rows without filtering the source.
+    func selectAnalysisCluster(_ clusterID: Int?) {
+        guard let graph = analysis else { return }
+        graph.clusterSession.selectedCluster = clusterID
+        guard let clusterID, let cluster = graph.clusterSession.result?.clusters.first(where: { $0.id == clusterID }) else {
+            selectedIDs = []
+            return
+        }
+        selectedIDs = Set(cluster.members.compactMap(RecordAnalysisSource.rowIndex).filter { originalRows.indices.contains($0) })
     }
 
     func selectRelationshipNode(_ id: String?) {
@@ -118,8 +136,17 @@ final class ResultPageState {
             }
         }
         if let graph = analysis {
+            if let cluster = graph.clusterSession.selectedCluster,
+               let members = graph.clusterSession.result?.clusters.first(where: { $0.id == cluster })?.members,
+               selectedIDs != Set(members.compactMap(RecordAnalysisSource.rowIndex)) {
+                graph.clusterSession.selectedCluster = nil
+            }
             let id = selectedIDs.min().map { "page-row:\($0)" }
-            if graph.selectedNodeID != id { graph.selectNode(id) }
+            if graph.selectedNodeID != id {
+                synchronizedAnalysisID = id
+                hasAnalysisSelectionEcho = true
+                graph.selectNode(id)
+            }
         }
     }
 

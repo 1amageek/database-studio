@@ -65,4 +65,38 @@ final class RecordAnalysisSourceTests: XCTestCase {
         XCTAssertEqual(rows.count, 2000)
         XCTAssertEqual(Set(result.membership.keys.compactMap(RecordAnalysisSource.rowIndex)), Set(0..<2000))
     }
+
+    func testRDFNumericLiteralsRetainCanonicalValuesAndLexicalCategories() async throws {
+        let xsd = "http://www.w3.org/2001/XMLSchema#"
+        let values: [FieldValue] = [
+            .rdfTerm(.literal(try RDFLiteral(lexicalForm: "-42", datatype: xsd + "integer"))),
+            .rdfTerm(.literal(try RDFLiteral(lexicalForm: "0", datatype: xsd + "integer"))),
+            .rdfTerm(.literal(try RDFLiteral(lexicalForm: "1.25", datatype: xsd + "decimal"))),
+            .rdfTerm(.literal(try RDFLiteral(lexicalForm: "2.5e2", datatype: xsd + "double"))),
+            .rdfTerm(.literal(try RDFLiteral(lexicalForm: "9007199254740993", datatype: xsd + "integer"))),
+            .rdfTerm(.literal(try RDFLiteral(lexicalForm: "Banking", datatype: xsd + "string")))
+        ]
+        let columns = values.indices.map { QueryColumn(number: UInt32($0), name: "c\($0)") }
+        let row = DatabaseWire.QueryRow(values: values)
+        let dataset = try await RecordAnalysisSource(columns: columns, rows: [row], hasNextPage: false).dataset()
+        XCTAssertEqual(dataset.document.nodes[0].metrics["/c0"], -42)
+        XCTAssertEqual(dataset.document.nodes[0].metrics["/c1"], 0)
+        XCTAssertEqual(dataset.document.nodes[0].metrics["/c2"], 1.25)
+        XCTAssertEqual(dataset.document.nodes[0].metrics["/c3"], 250)
+        XCTAssertNil(dataset.document.nodes[0].metrics["/c4"])
+        XCTAssertEqual(dataset.document.nodes[0].metadata["/c5"], "Banking")
+        XCTAssertEqual(row.values, values)
+        XCTAssertTrue(dataset.warnings.contains { $0.contains("integer precision") })
+        XCTAssertTrue(dataset.warnings.contains { $0.contains("approximate Double") })
+    }
+
+    func testMalformedAndNonfiniteRDFMeasurementsFailExplicitly() async throws {
+        for lexical in ["not a number", "NaN", "INF", "0x1p0", "1e999"] {
+            let literal = try RDFLiteral(lexicalForm: lexical, datatype: "http://www.w3.org/2001/XMLSchema#double")
+            do {
+                _ = try await RecordAnalysisSource(columns: [.init(number: 1, name: "value")], rows: [.init(values: [.rdfTerm(.literal(literal))])], hasNextPage: false).dataset()
+                XCTFail("Malformed measurements must not become synthetic zero values")
+            } catch { XCTAssertNotNil(error as? RecordAnalysisSource.Failure) }
+        }
+    }
 }

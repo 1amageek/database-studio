@@ -207,3 +207,11 @@ and confirmationAction placements. The content does not recreate a sheet title
 bar or action footer. The draft is applied only by confirmation; cancellation
 dismisses it unchanged. Native verification evidence is linked from
 [AnalysisWorkspace](../AnalysisWorkspace/DESIGN.md#native-header-correction).
+
+## Workspace Control Composition
+
+Result Presentation may suppress viewport-local analysis controls and provide the
+same setup and cluster actions in the native enclosing toolbar. Standalone graph
+views retain their existing controls and sidebar. This presentation input does not
+change measurement, layout, camera, cancellation or relationship contracts. Native
+verification checks both workspace 2D/3D and the retained standalone composition.

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GraphSpatialView: View {
     @Bindable var state: GraphViewState
+    var showsAnalysisControls = true
     @Environment(\.colorScheme) private var colorScheme
     @State private var scene = GraphSpatialScene()
     @State private var drag = CGSize.zero
@@ -21,7 +22,7 @@ struct GraphSpatialView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottomLeading) {
-            if state.usesFeatureClusters { GraphClusterControls(state: state) }
+            if state.usesFeatureClusters && showsAnalysisControls { GraphClusterControls(state: state) }
         }
         .task(id: [state.spatialDocumentRevision, state.clusterSession.revision]) { await state.prepareSpatialLayout() }
         .onDisappear { state.cancelSpatialLayout(); if state.usesFeatureClusters { state.clusterSession.cancel() } }

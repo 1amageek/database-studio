@@ -7,8 +7,8 @@ struct ResultGraphViewport: View {
 
     var body: some View {
         Group {
-            if graph.isSpatial { GraphSpatialView(state: graph) }
-            else if graph.usesFeatureClusters { GraphClusterView(state: graph) }
+            if graph.isSpatial { GraphSpatialView(state: graph, showsAnalysisControls: false) }
+            else if graph.usesFeatureClusters { GraphClusterView(state: graph, showsControls: false) }
             else { GraphCanvas(state: graph) }
         }
         .clipped()

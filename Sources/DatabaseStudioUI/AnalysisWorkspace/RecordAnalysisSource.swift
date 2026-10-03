@@ -5,12 +5,13 @@ import DatabaseWire
 /// Projects an immutable server result page for analysis without changing canonical values.
 struct RecordAnalysisSource: Sendable {
     enum Failure: LocalizedError {
-        case capacity, invalidColumns, invalidRow, nonfinite(String), noMeasurements
+        case capacity, invalidColumns, invalidRow, invalidMeasurement(String), nonfinite(String), noMeasurements
         var errorDescription: String? {
             switch self {
             case .capacity: "Analysis supports 10,000 rows, 128 scalar fields per row, eight nested levels and 32 MiB of scalar text."
             case .invalidColumns: "The result contains ambiguous or empty column names."
             case .invalidRow: "The result contains a row with an invalid column count or ambiguous field paths."
+            case .invalidMeasurement(let path): "The result contains a malformed numeric RDF literal at " + path
             case .nonfinite(let path): "The result contains a nonfinite measurement at " + path
             case .noMeasurements: "This page contains no supported numeric measurements."
             }
@@ -62,6 +63,32 @@ struct RecordAnalysisSource: Sendable {
                     guard converted.isFinite, value.coefficient == 0 || converted != 0 else { throw Failure.nonfinite(path) }
                     metrics[path] = converted; approximate.insert(path)
                 case .array, .bytes, .vector: omitted.insert(path)
+                case .rdfTerm(.literal(let literal)):
+                    textBytes += literal.lexicalForm.utf8.count + literal.datatypeIRI.rawValue.utf8.count
+                    let datatype = literal.datatypeIRI.rawValue
+                    let xsd = "http://www.w3.org/2001/XMLSchema#"
+                    if [xsd + "integer", xsd + "decimal", xsd + "float", xsd + "double"].contains(datatype) {
+                        let lexical = literal.lexicalForm.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let pattern = datatype == xsd + "integer" ? "^[+-]?[0-9]+$" :
+                            "^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)" + (datatype == xsd + "decimal" ? "$" : "(?:[eE][+-]?[0-9]+)?$")
+                        guard lexical.range(of: pattern, options: .regularExpression) != nil else {
+                            throw Failure.invalidMeasurement(path)
+                        }
+                        if datatype == xsd + "integer" {
+                            if let integer = Int128(lexical), let value = Double(lexical), Int128(exactly: value) == integer {
+                                metrics[path] = value
+                            } else { omitted.insert(path + " (integer precision)") }
+                        } else {
+                            guard let value = Double(lexical), value.isFinite else { throw Failure.nonfinite(path) }
+                            if datatype == xsd + "decimal" {
+                                guard value != 0 || !lexical.utf8.contains(where: { $0 >= 49 && $0 <= 57 }) else { throw Failure.nonfinite(path) }
+                                approximate.insert(path)
+                            }
+                            metrics[path] = value
+                        }
+                    } else if datatype == xsd + "string" || literal.languageTag != nil {
+                        metadata[path] = literal.lexicalForm
+                    } else { metadata[path] = literal.description }
                 default:
                     let text = String(describing: value); metadata[path] = text; textBytes += text.utf8.count
                 }

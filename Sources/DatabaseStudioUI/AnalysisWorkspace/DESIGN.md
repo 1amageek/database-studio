@@ -44,3 +44,14 @@ behavioral evidence because the numerical/projection source is unchanged.
 Build the actual application, then use Computer Use to verify the original
 sidebar, selection/inspector, 2D/3D and query pane. A temporary host or empty
 Entities list does not establish preservation of the original UI.
+
+## Numeric RDF Result Values
+
+Explicit xsd:integer, xsd:decimal, xsd:float and xsd:double literals may provide
+measurements. The original RDF literal remains authoritative in Table/Raw.
+Integer values outside exact Double representation are excluded with warnings;
+decimal coordinates report approximation. Malformed or nonfinite numeric literals
+fail visibly. String/language literals supply their original lexical category,
+while IRIs retain their explicit term identity. Unknown datatypes do not become
+measurements. Projection tests cover signed/zero values, precision, failure and
+canonical value preservation.

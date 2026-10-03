@@ -461,3 +461,11 @@ the default when no category key is chosen. All source identities and edges are
 retained, XY is exact, and no cluster/similarity edge is synthesized. Category
 planes reuse the existing camera, Canvas and picking path. Composition tests
 verify these contracts; actual 2000-point native rendering is an acceptance gate.
+
+## Workspace Control Composition
+
+Result Presentation may suppress viewport-local analysis controls and provide the
+same setup and cluster actions in the native enclosing toolbar. Standalone graph
+views retain their existing controls and sidebar. This presentation input does not
+change measurement, layout, camera, cancellation or relationship contracts. Native
+verification checks both workspace 2D/3D and the retained standalone composition.
