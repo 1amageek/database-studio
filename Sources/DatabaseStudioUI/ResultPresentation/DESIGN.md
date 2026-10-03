@@ -71,7 +71,8 @@ per page; canonical values share their existing immutable/COW backing. Sorting
 reorders wrappers only when the header sort changes. Numeric source projection
 runs concurrently and checks cancellation before publishing. Graph session results,
 configuration and cameras remain retained across display changes. Leaving the
-page cancels active preparation and graph/session work.
+visible page cancels active preparation and graph/session work. RuntimeQuery retains
+the presentation through a Data/Query switch; source replacement releases it.
 
 ## Failure, Concurrency, and Constraints
 The query's admitted page bounds apply to tables/documents. Numeric and spatial

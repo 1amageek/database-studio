@@ -60,3 +60,8 @@ ConnectionAccessTests cover scene encoding, destination mapping and scope identi
 Computer Use verifies startup and Connect in the actual base window, DB catalog
 information during analysis and unchanged lower Query. App compilation verifies
 the scene contract; connection tests remain authoritative for transport lifecycle.
+
+The connected root owns separate retained Data and Query workspace state. Source
+switches cancel active tasks but preserve editor, options, published canonical
+results and analysis/selection. Selecting another entity replaces Data state only.
+Disconnect invalidates both query owners before the connection is released.

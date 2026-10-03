@@ -7,16 +7,14 @@ struct RuntimeQueryView: View {
     let historyScope: [String]
     @State private var history = RuntimeQueryHistory()
     @State private var historyFailure: String?
-    @State private var query = RuntimeQuery()
-    @State private var mutation = RuntimeMutation()
-    @State private var isMutation = false
-    @State private var statement = ""
-    @State private var language = QueryExecuteOperation.Language.sql
+    @Bindable var workspace: RuntimeQueryWorkspace
+    private var query: RuntimeQuery { workspace.query }
+    private var mutation: RuntimeMutation { workspace.mutation }
     @State private var task: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
-            if isMutation {
+            if workspace.isMutation {
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
                         if let failure = mutation.failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
@@ -33,24 +31,24 @@ struct RuntimeQueryView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu("Query Options", systemImage: "ellipsis.circle") {
-                    Picker("Language", selection: $language) {
+                    Picker("Language", selection: $workspace.language) {
                         Text("SQL").tag(QueryExecuteOperation.Language.sql)
                         Text("SPARQL").tag(QueryExecuteOperation.Language.sparql)
                     }.contentShape(Rectangle())
-                    Toggle("Mutation", isOn: $isMutation)
+                    Toggle("Mutation", isOn: $workspace.isMutation)
                         .contentShape(Rectangle()).disabled(query.isRunning || mutation.isRunning)
                     Menu("History") {
                         ForEach(history.entries.filter { $0.scope == historyScope }) { entry in
                             Button(entry.statement) {
                                 if let restored = QueryExecuteOperation.Language(rawValue: entry.language) {
-                                    statement = entry.statement
-                                    language = restored
+                                    workspace.statement = entry.statement
+                                    workspace.language = restored
                                 }
                             }.contentShape(Rectangle())
                         }
                     }.contentShape(Rectangle())
                     Button("Save") { saveQuery() }.contentShape(Rectangle())
-                        .disabled(statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(workspace.statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }.contentShape(Rectangle()).accessibilityIdentifier("runtime.query.options")
                     if query.isRunning || mutation.isRunning {
                         ProgressView().controlSize(.small)
@@ -60,8 +58,8 @@ struct RuntimeQueryView: View {
                             saveQuery()
                             task?.cancel()
                             let request = QueryExecuteOperation.Request(
-                                input: .text(language: language, statement: statement))
-                            if isMutation {
+                                input: .text(language: workspace.language, statement: workspace.statement))
+                            if workspace.isMutation {
                                 let mutationRequest = MutationExecuteOperation.Request(input: .statement(request.input, parameters: []))
                                 task = Task { await mutation.execute(mutationRequest, connection: connection) }
                             } else {
@@ -69,13 +67,16 @@ struct RuntimeQueryView: View {
                             }
                         }
                         .contentShape(Rectangle()).keyboardShortcut(.return, modifiers: .command)
-                        .disabled(statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(workspace.statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
             }
-            ToolbarItem(placement: .secondaryAction) {
+            ToolbarItemGroup(placement: .secondaryAction) {
+                Button("Load Remaining", systemImage: "arrow.down.to.line") {
+                    task = Task { await query.loadRemainingPages(connection: connection) }
+                }.contentShape(Rectangle()).disabled(workspace.isMutation || !query.canCollectRows)
                 Button("Next Page", systemImage: "chevron.right") {
                     task = Task { await query.nextPage(connection: connection) }
-                }.contentShape(Rectangle()).disabled(isMutation || !query.hasNextPage || query.isRunning)
+                }.contentShape(Rectangle()).disabled(workspace.isMutation || !query.hasNextPage || query.isRunning)
             }
         }
         .task {
@@ -90,7 +91,7 @@ struct RuntimeQueryView: View {
             Divider()
             VStack(spacing: 8) {
                 if let historyFailure { Text(historyFailure).foregroundStyle(.red) }
-                RuntimeQueryEditor(text: $statement)
+                RuntimeQueryEditor(text: $workspace.statement)
             }.frame(height: 180)
             if let failure = query.failure { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
             if query.wasCancelled { Text("Query cancelled").foregroundStyle(.secondary) }
@@ -99,7 +100,7 @@ struct RuntimeQueryView: View {
 
     private func saveQuery() {
         do {
-            try history.save(scope: historyScope, language: language, statement: statement)
+            try history.save(scope: historyScope, language: workspace.language, statement: workspace.statement)
             historyFailure = nil
         } catch { historyFailure = error.localizedDescription }
     }

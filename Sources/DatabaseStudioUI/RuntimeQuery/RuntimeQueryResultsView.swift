@@ -9,10 +9,10 @@ struct RuntimeQueryResultsView: View {
     var body: some View {
         Group {
             switch query.response {
-            case .rows(let page):
-                ResultPageView(columns: page.columns, rows: query.rows, hasNextPage: page.continuation != nil, sourceContent: sourceContent)
-            case .rdfGraph(let page):
-                ResultPageView(quads: query.quads, hasNextPage: page.continuation != nil, sourceContent: sourceContent)
+            case .rows, .rdfGraph:
+                if let presentation = query.presentation {
+                    ResultPageView(state: presentation, sourceContent: sourceContent)
+                }
             case .boolean(let value):
                 VStack(spacing: 0) {
                     Text(value ? "true" : "false").font(.system(.title, design: .monospaced))

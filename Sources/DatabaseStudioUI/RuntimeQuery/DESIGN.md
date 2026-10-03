@@ -9,7 +9,7 @@ Children: none. Record editing and schema administration are separate workflows.
 
 Preserve canonical typed responses and opaque continuation tokens. DatabaseClient
 owns transport; the server owns parsing, authorization, evaluation and snapshots.
-A window owns one query state. Replacing a query invalidates its pending result.
+The connected workspace owns separate Data and Query state. Replacing a query invalidates its pending result.
 
 ## Related Designs
 
@@ -28,7 +28,7 @@ Results <- typed Response + immutable request + continuation
 ## Contracts and Invariants
 
 A next-page request retains the original input, parameters, partitions and budget;
-only its continuation changes. The UI retains one bounded page, not every page.
+only its continuation changes. The UI retains one bounded page unless Load Remaining explicitly collects a bounded row result.
 The selected page limit must be positive and within the request budget. A failed
 next page preserves the previous page and token for an explicit retry. Starting a
 new query clears the previous result. Cancellation invalidates publication before
@@ -37,9 +37,12 @@ Result cells retain FieldValue types; display strings never replace canonical da
 
 ## State, Ownership, and Lifecycle
 
-MainActor owns the current request, response, status and generation. The SwiftUI
-view owns the task and cancels it when removed. Connection replacement additionally
-invalidates in-flight operations through RuntimeConnection. No background polling.
+MainActor owns the current request, response, status and generation. The connected workspace retains the applied result, presentation, editor and Data
+options across Data/Query switches. Each visible view owns its task and cancels it
+when removed, preserving published data. Entity replacement discards only Data
+state; disconnect/reconnect discards both. Connection replacement additionally
+invalidates in-flight operations through RuntimeConnection. No background polling. Presentation is created once at publication and reused when
+its view returns; mode switches never rematerialize rows or rerun a query.
 
 ## Verification and Change Impact
 
@@ -151,3 +154,38 @@ padding to the editor. The native view owns selection, undo and scrolling.
 Its MainActor delegate publishes edits through the SwiftUI text binding; external
 text replacement updates only changed content. Dismantling clears the delegate.
 Verification checks typing, query execution, internal margins and mode changes.
+
+## Complete Query Result Collection
+
+The explicit Load Remaining action follows the current applied request and its
+continuation, never draft editor text. It collects row pages only, then publishes
+one result revision. It preserves duplicates and order; page-local identities are
+rebuilt only after successful publication. The analysis row ceiling and applied
+ExecutionBudget.maximumRows bound the combined row count. The applied intermediate
+byte budget bounds the summed canonical response-frame sizes, including columns,
+metadata, versions and continuation envelopes. A temporary encoded frame per page
+is required because the public operation API exposes no frame-size-only contract.
+This is a payload admission bound, not a measured resident-memory claim.
+
+Collection has one in-flight request. Changed columns, unsupported response kind,
+empty continuing pages, repeated continuations and capacity violations fail
+explicitly. Failure/cancellation retains the prior published page and continuation;
+no partly collected result becomes a completed population. Every await checks the
+query generation and cancellation. Source replacement rejects stale publication.
+Native coverage distinguishes loaded rows with continuation from the completed
+query result; neither proves complete collection coverage or a common DB snapshot.
+RuntimeQueryExecuting is the narrow query invocation contract implemented by
+RuntimeConnection. Transport, authorization, decode bounds and timeout stay with
+DatabaseClient. Tests use that same invocation path with controlled continuations;
+real server verification additionally exercises canonical pagination.
+
+### Workspace Verification
+RuntimeQueryCollectionTests cover ordered duplicate-preserving collection, unchanged
+applied requests, malformed or repeated continuations, budgets, cancellation and
+source replacement. WorkspaceServerTests executes an externally supplied
+`STUDIO_FINANCIAL_FIXTURE` over real SPARQL pagination when
+`STUDIO_WORKSPACE_CREDENTIAL` identifies an isolated disposable server. The fixture
+is supplied as VALUES and does not claim persisted entity access. The existing
+financial analysis test uses `ANALYSIS_FINANCIAL_FIXTURE` for the same JSON file.
+Run these as headless package tests with an external timeout and a unique result
+bundle; native verification uses the actual app, not a UI XCTest host.

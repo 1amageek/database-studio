@@ -12,6 +12,12 @@ struct ResultPageView: View {
     @State private var showCoverage = false
     @State private var showAnalysisSettings = false
 
+    init(state: ResultPageState, sourceContent: AnyView = AnyView(EmptyView())) {
+        _state = State(initialValue: state)
+        self.sourceContent = sourceContent
+        failure = nil
+    }
+
     init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, sourceContent: AnyView = AnyView(EmptyView())) {
         self.sourceContent = sourceContent
         do {

@@ -17,6 +17,8 @@ public struct RuntimeConnectionView: View {
     private let credentials = RuntimeCredentialStore()
     @State private var selectedEntity: String?
     @State private var showsQuery = false
+    @State private var queryWorkspace = RuntimeQueryWorkspace()
+    @State private var recordsWorkspace = RuntimeRecordsWorkspace()
     @State private var showsDatabaseInfo = false
 
     public init(connectionID: Binding<UUID?> = .constant(nil)) { _connectionID = connectionID }
@@ -62,9 +64,9 @@ public struct RuntimeConnectionView: View {
             if connection.isConnected {
                 Group {
                     if showsQuery {
-                        RuntimeQueryView(connection: connection, historyScope: [endpoint, databaseID, tenantID, workspaceID])
+                        RuntimeQueryView(connection: connection, historyScope: [endpoint, databaseID, tenantID, workspaceID], workspace: queryWorkspace)
                     } else if let selectedEntity {
-                        RuntimeRecordsView(connection: connection, entityName: selectedEntity).id(selectedEntity)
+                        RuntimeRecordsView(connection: connection, entityName: selectedEntity, workspace: recordsWorkspace).id(selectedEntity)
                     } else {
                         ContentUnavailableView("Select an Entity", systemImage: "tablecells", description: Text("Select a database entity in the browser, or open Query."))
                     }
@@ -104,7 +106,12 @@ public struct RuntimeConnectionView: View {
                 }
             } catch { failure = error.localizedDescription }
         }
-        .onChange(of: selectedEntity) { _, _ in showsQuery = false }
+        .onChange(of: selectedEntity) { _, _ in
+            recordsWorkspace.query.cancel()
+            recordsWorkspace.query.presentation?.cancel()
+            recordsWorkspace = RuntimeRecordsWorkspace()
+            showsQuery = false
+        }
         .onDisappear { disconnect() }
     }
 
@@ -243,6 +250,13 @@ public struct RuntimeConnectionView: View {
     }
 
     private func disconnect() {
+        queryWorkspace.query.cancel()
+        queryWorkspace.query.presentation?.cancel()
+        queryWorkspace.mutation.cancel()
+        recordsWorkspace.query.cancel()
+        recordsWorkspace.query.presentation?.cancel()
+        queryWorkspace = RuntimeQueryWorkspace()
+        recordsWorkspace = RuntimeRecordsWorkspace()
         operation?.cancel()
         operation = nil
         selectedEntity = nil
