@@ -75,7 +75,7 @@ Graph window
 ├── Sidebar: class tree / available Base targets / filters
 ├── Detail column
 │   ├── Toolbar: [2D | 3D network, when applicable] + independent source controls
-│   ├── ONE graph viewport: GraphCanvas OR RealityKit presentation
+│   ├── ONE graph viewport: GraphCanvas OR perspective Canvas presentation
 │   │   └── in-viewport orbit / pan / zoom / fit / focus controls
 │   └── Existing optional VSplitView lower pane
 │       └── HSplitView: SPARQL editor | results [Table | Raw]
@@ -87,7 +87,7 @@ flowchart TD
   Input[Authorized document and optional provenance] --> State[Shared graph state + revision]
   State --> Visible[One visible node and edge selection]
   Visible --> Flat[2D positions + GraphCanvas]
-  Visible --> Space[Spatial positions + RealityKit]
+  Visible --> Space[Spatial positions + perspective Canvas]
   Flat --> Intent[Select / focus / drag intents by identity]
   Space --> Intent
   Intent --> State
@@ -228,7 +228,7 @@ query results.
 
 ## Failure, Concurrency, and Constraints
 
-The existing macOS RealityKit and Canvas path is the starting point.
+The spatial view uses one on-demand native Canvas with perspective projection.
 [SpatialGraph](SpatialGraph/DESIGN.md) owns camera projection, drawing and picking.
 Availability or a numeric camera check is not native rendering acceptance.
 
@@ -259,7 +259,7 @@ sampling or label reduction without reporting it as missing database data.
 | Snapshot freshness | Equal-count updates change labels/endpoints; stale background completion cannot overwrite a newer document or source generation |
 | Lifecycle | Close/switch/disconnect during load/layout; confirm cancelled work cannot publish and scene subscriptions/resources release |
 | Usability | Sidebar/inspector keyboard parity, reduced motion, light/dark contrast, dense-graph label readability, camera restoration |
-| Platform and bounds | Timeout-bounded `xcodebuild test` on actual macOS/Metal path; record toolchain, SDK, inputs, layout/frame cost, allocation/resource bounds and xcresult warnings |
+| Platform and bounds | Timeout-bounded `xcodebuild test` on actual macOS drawing path; record toolchain, SDK, inputs, layout/frame cost, allocation/resource bounds and xcresult warnings |
 
 Existing [RDF conversion tests](../../Tests/GraphDocumentTests/GraphDocumentRDFTests.swift)
 and [ontology conversion tests](../../Tests/GraphDocumentTests/GraphDocumentOntologyTests.swift)
@@ -331,3 +331,19 @@ expanded work; PROGRESS.md records execution status without narrowing this scope
   it is not a substitute for per-operation authorization or effective Grant data.
 - The existing local filter and SPARQL evaluators operate on loaded snapshots.
   They do not establish server-wide query execution.
+
+### Responsive graph preparation
+
+GraphDataset owns concurrent immutable resource reading/validation; SpatialGraph
+owns concurrent immutable 3D solving. GraphViewState remains MainActor authority
+for publication, visibility, cameras and cancellation. Source generation guards
+apply after every asynchronous load/layout boundary.
+2D initial and focus refinement retain the existing ForceDirectedLayout on
+MainActor, but perform at most one physics tick per warmup turn and suspend
+before the next tick. Returning from startup cannot synchronously run all warmup
+iterations. Stop/switch/source replacement cancels the task before further
+mutation. Initial Fit after refinement must respect user camera adjustment;
+focus target publication must check cancellation before starting interpolation.
+Headless tests verify nonblocking startup, cancellation and preserved identities;
+Computer use verifies 2D restoration. No background access to mutable 2D state
+or unsafe isolation is permitted.

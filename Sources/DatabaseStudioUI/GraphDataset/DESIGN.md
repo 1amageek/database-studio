@@ -17,7 +17,7 @@ The source snapshot is an explicit connected sample, not the complete industry.
 | Design | Relationship | Contract Used | Summary | Cautions |
 |---|---|---|---|---|
 | [DatabaseStudioUI](../DESIGN.md) | parent / used by | GraphWindowState generation-bound load and GraphView initial visibility | Presents the snapshot through existing graph navigation | Reset example visibility policy on replacement source |
-| [SpatialGraph](../SpatialGraph/DESIGN.md) | depends on | Finite admission and retained native geometry | Displays all 1000 admitted entities after explicit 3D selection | No automatic projection switch; preserve typed load/layout failures |
+| [SpatialGraph](../SpatialGraph/DESIGN.md) | depends on | Finite admission and retained perspective endpoint paths | Displays all 1000 admitted entities after explicit 3D selection | No automatic projection switch; preserve typed load/layout failures |
 
 ## Architecture
 
@@ -69,7 +69,7 @@ its hashes and exact selection are frozen with the bundled artifact.
 GraphDocumentTests owns real-resource count, source provenance, exact predicate,
 closed endpoints, invalid snapshot and full initial visibility checks.
 SpatialGraphTests owns 1000-node layout, finite output, pair-work budget,
-native mesh retention and projection. Headless Xcode tests exercise the native
+retained endpoint/path projection and projection. Headless Xcode tests exercise the native
 path; Computer use opens the bundled graph and checks counts/rendering/selection.
 Changes to the snapshot re-run generator validation and these dataset checks.
 
@@ -121,3 +121,10 @@ edited dependency or path dependency. Swift 6.4.0 release compiler, Xcode host
 linker and macOS 27.0 arm64 runtime were used. Changed source/test files match the
 isolated compiled copy. Final Computer use confirms 1000 points / 2584 relations
 with the corrected layout and leaves the graph open in 3D.
+
+### Responsive loading
+
+`load()` is async and concurrent: file reading, decoding and validation consume
+immutable task-local values off MainActor. GraphWindowState keeps publication
+and generation authority. Errors propagate unchanged and cancellation is checked
+before and after reading/validation. No live fetch or tiny fallback is introduced.

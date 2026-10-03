@@ -2,7 +2,7 @@ import Foundation
 import simd
 
 /// Finite, deterministic coordinates for one admitted relationship network.
-struct GraphSpatialLayout {
+struct GraphSpatialLayout: Sendable {
     enum Failure: LocalizedError {
         case capacity, duplicateIdentity, missingEndpoint, invalidPosition, elapsedLimit
 
@@ -32,7 +32,7 @@ struct GraphSpatialLayout {
     private(set) var positions: [String: SIMD3<Float>]
     let nodeIDs: [String]
 
-    @MainActor static func compute(document: GraphDocument,
+    @concurrent static func compute(document: GraphDocument,
                         initialPositions: [String: SIMD3<Float>] = [:]) async throws -> Self {
         try Task.checkCancellation()
         guard document.nodes.count <= maximumNodes, document.edges.count <= maximumEdges else {

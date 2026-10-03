@@ -1,6 +1,4 @@
 import SwiftUI
-import RealityKit
-import Metal
 
 struct GraphSpatialView: View {
     @Bindable var state: GraphViewState
@@ -14,8 +12,6 @@ struct GraphSpatialView: View {
         GeometryReader { proxy in
             if let reason = state.spatialUnavailableReason ?? state.spatialFailureMessage {
                 unavailable(reason)
-            } else if MTLCreateSystemDefaultDevice() == nil {
-                unavailable("3D graphics are unavailable on this Mac.")
             } else if let layout = state.spatialLayout {
                 viewport(layout: layout, size: proxy.size)
             } else {
@@ -46,11 +42,6 @@ struct GraphSpatialView: View {
             state.spatialCamera.orbit(dx: x, dy: y, roll: roll)
         }) {
             ZStack {
-                RealityView { content in
-                    content.add(scene.root)
-                    updateScene(layout)
-                } update: { _ in updateScene(layout) }
-                .allowsHitTesting(false)
                 Canvas { context, size in draw(context: &context, layout: layout, size: size) }
                     .contentShape(Rectangle())
                     .gesture(SpatialTapGesture().onEnded { event in
@@ -98,14 +89,8 @@ struct GraphSpatialView: View {
         .onChange(of: size) { _, size in state.spatialViewport = size }
     }
 
-    private func updateScene(_ layout: GraphSpatialLayout) {
-        do {
-            try scene.update(camera: state.spatialCamera, layout: layout, revision: state.spatialGeometryRevision,
-                             edges: state.visibleEdges, selectedID: state.selectedNodeID, dark: colorScheme == .dark)
-        } catch { state.reportSpatialFailure(error) }
-    }
-
     private func project(layout: GraphSpatialLayout, size: CGSize) {
+        scene.update(layout: layout, revision: state.spatialGeometryRevision, edges: state.visibleEdges)
         scene.project(camera: state.spatialCamera, layout: layout, revision: state.spatialGeometryRevision,
                       nodes: state.visibleNodes, selectedID: state.selectedNodeID, size: size)
     }
@@ -114,28 +99,9 @@ struct GraphSpatialView: View {
         project(layout: layout, size: size)
         let colors = state.nodeColorMap
         let icons = state.nodeIconMap
-        for edge in state.visibleEdges {
-            guard let source = scene.glyphIndices[edge.sourceID], let target = scene.glyphIndices[edge.targetID] else { continue }
-            let start = scene.glyphs[source].point
-            let end = scene.glyphs[target].point
-            let selected = state.selectedNodeID == edge.sourceID || state.selectedNodeID == edge.targetID
-            if edge.sourceID == edge.targetID {
-                let loop = CGRect(x: start.x - 12, y: start.y - 23, width: 24, height: 24)
-                context.stroke(Path(ellipseIn: loop), with: .color(.primary.opacity(selected ? 0.6 : 0.15)), lineWidth: 0.7)
-            }
-            guard selected else { continue }
-            let length = hypot(end.x - start.x, end.y - start.y)
-            if length > 20 {
-                let ux = (end.x - start.x) / length, uy = (end.y - start.y) / length
-                let radius = scene.glyphs[target].radius + 3
-                let tip = CGPoint(x: end.x - ux * radius, y: end.y - uy * radius)
-                var arrow = Path()
-                arrow.move(to: CGPoint(x: tip.x - ux * 5 - uy * 2, y: tip.y - uy * 5 + ux * 2))
-                arrow.addLine(to: tip)
-                arrow.addLine(to: CGPoint(x: tip.x - ux * 5 + uy * 2, y: tip.y - uy * 5 - ux * 2))
-                context.stroke(arrow, with: .color(.primary.opacity(0.7)), lineWidth: 0.8)
-            }
-        }
+        context.stroke(scene.normalPath, with: .color(.primary.opacity(0.10)), lineWidth: 0.5)
+        context.stroke(scene.emphasizedPath, with: .color(.primary.opacity(0.55)), lineWidth: 0.8)
+        context.stroke(scene.arrowPath, with: .color(.primary.opacity(0.7)), lineWidth: 0.8)
         for glyph in scene.glyphs {
             let selected = glyph.node.id == state.selectedNodeID
             let style = GraphNodeStyle.style(for: glyph.node.role)
@@ -164,16 +130,8 @@ struct GraphSpatialView: View {
             scene.labelBounds.append(bounds)
             context.draw(text, at: point)
         }
-        if let selected = state.selectedNodeID {
-            var count = 0
-            for edge in state.visibleEdges where edge.sourceID == selected || edge.targetID == selected {
-                guard count < 32 else { break }
-                guard let source = scene.glyphIndices[edge.sourceID], let target = scene.glyphIndices[edge.targetID] else { continue }
-                let start = scene.glyphs[source].point, end = scene.glyphs[target].point
-                count += 1
-                context.draw(Text(edge.label).font(.system(size: 9)).foregroundColor(.secondary),
-                             at: CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 7))
-            }
+        for label in scene.edgeLabels {
+            context.draw(Text(label.text).font(.system(size: 9)).foregroundColor(.secondary), at: label.point)
         }
     }
 }

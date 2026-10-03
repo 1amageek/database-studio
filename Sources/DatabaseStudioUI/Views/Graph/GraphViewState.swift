@@ -353,31 +353,28 @@ final class GraphViewState {
         }
     }
 
-    /// フォーカスモード突入: warmup で目標位置を計算 → 補間アニメーション
+    /// Refine focus in bounded turns before publishing the transition target.
     private func enterFocusMode() {
         let nodeIDs = Array(visibleNodeIDs)
         guard !nodeIDs.isEmpty, viewportSize.width > 0 else { return }
-
-        // 1. 現在の表示位置をキャプチャ
+        stopSimulation()
         var startPositions = fullLayout.positions
-        for (id, pos) in focusLayout.positions {
-            startPositions[id] = pos
-        }
-
-        // 2. 目標位置を warmup で事前計算（フレッシュな円周配置から収束させる）
+        for (id, pos) in focusLayout.positions { startPositions[id] = pos }
         let simEdges = visibleEdges
+        let size = viewportSize
         focusLayout.classNodeIDs = Set(document.nodes.filter { $0.role == .type }.map(\.id))
-        focusLayout.initialize(nodeIDs: nodeIDs, size: viewportSize)
+        focusLayout.initialize(nodeIDs: nodeIDs, size: size)
         focusLayout.restart()
-        focusLayout.warmup(nodeIDs: nodeIDs, edges: simEdges, size: viewportSize)
-        let targetPositions = focusLayout.positions
-
-        // 3. 補間アニメーション（embedding-atlas パターン）
-        animateLayoutTransition(
-            from: startPositions,
-            to: targetPositions,
-            layout: focusLayout
-        )
+        focusLayout.prepareForSimulation(nodeIDs: nodeIDs, edges: simEdges)
+        simulationTask = Task { [weak self] in
+            for _ in 0..<100 {
+                do { try await Task.sleep(for: .milliseconds(1)) } catch { return }
+                guard let self, !Task.isCancelled else { return }
+                if !self.focusLayout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size) { break }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.animateLayoutTransition(from: startPositions, to: self.focusLayout.positions, layout: self.focusLayout)
+        }
     }
 
     /// フォーカスモード解除: fullLayout の既存位置へ補間アニメーション
@@ -913,15 +910,7 @@ final class GraphViewState {
         // シミュレーション中に参照するデータをキャプチャ（毎 tick の再生成を回避）
         let simEdges = document.edges
 
-        // 描画前にウォームアップ：大部分の収束を非表示で完了
-        fullLayout.warmup(
-            nodeIDs: nodeIDs,
-            edges: simEdges,
-            size: size,
-            iterations: warmupIterations(for: nodeIDs.count)
-        )
-        // warmup で減衰した alpha を戻し、初回表示後も自動で十分に緩和させる
-        fullLayout.reheat(alpha: 0.35)
+        // Present immediately; refinement must not monopolize the UI executor.
         layoutVersion &+= 1
         hasInitialFit = true
         zoomToFit()
@@ -936,10 +925,19 @@ final class GraphViewState {
         fullLayout.prepareForSimulation(nodeIDs: nodeIDs, edges: simEdges)
 
         stopSimulation()
+        let warmupCount = warmupIterations(for: nodeIDs.count)
         simulationTask = Task { [weak self] in
+            for _ in 0..<warmupCount {
+                do { try await Task.sleep(for: .milliseconds(1)) } catch { return }
+                guard let self, !Task.isCancelled else { return }
+                if !self.fullLayout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size) { break }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.fullLayout.reheat(alpha: 0.35)
+            self.layoutVersion &+= 1
+            if !self.hasUserAdjustedCamera { self.zoomToFit() }
             while !Task.isCancelled {
-                guard let self else { return }
-                let batchSize = self.ticksPerFrame(alpha: self.fullLayout.alpha)
+                let batchSize = nodeIDs.count > 256 ? 1 : self.ticksPerFrame(alpha: self.fullLayout.alpha)
                 var running = true
                 for _ in 0..<batchSize {
                     running = self.fullLayout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)
@@ -981,7 +979,7 @@ final class GraphViewState {
         simulationTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let batchSize = self.ticksPerFrame(alpha: layout.alpha)
+                let batchSize = nodeIDs.count > 256 ? 1 : self.ticksPerFrame(alpha: layout.alpha)
                 var running = true
                 for _ in 0..<batchSize {
                     running = layout.tick(nodeIDs: nodeIDs, edges: simEdges, size: size)

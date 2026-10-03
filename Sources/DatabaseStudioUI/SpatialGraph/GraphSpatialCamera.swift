@@ -20,14 +20,54 @@ struct GraphSpatialCamera: Equatable {
     var up: SIMD3<Float> { orientation.act(SIMD3(0, 1, 0)) }
     var eye: SIMD3<Float> { target + backward * distance }
 
+    /// Frame-local constants shared by every point and relationship.
+    struct Projection {
+        let eye: SIMD3<Float>
+        let backward: SIMD3<Float>
+        let right: SIMD3<Float>
+        let up: SIMD3<Float>
+        let size: CGSize
+        let focal: Float
+        private let near: Float = 0.05
+
+        init(camera: GraphSpatialCamera, size: CGSize) {
+            eye = camera.eye
+            backward = camera.backward
+            right = camera.right
+            up = camera.up
+            self.size = size
+            focal = Float(size.height) / (2 * tan(GraphSpatialCamera.fieldOfView * .pi / 360))
+        }
+
+        func project(_ point: SIMD3<Float>) -> (point: CGPoint, depth: Float)? {
+            guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite,
+                  GraphSpatialLayout.finite(point) else { return nil }
+            let relative = point - eye
+            let depth = -simd_dot(relative, backward)
+            guard depth >= near, depth.isFinite else { return nil }
+            return (CGPoint(x: size.width / 2 + CGFloat(simd_dot(relative, right) * focal / depth),
+                            y: size.height / 2 - CGFloat(simd_dot(relative, up) * focal / depth)), depth)
+        }
+
+        func segment(from start: SIMD3<Float>, to end: SIMD3<Float>) -> (CGPoint, CGPoint)? {
+            let firstDepth = -simd_dot(start - eye, backward)
+            let lastDepth = -simd_dot(end - eye, backward)
+            guard max(firstDepth, lastDepth) >= near else { return nil }
+            var first = start, last = end
+            // Clip before perspective division; glyph culling must not remove crossing lines.
+            let clipDepth = min(Float(0.052), max(firstDepth, lastDepth))
+            if firstDepth < near {
+                first += (end - start) * ((clipDepth - firstDepth) / (lastDepth - firstDepth))
+            } else if lastDepth < near {
+                last = start + (end - start) * ((clipDepth - firstDepth) / (lastDepth - firstDepth))
+            }
+            guard let a = project(first), let b = project(last) else { return nil }
+            return (a.point, b.point)
+        }
+    }
+
     func project(_ point: SIMD3<Float>, size: CGSize) -> (point: CGPoint, depth: Float)? {
-        guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite, point.x.isFinite, point.y.isFinite, point.z.isFinite else { return nil }
-        let relative = point - eye
-        let depth = -simd_dot(relative, backward)
-        guard depth > 0.05, depth.isFinite else { return nil }
-        let focal = Float(size.height) / (2 * tan(Self.fieldOfView * .pi / 360))
-        return (CGPoint(x: size.width / 2 + CGFloat(simd_dot(relative, right) * focal / depth),
-                        y: size.height / 2 - CGFloat(simd_dot(relative, up) * focal / depth)), depth)
+        Projection(camera: self, size: size).project(point)
     }
 
     func point(onPlaneThrough point: SIMD3<Float>, screen: CGPoint, size: CGSize) -> SIMD3<Float>? {

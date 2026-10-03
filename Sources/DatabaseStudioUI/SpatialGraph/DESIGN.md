@@ -2,7 +2,7 @@
 
 ## Purpose and Scope
 
-Status: relationship-network implementation revised 2026-10-02; focused native
+Status: perspective Canvas performance revision 2026-10-03; focused native
 behavior and Computer use interaction verified; evidence and limits are recorded below. Parent: [DatabaseStudioUI](../DESIGN.md). Children: none.
 This component owns relationship-network presentation coordinates, camera,
 spatial drawing and identity-based picking. Presentation eligibility belongs to
@@ -19,7 +19,7 @@ storage access, query execution, reasoning, membership or authorization.
 | [GraphSpatialLayout](GraphSpatialLayout.swift) | Deterministic bounded network coordinates and presentation offsets | Layout/readability; never domain hierarchy |
 | [ThreeFingerRotation](ThreeFingerRotation.swift) | Bounded contact identity, translation and twist deltas | Contact count, movement and cancellation |
 | [GraphSpatialCamera](GraphSpatialCamera.swift) | Shared world-to-screen basis, orbit, pan, zoom and Fit | Camera behavior and numerical limits |
-| [GraphSpatialScene](GraphSpatialScene.swift) | Retained native relationship geometry, batched into normal and emphasized meshes | Document/position changes; camera motion updates only transforms |
+| [GraphSpatialScene](GraphSpatialScene.swift) | Retained endpoint coordinates and normal/emphasized screen paths from the shared perspective projection | Document/position changes; camera motion updates only transforms |
 | [GraphSpatialView](GraphSpatialView.swift) | Screen-facing point glyphs, label priorities and picking | Presentation and user interaction |
 | [GraphViewState](../Views/Graph/GraphViewState.swift) | Snapshot revision, filters, selection, retained cameras and layout lifetime | Shared presentation state |
 
@@ -42,8 +42,7 @@ flowchart LR
     State --> Visibility[Existing visible node/edge IDs]
     Layout --> Frame[Shared camera projection]
     Visibility --> Frame
-    Frame --> Scene[Retained native edge geometry]
-    Frame --> Canvas[Point glyphs and 2D labels]
+    Frame --> Canvas[One on-demand Canvas: edge paths, point glyphs and labels]
     Frame --> Pick[Same projected glyphs for picking]
     Pick --> State
     State --> Detail[2D sidebar and inspector]
@@ -137,7 +136,7 @@ offset only and does not change any data. Existing sidebar navigation is retaine
 ```text
 Indirect NSTouch events -> exactly three stable identities on one device
     -> centroid displacement + signed twist -> normalized camera quaternion
-        -> identical native camera transform / glyph projection / picking
+        -> identical perspective edge / glyph projection / picking
 ```
 
 The existing CanvasInteractionResponder platform adapter opts into indirect and
@@ -149,7 +148,7 @@ Retain at most three prior contact positions. Contact-count/identity changes,
 cancellation and disabling the callback discard the baseline, preventing jumps.
 Once three-finger input starts, consume competing pan/zoom until contacts end.
 This input state is view-owned and MainActor-isolated. Rotation changes camera
-presentation only and never rebuilds layout or native relationship geometry.
+presentation only and never rebuilds layout or relationship endpoint coordinates.
 Native rendering must apply the complete orientation including roll; projection
 and camera-facing dragging use that same basis. The platform must deliver raw
 indirect touches; OS-reserved gestures cannot be overridden by this viewport.
@@ -159,18 +158,20 @@ alignment evidence. Computer use owns rendered regression checks; its pointer
 API cannot synthesize three simultaneous physical contacts. Hardware touch
 recognition requires a physical trackpad observation and is reported separately.
 
-Camera motion projects cached coordinates and updates native transforms, with
+Camera motion projects cached coordinates and updates projected paths, with
 O(V log V + E) projection/drawing work for admitted visible data. It does not run layout,
-rebuild graph documents/edge meshes or allocate one SwiftUI view per point.
-Reuse projection/index buffers; rebuild native geometry only after relevant
+rebuild graph documents/endpoint buffers or allocate one SwiftUI view per point.
+Reuse projection/index buffers; rebuild endpoint buffers only after relevant
 coordinate/document/visibility changes. Any unavoidable copy is accounted for at
 that boundary before a copy/allocation performance claim is accepted.
 
 ## State, Ownership, and Lifecycle
 
-All mutable camera, scene, coordinate and projection buffers are MainActor-owned.
+All mutable camera, scene and projection buffers are MainActor-owned. Immutable
+Sendable layout inputs/results cross to the concurrent executor; solver arrays
+are task-local.
 GraphViewState owns at most one layout task; it captures an immutable snapshot,
-revision and source generation, executes bounded steps and yields between steps.
+revision and source generation, executes bounded steps on the concurrent executor and checks cancellation between steps.
 No detached task, mutable global registration, unsafe Sendable or lock is needed.
 Cancellation is checked between bounded steps and immediately before publication.
 The scene is view-owned; the parent retains coordinates/cameras across switches.
@@ -217,8 +218,7 @@ Reject invalid coordinates, duplicate node/edge identities and unknown endpoints
 at spatial admission with a visible failure; preserve the shared graph for 2D
 inspection. Resource excess explains the bound and offers explicit filtering or
 2D. It never silently truncates nodes/edges. Existing backbone/filter reductions
-remain explicit and identical in both views. GPU unavailability keeps the current
-graph and offers explicit 2D return. Missing cross-source identity or provenance
+remain explicit and identical in both views. Canvas uses the native platform drawing path without an explicit Metal device gate. Missing cross-source identity or provenance
 keeps that grouping unavailable, not inferred from colors or coordinates.
 
 ## Verification and Change Impact
@@ -235,12 +235,11 @@ keeps that grouping unavailable, not inferred from colors or coordinates.
 
 The package GraphDocumentTests target owns SpatialGraphTests. Its Xcode test
 host is the command-line xctest agent; it launches no Studio window. Use these
-native unit tests for numeric, state and RealityKit behavior. Verify screen
+native unit tests for numeric, state and native Canvas path behavior. Verify screen
 interaction with Codex Computer use, per the user's 2026-10-02 instruction;
 XCTest UI automation and repeated application-launch benchmarks are removed.
 Focused behavioral checks precede the affected target run; every Xcode invocation has a timeout, unique xcresult and raw
-logs. Numeric host diagnostics do not replace native Metal/RealityKit interaction
-via xcodebuild test. The existing layer and drag tests must migrate with the
+logs. Actual Canvas drawing and user interaction require the native app Computer use check. The existing layer and drag tests must migrate with the
 implementation, and their changed expectations must test network semantics.
 Parent eligibility/shared state changes require both 2D and spatial regressions.
 The reference-video style is accepted from rendered screenshots, not this document.
@@ -318,3 +317,60 @@ actual rendering with all points/relations on the corrected app build.
 These are single-run stage measurements on macOS 27.0 arm64 with Swift 6.4.0;
 they are not a frame-rate, allocation, other-hardware or physical-touch claim.
 Full package acceptance is recorded by [GraphDataset](../GraphDataset/DESIGN.md).
+
+### Performance revision contract (2026-10-03)
+
+Main-thread samples of the actual 1000-entity app show RealityKit frame-pacing
+wait during static display, rotation and even a four-point focus. Construction
+timings above did not prove interactive performance. Replace the continuous
+RealityView and transparent prism meshes with the existing SwiftUI Canvas.
+All coordinates remain genuinely three-dimensional; quaternion perspective,
+parallax, camera-facing drag, exact identities and original predicates remain.
+
+| Owner | Guarantee / falsifier |
+|---|---|
+| Camera | Compute basis and focal length once per projected frame; clip edge segments crossing the near plane; rolled edges and points share the same transform |
+| Scene | Retain endpoint coordinates per geometry revision, project every endpoint even if its glyph is offscreen, batch ordinary/emphasized lines and direction arrows; camera motion changes paths without rebuilding endpoints; idle display schedules no frame loop |
+| View | Draw one Canvas; measure at most 32 eligible node labels per frame, selected first; at most 32 selected predicate labels; no per-node SwiftUI view |
+| Layout | Structured `@concurrent` computation over Sendable values; unchanged admission/pair/elapsed bounds; cancellation and source generation still control MainActor publication |
+
+Per-camera work is O(V log V + E); only one glyph depth sort is required.
+Selected/highlighted/near label candidates come from that order without a second
+sort. Projection and endpoint arrays retain capacity. Paths are materialized at
+the Canvas output boundary. This is not a zero-copy or GPU-time claim.
+Native headless tests must check actual paths, clipping, picking and retained
+endpoints; the 1000-entity test records repeated-frame CPU timing. Computer use
+must verify actual drawing and input; post-change CPU intervals and input must show that static display no longer
+continues rendering work; retain any diagnostic sampling failure as a measurement limit. Preserve prior evidence as historical,
+not acceptance for this replacement. Three physical touches remain separately
+unverified because Computer use cannot deliver them.
+
+### Performance revision evidence
+
+Swift 6.4.0 release / Xcode 27 / macOS 27 arm64 / unchanged default traits.
+AppBuild2 and PackageBuild2 succeed. Focused headless SpatialGraphTests pass
+16/16 with zero failures, skips, expected failures and runtime warnings.
+The real resource retains 1000 identities / 2584 predicates through 120 quaternion
+camera frames: layout 1.8117s, endpoint retention 0.002462s, perspective/path CPU
+p50 0.006168s / p95 0.007172s. These exclude Canvas rasterization/presentation;
+no FPS, GPU saturation or allocation guarantee is inferred.
+Computer use observes actual rendering, parallax after drag, source-attributed
+Corvette selection, drawn-point selection of Corvette C4 (Q1071134), exact
+manufacturer/series/instance predicates and selection-preserving 2D restoration.
+All 1000 points/2584 relations are restored afterward. Physical three-contact
+delivery remains unverified; quaternion/contact behavior is covered headlessly.
+The final app PID is 31101. Static `ps` observations report 0.0% CPU; its CPU
+time advances 0.02 seconds during a 10.0699-second static interval (~0.20% of
+one core). Earlier app snapshots were 29.5–46.4%; these are different sampling
+methods, not a controlled percentage-speedup benchmark. Two post-change OS
+sample attempts time out (20s and 35s) without producing stacks; stop repeating
+them, and claim no new wait-stack ratio. Raw commands/logs/CPU intervals and
+focused result bundle are retained at
+`/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-performance-fix-accp0cm_`.
+Existing duplicate-rpath/AppIntents build warnings remain; the focused runtime
+contains no internal compiler/test errors or RealityKit asset diagnostic.
+
+The 20.1698-second interval containing two short opposing Computer use drags
+consumed 0.38 CPU seconds; `ps` peaked at 21.1% during input and returned to
+0.0% afterward. This interval includes idle time and AX observation; it is not
+a sustained-rotation throughput benchmark.

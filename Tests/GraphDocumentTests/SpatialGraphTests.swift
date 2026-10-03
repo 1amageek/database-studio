@@ -1,6 +1,6 @@
 import XCTest
 import simd
-import RealityKit
+import SwiftUI
 @testable import DatabaseStudioUI
 
 @MainActor
@@ -107,7 +107,7 @@ final class SpatialGraphTests: XCTestCase {
         XCTAssertNil(input.update(initial))
     }
 
-    func testFullCameraRotationAndRollShareNativeProjectionBasis() async throws {
+    func testFullCameraRotationAndRollShareEdgeAndGlyphProjectionBasis() async throws {
         var camera = GraphSpatialCamera(yaw: 0, pitch: 0, distance: 10)
         let initial = camera
         camera.orbit(dx: 0, dy: CGFloat(Float.pi / 0.006))
@@ -130,22 +130,17 @@ final class SpatialGraphTests: XCTestCase {
         let document = network(3)
         let layout = try await GraphSpatialLayout.compute(document: document)
         let scene = GraphSpatialScene()
-        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: false)
-        let native = try XCTUnwrap(scene.root.children.compactMap { $0 as? PerspectiveCamera }.first)
-        XCTAssertLessThan(simd_distance(native.position, camera.eye), 0.0001)
-        for axis in [SIMD3<Float>(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1)] {
-            XCTAssertLessThan(simd_distance(native.orientation.act(axis), camera.orientation.act(axis)), 0.0001)
-        }
+        scene.update(layout: layout, revision: 1, edges: document.edges)
         scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
         for glyph in scene.glyphs { XCTAssertEqual(scene.hit(at: glyph.point), glyph.node.id) }
         camera.orbit(dx: 10, dy: -10, roll: 0.3)
-        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: false)
-        XCTAssertEqual(scene.geometryBuildCount, 1)
+        scene.update(layout: layout, revision: 1, edges: document.edges)
+        XCTAssertEqual(scene.topologyBuildCount, 1)
 
     }
 
     func testResearchedDatasetProvenanceFailuresAndFullVisibility() async throws {
-        let document = try AutomotiveGraphSnapshot.load()
+        let document = try await AutomotiveGraphSnapshot.load()
         XCTAssertEqual(document.nodes.count, 1000)
         XCTAssertEqual(document.edges.count, 2584)
         XCTAssertEqual(Set(document.nodes.map(\.id)).count, 1000)
@@ -202,7 +197,7 @@ final class SpatialGraphTests: XCTestCase {
     }
 
     func testThousandResearchedEntitiesRenderWithinRetainedWorkBudget() async throws {
-        let document = try AutomotiveGraphSnapshot.load()
+        let document = try await AutomotiveGraphSnapshot.load()
         let clock = ContinuousClock(), start = clock.now
         let layout = try await GraphSpatialLayout.compute(document: document)
         let nativeStart = clock.now
@@ -213,16 +208,29 @@ final class SpatialGraphTests: XCTestCase {
         var camera = GraphSpatialCamera()
         camera.fit(center: bounds.center, radius: bounds.radius, size: size)
         let scene = GraphSpatialScene()
-        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: true)
+        scene.update(layout: layout, revision: 1, edges: document.edges)
         let projectionStart = clock.now
         scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
         XCTAssertEqual(scene.glyphs.count, 1000)
+        XCTAssertEqual(scene.projectedEdgeCount, 2584)
+        XCTAssertFalse(scene.normalPath.isEmpty)
+        XCTAssertLessThanOrEqual(scene.labelPriority.count, 32)
         let nearest = try XCTUnwrap(scene.glyphs.last)
         XCTAssertEqual(scene.hit(at: nearest.point), nearest.node.id)
-        camera.orbit(dx: 90, dy: 120, roll: 0.2)
-        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: true)
-        XCTAssertEqual(scene.geometryBuildCount, 1)
-        print("Researched dataset: 1000 entities / 2584 relationships; layout \(start.duration(to: nativeStart)); native geometry \(nativeStart.duration(to: projectionStart)); projection/checks \(projectionStart.duration(to: clock.now))")
+        var frameTimes: [Double] = []
+        for _ in 0..<120 {
+            camera.orbit(dx: 2, dy: 1, roll: 0.002)
+            let begin = clock.now
+            scene.update(layout: layout, revision: 1, edges: document.edges)
+            scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
+            let elapsed = begin.duration(to: clock.now).components
+            frameTimes.append(Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+            XCTAssertEqual(scene.projectedEdgeCount, 2584)
+            XCTAssertLessThanOrEqual(scene.labelPriority.count, 32)
+        }
+        XCTAssertEqual(scene.topologyBuildCount, 1)
+        frameTimes.sort()
+        print("Researched dataset: 1000 entities / 2584 relationships; layout \(start.duration(to: nativeStart)); endpoint retention \(nativeStart.duration(to: projectionStart)); 120 perspective/path CPU frames p50 \(frameTimes[60])s, p95 \(frameTimes[114])s")
     }
 
     func testNodeDragChangesOnlyPresentationOnCameraFacingPlane() async throws {
@@ -315,7 +323,7 @@ final class SpatialGraphTests: XCTestCase {
         state.isSpatial = false
     }
 
-    func testNativeGeometryIsRetainedDuringCameraMotionAndPickingMatchesVisibleGlyphs() async throws {
+    func testEndpointBuffersAreRetainedDuringCameraMotionAndPickingMatchesVisibleGlyphs() async throws {
         let document = network(3)
         var layout = try await GraphSpatialLayout.compute(document: document)
         try layout.move("node-0", to: SIMD3(0, 0, 1))
@@ -324,13 +332,13 @@ final class SpatialGraphTests: XCTestCase {
         var camera = GraphSpatialCamera(yaw: 0, pitch: 0, distance: 10)
         let scene = GraphSpatialScene()
         let size = CGSize(width: 900, height: 600)
-        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: true)
+        scene.update(layout: layout, revision: 1, edges: document.edges)
         scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
         XCTAssertEqual(scene.hit(at: CGPoint(x: 450, y: 300)), "node-0")
         XCTAssertNil(scene.hit(at: .zero))
         camera.orbit(dx: 100, dy: 10)
-        try scene.update(camera: camera, layout: layout, revision: 1, edges: document.edges, selectedID: nil, dark: true)
-        XCTAssertEqual(scene.geometryBuildCount, 1)
+        scene.update(layout: layout, revision: 1, edges: document.edges)
+        XCTAssertEqual(scene.topologyBuildCount, 1)
         scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: nil, size: size)
         for glyph in scene.glyphs { XCTAssertEqual(scene.hit(at: glyph.point), glyph.node.id) }
 
@@ -342,15 +350,68 @@ final class SpatialGraphTests: XCTestCase {
         let layoutStart = clock.now
         let bounded = try await GraphSpatialLayout.compute(document: admitted)
         let geometryStart = clock.now
-        try scene.update(camera: camera, layout: bounded, revision: 2, edges: admitted.edges, selectedID: nil, dark: true)
+        scene.update(layout: bounded, revision: 2, edges: admitted.edges)
         let projectionStart = clock.now
         scene.project(camera: camera, layout: bounded, revision: 2, nodes: admitted.nodes, selectedID: nil, size: size)
         let finish = clock.now
         camera.orbit(dx: 20, dy: 10)
-        try scene.update(camera: camera, layout: bounded, revision: 2, edges: admitted.edges, selectedID: nil, dark: true)
-        XCTAssertEqual(scene.geometryBuildCount, 2)
+        scene.update(layout: bounded, revision: 2, edges: admitted.edges)
+        XCTAssertEqual(scene.topologyBuildCount, 2)
         XCTAssertEqual(bounded.positions.count, 2)
         print("Spatial geometry measurement: 2 nodes / 4096 parallel edges; layout \(layoutStart.duration(to: geometryStart)); native geometry \(geometryStart.duration(to: projectionStart)); projection \(projectionStart.duration(to: finish))")
+    }
+
+    func testPerspectivePathsPreserveOffscreenCrossingsNearPlaneSelfAndSelectedDirection() async throws {
+        var document = network(3)
+        document.edges.append(GraphEdge(id: "self", sourceID: "node-2", targetID: "node-2", label: "self"))
+        var layout = try await GraphSpatialLayout.compute(document: document)
+        try layout.move("node-0", to: SIMD3(-30, 0, 0))
+        try layout.move("node-1", to: SIMD3(30, 0, 0))
+        try layout.move("node-2", to: SIMD3(0, 2, 0))
+        let camera = GraphSpatialCamera(yaw: 0, pitch: 0, distance: 10)
+        let size = CGSize(width: 900, height: 600)
+        let scene = GraphSpatialScene()
+        scene.update(layout: layout, revision: 1, edges: document.edges)
+        scene.project(camera: camera, layout: layout, revision: 1, nodes: document.nodes, selectedID: "node-2", size: size)
+        XCTAssertNil(scene.glyphIndices["node-0"])
+        XCTAssertNil(scene.glyphIndices["node-1"])
+        XCTAssertEqual(scene.projectedEdgeCount, 3)
+        XCTAssertLessThan(scene.normalPath.boundingRect.minX, 450)
+        XCTAssertGreaterThan(scene.normalPath.boundingRect.maxX, 450)
+        XCTAssertFalse(scene.emphasizedPath.isEmpty)
+        XCTAssertFalse(scene.arrowPath.isEmpty)
+        XCTAssertEqual(scene.hit(at: try XCTUnwrap(scene.glyphs.first).point), "node-2")
+        let frame = GraphSpatialCamera.Projection(camera: camera, size: size)
+        let crossing = try XCTUnwrap(frame.segment(from: SIMD3(0, 0, 11), to: SIMD3(1, 0, 0)))
+        XCTAssertTrue(crossing.0.x.isFinite && crossing.1.x.isFinite)
+        XCTAssertNil(frame.segment(from: SIMD3(0, 0, 11), to: SIMD3(0, 0, 12)))
+        try layout.move("node-1", to: SIMD3(0, 0, 11))
+        scene.update(layout: layout, revision: 2, edges: document.edges)
+        scene.project(camera: camera, layout: layout, revision: 2, nodes: document.nodes, selectedID: "node-2", size: size)
+        XCTAssertEqual(scene.projectedEdgeCount, 3)
+        XCTAssertEqual(scene.topologyBuildCount, 2)
+    }
+
+    func testLarge2DStartupReturnsBeforeRefinementAndCancellationStopsMutation() async throws {
+        let document = try await AutomotiveGraphSnapshot.load()
+        let state = GraphViewState(document: document, showsAllNodes: true)
+        state.startSimulation(size: CGSize(width: 1200, height: 800))
+        XCTAssertEqual(state.fullLayout.iteration, 0)
+        XCTAssertEqual(state.fullLayout.positions.count, 1000)
+        while state.fullLayout.iteration == 0 { try await Task.sleep(for: .milliseconds(1)) }
+        let initialVersion = state.layoutVersion
+        state.markUserAdjustedCamera()
+        state.cameraScale = 0.25
+        state.cameraOffset = CGSize(width: 30, height: 40)
+        // Observe completion of warmup; it cannot overwrite a user's camera.
+        while state.layoutVersion == initialVersion { try await Task.sleep(for: .milliseconds(1)) }
+        XCTAssertEqual(state.cameraScale, 0.25)
+        XCTAssertEqual(state.cameraOffset, CGSize(width: 30, height: 40))
+        state.stopSimulation()
+        let iteration = state.fullLayout.iteration
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(state.fullLayout.iteration, iteration)
+        XCTAssertEqual(state.document.edges, document.edges)
     }
 
     func testSupersededQueryDoesNotPublish() async {

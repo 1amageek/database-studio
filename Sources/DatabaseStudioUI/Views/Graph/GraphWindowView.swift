@@ -24,7 +24,7 @@ public final class GraphWindowState {
     public func showExample() {
         document = nil
         entityName = "Wikidata · Automotive · 1,000 entities"
-        loadDocument = { try AutomotiveGraphSnapshot.load() }
+        loadDocument = { try await AutomotiveGraphSnapshot.load() }
         showsAllNodes = true
         refreshDocument = nil
         isLoading = true

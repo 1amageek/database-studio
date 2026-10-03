@@ -22,12 +22,15 @@ struct AutomotiveGraphSnapshot: Decodable {
     let triples: [[String]]
     let propertyLabels: [String: String]
 
-    static func load() throws -> GraphDocument {
+    @concurrent static func load() async throws -> GraphDocument {
+        try Task.checkCancellation()
         guard let url = Bundle.module.url(forResource: "automotive", withExtension: "json") else {
             throw Failure.missingResource
         }
         // Materialize once at the immutable file-to-document ownership boundary.
-        return try decode(Data(contentsOf: url))
+        let document = try decode(Data(contentsOf: url))
+        try Task.checkCancellation()
+        return document
     }
 
     static func decode(_ data: Data) throws -> GraphDocument {
