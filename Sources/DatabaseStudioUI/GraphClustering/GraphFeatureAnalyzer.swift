@@ -33,6 +33,7 @@ struct GraphFeatureAnalyzer: GraphClusterAnalyzing {
     private struct Entry { let column: Int; let value: Double }
 
     @concurrent func analyze(document: GraphDocument, configuration c: GraphClusterConfiguration) async throws -> GraphClusterResult {
+        if c.mode == .numeric { return try await GraphNumericAnalyzer().analyze(document: document, configuration: c) }
         let clock = ContinuousClock(), deadline = ContinuousClock().now.advanced(by: .seconds(10))
         func checkpoint() throws {
             try Task.checkCancellation()

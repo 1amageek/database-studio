@@ -147,3 +147,54 @@ ordinary layout took 1.72 seconds and feature analysis 0.206 seconds. The origin
 10-second deadlines remain intact. Failure bundles and logs are preserved;
 focused timings are not generalized to a loaded machine. All required gaps are
 closed; further unchanged verification is unnecessary.
+
+## Generic Numeric Analysis Contract
+
+GraphClustering additionally owns numeric feature specifications and analysis of
+same-role graph metrics through `GraphNumericAnalyzer`. `GraphFeatureAnalyzer`
+dispatches explicitly by configuration mode. Graph mode retains its original
+1000-node normalization and capacity contract. Numeric mode admits 10000 nodes,
+4096 edges, 32 selected features, 24 centroids, 100 k-means iterations, 48 PCA
+iterations per component and a 10-second deadline. Its dense N-by-D table is the
+required transformed ownership boundary; no N-by-N matrix is retained.
+
+Features are selected measurements or a numerator divided by a strictly positive
+denominator. Identity, labels and categories are never implicit numeric features.
+Identity/log10/asinh transforms precede median/IQR scaling (zero IQR uses one transformed unit; constant dimensions
+have zero coordinates). Rows missing any selected feature, with invalid transform
+or with explicit source quality flags are excluded with reasons, retained in the
+result and shown in a gutter. Missing values are never zero-imputed. A finite
+row at the population median remains a valid sample. No row L2 normalization is
+applied. Per-feature finite weights 0–8 apply after scaling; at least one positive
+weight and one varying dimension are required.
+
+Optional peer comparison subtracts each category's feature median in the globally
+scaled space. Missing groups and groups smaller than two usable rows are excluded
+explicitly; this is group centering, not matched-peer valuation inference.
+Direct XY uses selected transformed/scaled coordinates (including peer centering
+when enabled), independently maps each axis to [-4,4], and retains tick values and
+labels. PCA is an alternative display approximation only. Both displays classify
+in the same full feature space. Every cluster reports original-value feature
+medians/IQR and the population reference. No automatic optimal K or confidence
+claim is made. K is staged with the feature configuration until Run Analysis.
+
+Optional metadata layers have common plane bounds and the exact same XY as 2D;
+category labels define height, which has no numeric interpretation. Up to 64
+occupied categories are admitted; excess categories fail explicitly. No edges
+are inferred from numerical similarity. Result reuse, cancellation, generation
+checks and retained cameras use the existing MainActor session.
+
+Verification: `GraphNumericAnalysisTests` owns transforms, ratios, nonzero and
+zero-median samples, missing/quality exclusion, deterministic membership, peer
+centering, display-only changes, the real 2000-row fixture, capacity and cancelled
+work. Composition tests own exact category lifting and source/selection state.
+Native Computer use owns staged settings, import, inspection and 2D/3D behavior.
+
+Core evidence: `CoreFocused3.xcresult` in
+`/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-generic-analysis-ugntvedq`
+reports 9 passed, zero failures/skips/expected failures/runtime warnings. Native
+Swift 6.4 release compilation uses Xcode Default for package-manifest tool lookup,
+with explicit release SWIFT_EXEC for target builds. The full retained 2000-row
+snapshot yields 1996 assigned and four explicitly flagged exclusions, retaining
+all identities; measured analysis was 0.55 seconds / 47 iterations. Native UI and
+category composition acceptance remain pending in the next sprint.
