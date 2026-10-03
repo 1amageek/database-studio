@@ -415,3 +415,14 @@ all 1000 points / 2584 relationships in 3D. It cannot synthesize physical contac
 so the corrected real-trackpad direction itself is not claimed as observed.
 Raw red/green commands, logs and result bundles are retained at
 `/var/folders/c4/bcbjzcj556d3xj45z64rzjmw0000gn/T/studio-touch-direction-34kv8kzv`.
+
+Integrated.xcresult for the direction correction passes exactly 66 native
+headless package tests (17 spatial + 49 existing), with zero failures, skips,
+expected failures or runtime warnings. The command-line test host opens no
+Studio window. Swift 6.4.0 release, Xcode 27/macOS 27 arm64, default traits and
+unchanged URL dependency graph are used. Raw logs contain no compiler/testing
+internal error; existing duplicate-rpath/AppIntents build warnings remain.
+Computer use restarts the updated app (PID 36239), restores the full 1000-point
+3D graph and observes actual points/lines. It does not deliver physical touches.
+Task sources/tests match the native test copy. Unrelated edits are retained;
+push is withheld because unrelated pre-existing commits remain unpushed.
