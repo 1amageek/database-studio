@@ -58,12 +58,13 @@ final class RuntimeConnection {
     }
 
     func execute<Request: Sendable, Response: Sendable>(
-        _ operation: DatabaseOperation<Request, Response>, request: Request
+        _ operation: DatabaseOperation<Request, Response>, request: Request,
+        metadata: OperationRequestMetadata = OperationRequestMetadata()
     ) async throws -> Response {
         guard let client, isConnected else { throw RuntimeConnectionError.notConnected }
         let current = generation
         do {
-            let response = try await client.database.execute(operation, request: request)
+            let response = try await client.database.execute(operation, request: request, metadata: metadata)
             try Task.checkCancellation()
             guard generation == current else { throw CancellationError() }
             return response

@@ -3,8 +3,7 @@
 ## Purpose and Scope
 Parent: [DatabaseStudioUI](../DESIGN.md). Children: none.
 Own bounded conversion of canonical result rows into analysis measurements.
-The embedded analysis UI has been withdrawn at the user's request to restore
-original presentation. This component currently supplies projection logic only.
+This component supplies projection logic to [Result Presentation](../ResultPresentation/DESIGN.md), which owns the shared result modes.
 
 ## Responsibilities and Boundaries
 RecordAnalysisSource owns typed scalar paths, categories and page-local identities.
@@ -16,7 +15,7 @@ viewport, toolbar, query pane and inspector; it has no sidebar-free variant.
 | Design | Relationship | Contract Used | Summary | Cautions |
 |---|---|---|---|---|
 | [DatabaseStudioUI](../DESIGN.md) | parent | Original presentation | Restore original information and operations | No replacement analysis window |
-| [RuntimeQuery](../RuntimeQuery/DESIGN.md) | depends on | Canonical retained page | Projection input | No active analysis UI integration |
+| [RuntimeQuery](../RuntimeQuery/DESIGN.md) | depends on | Canonical retained page | Projection input | One shared result viewport |
 | [GraphClustering](../GraphClustering/DESIGN.md) | depends on | Measurement inputs | Numeric algorithms remain available | Rendering does not redefine source values |
 
 ## Architecture
@@ -27,8 +26,8 @@ Graph window -> original class/node sidebar + viewport + query pane + inspector
 ```
 
 ## Contracts and Invariants
-Restoration removes only the added result-page Analysis display and its standalone
-workspace views. Existing Table/Raw, typed inspection, page revision and request
+Result Presentation owns the shared Table/Document/Analysis modes; this component
+owns no replacement workspace or sidebar. Existing Table/Raw, typed inspection, page revision and request
 ownership remain intact. The graph always retains its original NavigationSplitView
 sidebar and native toolbar. The main directory browser and connection status are
 unchanged. Numeric algorithms and category-layer rendering remain intact.

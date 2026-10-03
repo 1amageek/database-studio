@@ -30,7 +30,19 @@ public struct RuntimeConnectionView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 240)
         } detail: {
             if connection.isConnected {
-                catalog
+                TabView {
+                    Group {
+                        if let selectedEntity {
+                            RuntimeRecordsView(connection: connection, entityName: selectedEntity)
+                                .id(selectedEntity)
+                        } else {
+                            ContentUnavailableView("Select an Entity", systemImage: "tablecells")
+                        }
+                    }.tabItem { Label("Data", systemImage: "list.bullet.rectangle") }
+                    catalog.tabItem { Label("Schema", systemImage: "tablecells") }
+                    RuntimeQueryView(connection: connection, historyScope: [endpoint, databaseID, tenantID, workspaceID])
+                        .tabItem { Label("Query", systemImage: "terminal") }
+                }
             } else {
                 connectionForm
             }

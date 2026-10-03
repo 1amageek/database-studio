@@ -73,3 +73,8 @@ Neither the history schema nor UserDefaults contains an access-token field.
 History decode errors and Keychain OSStatus failures remain visible and do not
 reset history silently. Recording history before saving a token means a failed
 Keychain write leaves a usable history entry requiring manual credentials.
+
+The connected workspace composes the Data, Schema and Query tabs using
+[Runtime Query](../RuntimeQuery/DESIGN.md). Operation request metadata is forwarded
+unchanged to DatabaseClient; explicit mutations own one idempotency key per
+submission. Authentication and authorization remain with their existing owners.
