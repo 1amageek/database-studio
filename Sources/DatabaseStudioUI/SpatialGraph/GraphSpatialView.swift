@@ -25,7 +25,7 @@ struct GraphSpatialView: View {
             if state.usesFeatureClusters && showsAnalysisControls { GraphClusterControls(state: state) }
         }
         .task(id: [state.spatialDocumentRevision, state.clusterSession.revision]) { await state.prepareSpatialLayout() }
-        .onDisappear { state.cancelSpatialLayout(); if state.usesFeatureClusters { state.clusterSession.cancel() } }
+        .onDisappear { state.cancelSpatialLayout() }
     }
 
     private func unavailable(_ reason: String) -> some View {

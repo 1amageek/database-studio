@@ -41,7 +41,6 @@ struct GraphClusterView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottomLeading) { if showsControls { GraphClusterControls(state: state) } }
         .task(id: state.clusterSession.revision) { if state.clusterSession.configuration.mode != .numeric || !state.clusterSession.configuration.numericFeatures.isEmpty { await state.clusterSession.prepare(document: state.document) } }
-        .onDisappear { state.clusterSession.cancel() }
     }
 
     private func sampleIDs(result: GraphClusterResult) -> [String] {

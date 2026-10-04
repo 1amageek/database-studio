@@ -181,6 +181,8 @@ final class ResultPageState {
         preparationGeneration &+= 1
         isPreparingAnalysis = false
         analysis?.clusterSession.cancel()
+        analysis?.cancelSpatialLayout()
         relationship?.stopSimulation()
+        relationship?.cancelSpatialLayout()
     }
 }

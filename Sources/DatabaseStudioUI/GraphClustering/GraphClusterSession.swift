@@ -34,16 +34,23 @@ final class GraphClusterSession {
     }
 
     func prepare(document: GraphDocument) async {
+        guard !Task.isCancelled else { return }
         if result != nil || failure != nil { return }
         if let task { await task.value; return }
         generation &+= 1
         let current = generation, configuration = configuration, analyzer = analyzer
         isLoading = true
         let operation = Task { [weak self] in
+            defer {
+                if let self, self.generation == current {
+                    self.isLoading = false
+                    self.task = nil
+                }
+            }
             do {
                 let result = try await analyzer.analyze(document: document, configuration: configuration)
                 guard let self, self.generation == current, !Task.isCancelled else { return }
-                self.result = result; self.isLoading = false; self.task = nil
+                self.result = result
                 var lower = SIMD2<Double>(repeating: .infinity), upper = SIMD2<Double>(repeating: -.infinity)
                 for id in Set(result.membership.keys).union(result.unassignedIDs) {
                     if let point = result.positions[id] {
@@ -53,15 +60,14 @@ final class GraphClusterSession {
                 }
                 self.coordinateCenter = (lower + upper) / 2
                 self.coordinateExtent = upper - lower + SIMD2(repeating: 2)
-            } catch is CancellationError {
+            } catch is CancellationError { }
+            catch {
                 guard let self, self.generation == current else { return }
-                self.isLoading = false; self.task = nil
-            } catch {
-                guard let self, self.generation == current else { return }
-                self.failure = error.localizedDescription; self.isLoading = false; self.task = nil
+                self.failure = error.localizedDescription
             }
         }
         task = operation
-        await withTaskCancellationHandler { await operation.value } onCancel: { operation.cancel() }
+        // The page/graph owner cancels this shared operation, not a display consumer.
+        await operation.value
     }
 }

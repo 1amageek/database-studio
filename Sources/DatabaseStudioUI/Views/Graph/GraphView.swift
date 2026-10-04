@@ -52,6 +52,11 @@ public struct GraphView: View {
             state.updateDocument(updatedDocument)
         }
         .onChange(of: state.clusterSession.revision) { _, _ in state.invalidateAnalysisVisibility() }
+        .onDisappear {
+            state.clusterSession.cancel()
+            state.cancelSpatialLayout()
+            state.stopSimulation()
+        }
         .task {
             if let id = initialFocusNodeID {
                 if let hops = initialFocusHops {

@@ -228,8 +228,10 @@ owned by [SpatialGraph](SpatialGraph/DESIGN.md); it cannot publish into a supers
 document or source generation.
 
 Window close, source replacement, disconnect and renderer teardown cancel
-pending work and release subscriptions/resources. Mode switching suspends hidden
-simulation; it does not create a second continuously running graph session.
+view-local work and release subscriptions/resources. Shared feature analysis is
+owned by the enclosing result page or standalone GraphView, which cancels it on
+close; renderer switches retain that one bounded operation. Mode switching suspends
+hidden simulation; it does not create a second continuously running graph session.
 Stale loading/layout completion may not publish into a newer generation.
 
 `GraphView` compares the complete input document rather than a count fingerprint,

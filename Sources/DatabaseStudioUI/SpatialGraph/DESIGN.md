@@ -469,3 +469,9 @@ same setup and cluster actions in the native enclosing toolbar. Standalone graph
 views retain their existing controls and sidebar. This presentation input does not
 change measurement, layout, camera, cancellation or relationship contracts. Native
 verification checks both workspace 2D/3D and the retained standalone composition.
+
+## Shared Analysis Consumption
+GraphSpatialView cancels its spatial layout when hidden and releases scene state.
+It does not cancel a shared feature analysis when switching to another display.
+The page or standalone graph owns the analysis lifetime through
+[GraphClustering](../GraphClustering/DESIGN.md#state-ownership-and-lifecycle).

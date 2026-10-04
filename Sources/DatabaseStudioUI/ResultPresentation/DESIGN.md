@@ -96,3 +96,10 @@ the complete screen rather than an embedded lower split pane. This keeps native
 scroll-view safe areas aligned with the enclosing toolbar. Data passes no editor.
 
 Editor placement is owned by [Runtime Query](../RuntimeQuery/DESIGN.md#query-pane-placement).
+
+## Shared Analysis Lifetime
+ResultPageState owns the analysis operation for its immutable page. 2D and 3D
+are consumers of that session; switching representation cancels only view-local
+projection/layout publication, not the shared analysis. Page disappearance cancels
+analysis and spatial layout. Explicit cancellation and configuration replacement
+remain session-owned. GraphClustering owns terminal-state and generation rules.

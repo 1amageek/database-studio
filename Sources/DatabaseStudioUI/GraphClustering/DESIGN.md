@@ -80,8 +80,14 @@ Selection/filter/camera -> redraw current result without analysis
 ## State, Ownership, and Lifecycle
 
 Session state is MainActor-owned. Analyzer state is task-local Sendable data
-running on the concurrent executor. One structured task is retained, cancellation
-checked between bounded steps and before publication. Superseded failures and
+running on the concurrent executor. One session-owned task is retained, cancellation
+checked between bounded steps and before publication. A display caller only awaits
+that operation; cancellation or removal of a Chart/2D/3D consumer does not cancel
+the shared computation. ResultPageState and standalone GraphView cancel the
+operation when their owning page/graph closes; explicit cancellation, feature-mode
+disable and source/configuration invalidation also cancel it. A canceled caller
+cannot start new work. Every terminal operation clears loading/task state only
+for its own generation, including late success after cancellation. Superseded failures and
 results cannot overwrite the current generation. Source/config changes clear
 selection and result. Ready results retain the exact configuration and identity
 scope; no persistence or cross-source reuse is implied.
@@ -100,7 +106,10 @@ No default-data success or network-layout fallback replaces failed analysis.
 ## Verification and Change Impact
 
 [GraphClusterTests](../../../Tests/GraphDocumentTests/GraphClusterTests.swift)
-must test separated feature populations, input permutation, exact predicate
+and [GraphClusterLifecycleTests](../../../Tests/GraphDocumentTests/GraphClusterLifecycleTests.swift)
+must test consumer cancellation without lost shared results, explicit owner
+cancellation, stale completion, retry and terminal-state cleanup, as well as
+separated feature populations, input permutation, exact predicate
 identity, weighting/config changes, common/unique dimensions, numeric missingness,
 one-dimensional projection, context mapping, unassigned preservation, invalid
 inputs, cancellation and superseded session publication. The native 1000-entity
