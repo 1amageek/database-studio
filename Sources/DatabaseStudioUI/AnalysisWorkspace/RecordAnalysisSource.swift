@@ -38,9 +38,11 @@ struct RecordAnalysisSource: Sendable {
                 guard seen.insert(path).inserted else { throw Failure.invalidRow }
                 textBytes += path.utf8.count
                 switch value {
+                case .primitive(let field):
+                switch field {
                 case .object(let object):
                     guard visited + stack.count + object.count <= 128 else { throw Failure.capacity }
-                    for field in object.fields { stack.append((path + "/" + escaped(field.key), field.value, depth + 1)) }
+                    for field in object.fields { stack.append((path + "/" + escaped(field.key), .primitive(field.value), depth + 1)) }
                 case .null: break
                 case .bool(let value): metadata[path] = value ? "true" : "false"
                 case .string(let value): metadata[path] = value; textBytes += value.utf8.count
@@ -90,7 +92,18 @@ struct RecordAnalysisSource: Sendable {
                         metadata[path] = literal.lexicalForm
                     } else { metadata[path] = literal.description }
                 default:
-                    let text = String(describing: value); metadata[path] = text; textBytes += text.utf8.count
+                    let text = String(describing: field); metadata[path] = text; textBytes += text.utf8.count
+                }
+                case .numeric(let value):
+                    let converted = Double(value.value.coefficient) * pow(10, -Double(value.value.scale))
+                    guard converted.isFinite, value.value.coefficient == 0 || converted != 0 else { throw Failure.nonfinite(path) }
+                    metrics[path] = converted; approximate.insert(path)
+                case .composite(let value):
+                    guard visited + stack.count + value.fields.count <= 128 else { throw Failure.capacity }
+                    for index in value.fields.indices {
+                        stack.append((path + "/" + escaped(value.type.columns[index].name), value.fields[index], depth + 1))
+                    }
+                default: omitted.insert(path)
                 }
                 if let measurement = metrics[path], !measurement.isFinite { throw Failure.nonfinite(path) }
                 guard textBytes <= 32 * 1024 * 1024 else { throw Failure.capacity }

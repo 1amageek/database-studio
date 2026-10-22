@@ -3,6 +3,71 @@ import DatabaseKit
 
 /// Human-readable values are supplemental to, never replacements for, canonical fields.
 enum ResultValueFormat {
+    static func text(_ value: DatabaseKit.QueryValue) -> String {
+        switch value {
+        case .primitive(let value): return text(value)
+        case .numeric(let value): return numeric(value)
+        case .json(let value): return "JSON · \(value.bytes.count) bytes"
+        case .jsonb(let value): return "JSONB · " + jsonb(value.root)
+        case .array(let value):
+            let shape = value.dimensions.map { "[\($0.lowerBound):\(Int64($0.lowerBound) + Int64($0.length) - 1)]" }.joined()
+            return "\(value.elements.count) elements · " + shape
+        case .composite(let value): return "\(value.fields.count) fields"
+        case .interval(let value): return "\(value.period.months) months \(value.period.days) days \(value.microseconds) µs"
+        case .time(let value): return time(value)
+        case .timeWithTimeZone(let value):
+            let offset = Int64(value.utcOffsetSeconds), magnitude = abs(Int64(value.utcOffsetSeconds))
+            return time(value.time) + (offset < 0 ? "-" : "+") + padded(magnitude / 3600, 2)
+                + ":" + padded(magnitude / 60 % 60, 2) + ":" + padded(magnitude % 60, 2)
+        case .dateInfinity(let sign), .timestampInfinity(let sign, _), .intervalInfinity(let sign):
+            return sign == .negative ? "-infinity" : "infinity"
+        }
+    }
+
+    static func jsonb(_ value: QueryJSONBNode) -> String {
+        switch value {
+        case .null: "null"
+        case .bool(let value): value ? "true" : "false"
+        case .string(let value): String(reflecting: value)
+        case .number(let value): numeric(value)
+        case .array(let values): "\(values.count) elements"
+        case .object(let values): "\(values.count) fields"
+        }
+    }
+
+    private static func numeric(_ value: QueryNumericValue) -> String {
+        let decimal = value.value
+        var result = text(FieldValue.decimal(decimal))
+        guard (0...12).contains(value.displayScale), (-12...12).contains(decimal.scale) else {
+            return result + " (scale \(value.displayScale))"
+        }
+        if value.displayScale > 0 {
+            if !result.contains(".") { result += "." }
+            let count = result.split(separator: ".", omittingEmptySubsequences: false).last?.count ?? 0
+            result += String(repeating: "0", count: max(0, Int(value.displayScale) - count))
+        }
+        return result
+    }
+
+    private static func time(_ value: QueryTimeValue) -> String {
+        let micros = value.microsecondsSinceMidnight, seconds = micros / 1_000_000
+        return padded(seconds / 3600, 2) + ":" + padded(seconds / 60 % 60, 2)
+            + ":" + padded(seconds % 60, 2) + "." + padded(micros % 1_000_000, 6)
+    }
+
+    private static func padded(_ value: Int64, _ count: Int) -> String {
+        let text = String(value)
+        return String(repeating: "0", count: max(0, count - text.count)) + text
+    }
+
+    static func isNumeric(_ value: DatabaseKit.QueryValue) -> Bool {
+        switch value {
+        case .numeric: true
+        case .primitive(let value): isNumeric(value)
+        default: false
+        }
+    }
+
     static func text(_ value: FieldValue) -> String {
         switch value {
         case .null: return "NULL"

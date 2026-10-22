@@ -10,18 +10,18 @@ let package = Package(
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/1amageek/database-client.git", from: "26.0904.0"),
+        .package(url: "https://github.com/1amageek/database-client.git", from: "26.1021.0"),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0905.0"
+            from: "26.1022.1"
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0809.4"
+            from: "26.1021.0"
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0807.0"
+            from: "26.1021.0"
         ),
     ],
     targets: [

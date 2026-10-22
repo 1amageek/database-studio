@@ -37,7 +37,7 @@ page index through ordering, column visibility and mode changes. Multi-selection
 is supported by Table; analysis point selection maps to that exact original row.
 Document and Inspector consume original values and metadata, never display strings.
 Rows are formatted for reading without numeric coercion; Raw retains typed data.
-Local header ordering sorts only loaded rows using canonical FieldValue ordering;
+Local header ordering sorts only loaded rows using canonical primitive value ordering;
 the Data source controls remain responsible for whole-query server ordering.
 Only explicitly returned RDF quads enable Relationships. A graph selector isolates
 one named/default graph; different graphs are not merged. Graph selection maps to
@@ -103,3 +103,20 @@ are consumers of that session; switching representation cancels only view-local
 projection/layout publication, not the shared analysis. Page disappearance cancels
 analysis and spatial layout. Explicit cancellation and configuration replacement
 remain session-owned. GraphClustering owns terminal-state and generation rules.
+
+## QueryValue Compatibility
+
+Row wrappers retain QueryValue directly, including SQL numeric display scale,
+JSON bytes, array dimensions and bounds, composite columns, temporal values, and
+infinities. Primitive objects and arrays retain their existing inspection. SQL
+arrays and composites expose bounded owner-retaining element views; JSON exposes
+its original text only when expanded, and JSONB exposes its canonical tree.
+Numeric summaries use exact decimal text with explicit scale for large scales.
+Display strings never replace the canonical response or become sort keys.
+
+Loaded-page header ordering remains available for primitive and SQL numeric
+columns. Columns containing other SQL-specific values have no local sort control
+because Studio does not own their SQL comparison or collation. The existing
+server-order controls remain authoritative. Tests prove canonical retention,
+precision and scale, array bounds, composite metadata, and disabled unsupported
+ordering in addition to the existing selection and analysis checks.

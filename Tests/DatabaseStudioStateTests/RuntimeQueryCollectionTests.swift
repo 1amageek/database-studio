@@ -18,8 +18,8 @@ final class RuntimeQueryCollectionTests: XCTestCase {
     }
 
     private func page(_ values: [Int32], token: UInt8? = nil, name: String = "value") throws -> QueryExecuteOperation.Response {
-        .rows(try QueryRowPage(columns: [.init(number: 1, name: name)],
-            rows: values.map { .init(values: [.int32($0)]) }, continuation: token.map { ByteString([$0]) }))
+        .rows(try QueryRowPage(columns: [.init(number: 1, name: name, type: .primitive(.int32), isNullable: true)],
+            rows: values.map { .init(values: [.int32($0)].map(DatabaseKit.QueryValue.primitive)) }, continuation: token.map { ByteString([$0]) }))
     }
 
     func testCollectionPreservesAppliedRequestDuplicatesAndPresentation() async throws {
@@ -35,7 +35,7 @@ final class RuntimeQueryCollectionTests: XCTestCase {
         let revision = query.pageRevision
         await query.loadRemainingPages(connection: source)
         XCTAssertNil(query.failure)
-        XCTAssertEqual(query.rows.map(\.values), [[.int32(1)], [.int32(1)], [.int32(2)], [.int32(3)], [.int32(4)]])
+        XCTAssertEqual(query.rows.map(\.values), [[.int32(1)], [.int32(1)], [.int32(2)], [.int32(3)], [.int32(4)]].map { $0.map(DatabaseKit.QueryValue.primitive) })
         XCTAssertFalse(query.hasNextPage)
         XCTAssertEqual(query.pageRevision, revision + 1)
         XCTAssertEqual(query.presentation?.mode, .table)
@@ -60,7 +60,7 @@ final class RuntimeQueryCollectionTests: XCTestCase {
             let revision = query.pageRevision
             await query.loadRemainingPages(connection: source)
             XCTAssertNotNil(query.failure)
-            XCTAssertEqual(query.rows.map(\.values), [[.int32(1)]])
+            XCTAssertEqual(query.rows.map(\.values), [[.int32(1)]].map { $0.map(DatabaseKit.QueryValue.primitive) })
             XCTAssertTrue(query.presentation === first)
             XCTAssertEqual(query.pageRevision, revision)
             XCTAssertTrue(query.hasNextPage)
@@ -100,7 +100,7 @@ final class RuntimeQueryCollectionTests: XCTestCase {
         source.shouldSuspend = false
         source.pages = try [page([9])]
         await query.run(.init(input: .text(language: .sql, statement: "replacement")), connection: source)
-        XCTAssertEqual(query.rows.first?.values, [.int32(9)])
+        XCTAssertEqual(query.rows.first?.values, [.primitive(.int32(9))])
         XCTAssertFalse(query.presentation === first)
         XCTAssertFalse(query.wasCancelled)
     }

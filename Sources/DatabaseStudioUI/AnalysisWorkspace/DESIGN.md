@@ -39,8 +39,8 @@ approximation remain explicit. Existing projection budgets and failures remain.
 Restoration adds no state or I/O. Canonical data remains owned by its query.
 
 ## Verification and Change Impact
-RecordAnalysisSourceTests and GraphNumericAnalysisTests retain their existing
-behavioral evidence because the numerical/projection source is unchanged.
+RecordAnalysisSourceTests and GraphNumericAnalysisTests must be rerun when the
+canonical result algebra changes; existing numerical algorithms remain unchanged.
 Build the actual application, then use Computer Use to verify the original
 sidebar, selection/inspector, 2D/3D and query pane. A temporary host or empty
 Entities list does not establish preservation of the original UI.
@@ -55,3 +55,15 @@ fail visibly. String/language literals supply their original lexical category,
 while IRIs retain their explicit term identity. Unknown datatypes do not become
 measurements. Projection tests cover signed/zero values, precision, failure and
 canonical value preservation.
+
+## QueryValue Projection
+
+Projection reads primitive fields from QueryValue. Primitive objects and SQL
+composites traverse the same bounded escaped-field-path stack. SQL numeric values
+use their exact decimal value for the existing explicitly approximate Double
+projection; display scale and every original value remain in the canonical row.
+SQL JSON, arrays and temporal values are unsupported measurements and appear in
+the existing omitted-field warnings. They never become zero or synthetic values.
+The existing row, field, depth, text, cancellation and finite-number limits apply
+to every branch. Component tests cover primitive parity, SQL numeric/composite
+projection, unsupported warnings and canonical preservation.

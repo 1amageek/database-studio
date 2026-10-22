@@ -31,11 +31,11 @@ final class RuntimeConnection {
         do {
             try Task.checkCancellation()
             guard generation == current else { throw CancellationError() }
-            let capabilities = try await candidateClient.database.execute(
+            let capabilities = try await candidateClient.execute(
                 DatabaseOperationCatalog.capabilitiesDescribe, request: EmptyOperationPayload())
             try Task.checkCancellation()
             guard generation == current else { throw CancellationError() }
-            let schema = try await candidateClient.database.execute(
+            let schema = try await candidateClient.execute(
                 DatabaseOperationCatalog.schemaDescribe, request: EmptyOperationPayload())
             try Task.checkCancellation()
             guard generation == current else { throw CancellationError() }
@@ -64,7 +64,7 @@ final class RuntimeConnection {
         guard let client, isConnected else { throw RuntimeConnectionError.notConnected }
         let current = generation
         do {
-            let response = try await client.database.execute(operation, request: request, metadata: metadata)
+            let response = try await client.execute(operation, request: request, metadata: metadata)
             try Task.checkCancellation()
             guard generation == current else { throw CancellationError() }
             return response

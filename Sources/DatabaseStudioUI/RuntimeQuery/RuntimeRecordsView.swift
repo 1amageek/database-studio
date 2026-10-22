@@ -69,7 +69,7 @@ struct RuntimeRecordsView: View {
         }
         operation?.cancel()
         let request = QueryExecuteOperation.Request(input: .ir(.select(
-            SelectQuery(projection: .all, source: .table(TableRef(entityName)),
+            SelectQuery(projection: [.wildcard()], source: .table(TableRef(entityName)),
                         filter: expression,
                         orderBy: workspace.sortField.isEmpty ? nil : [SortKey(.column(ColumnRef(workspace.sortField)),
                             direction: workspace.descending ? .descending : .ascending)]))),

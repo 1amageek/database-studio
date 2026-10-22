@@ -5,20 +5,23 @@ import DatabaseWire
 
 @MainActor
 final class ResultPresentationTests: XCTestCase {
-    private var columns: [QueryColumn] { [.init(number: 1, name: "sales"), .init(number: 2, name: "sector")] }
+    private var columns: [QueryColumn] {
+        get throws { try [.init(number: 1, name: "sales", type: .primitive(.int64), isNullable: true),
+                          .init(number: 2, name: "sector", type: .primitive(.string), isNullable: true)] }
+    }
 
     func testNativePageOrderingPreservesExactValuesAndSelection() throws {
         let input: [DatabaseWire.QueryRow] = [
-            .init(values: [.uint64(UInt64.max), .string("A")]),
-            .init(values: [.uint64(UInt64.max - 1), .string("B")]),
-            .init(values: [.uint64(2), .string("C")]),
-            .init(values: [.uint64(2), .string("D")])]
+            .init(values: [.uint64(UInt64.max), .string("A")].map(DatabaseKit.QueryValue.primitive)),
+            .init(values: [.uint64(UInt64.max - 1), .string("B")].map(DatabaseKit.QueryValue.primitive)),
+            .init(values: [.uint64(2), .string("C")].map(DatabaseKit.QueryValue.primitive)),
+            .init(values: [.uint64(2), .string("D")].map(DatabaseKit.QueryValue.primitive))]
         let state = try ResultPageState(columns: columns, rows: input, hasNextPage: true)
         state.selectedIDs = [0, 1]
         state.sortOrder = [.init(column: 0)]
         XCTAssertEqual(state.orderedRows.map(\.id), [2, 3, 1, 0])
         XCTAssertEqual(state.selectedRows.map(\.id), [0, 1])
-        XCTAssertEqual(state.selectedRows.first?.canonical?.values[0], .uint64(UInt64.max))
+        XCTAssertEqual(state.selectedRows.first?.canonical?.values[0], .primitive(.uint64(UInt64.max)))
         state.sortOrder = [.init(column: 0, order: .reverse)]
         XCTAssertEqual(state.orderedRows.map(\.id), [0, 1, 2, 3])
         state.visibleColumns.remove(0)
@@ -29,14 +32,14 @@ final class ResultPresentationTests: XCTestCase {
     }
 
     func testNewPageDefaultsToTableAndDoesNotReuseDuplicateSelection() throws {
-        let row = DatabaseWire.QueryRow(values: [.int64(42), .string("A")])
+        let row = DatabaseWire.QueryRow(values: [.int64(42), .string("A")].map(DatabaseKit.QueryValue.primitive))
         let first = try ResultPageState(columns: columns, rows: [row, row], hasNextPage: true)
         first.mode = .analysis; first.selectedIDs = [1]
         let next = try ResultPageState(columns: columns, rows: [row, row], hasNextPage: false)
         XCTAssertEqual(next.mode, .table)
         XCTAssertTrue(next.selectedIDs.isEmpty)
         XCTAssertEqual(next.originalRows.map(\.id), [0, 1])
-        XCTAssertThrowsError(try ResultPageState(columns: columns, rows: [.init(values: [])], hasNextPage: false)) { error in
+        XCTAssertThrowsError(try ResultPageState(columns: columns, rows: [.init(values: [].map(DatabaseKit.QueryValue.primitive))], hasNextPage: false)) { error in
             XCTAssertNotNil(error as? ResultPageState.Failure)
         }
     }
@@ -49,9 +52,9 @@ final class ResultPresentationTests: XCTestCase {
         XCTAssertEqual(ResultValueFormat.text(.string("Example")), "Example")
         XCTAssertEqual(ResultValueFormat.text(.null), "NULL")
         let object = try FieldObject([("nested", .array([.uint64(UInt64.max), .null]))])
-        let state = try ResultPageState(columns: [.init(number: 1, name: "doc")], rows: [.init(values: [.object(object)])], hasNextPage: false)
-        XCTAssertEqual(state.originalRows[0].values[0], .object(object))
-        XCTAssertEqual(state.originalRows[0].canonical?.values[0], .object(object))
+        let state = try ResultPageState(columns: [.init(number: 1, name: "doc", type: .primitive(.object), isNullable: true)], rows: [.init(values: [.object(object)].map(DatabaseKit.QueryValue.primitive))], hasNextPage: false)
+        XCTAssertEqual(state.originalRows[0].values[0], .primitive(.object(object)))
+        XCTAssertEqual(state.originalRows[0].canonical?.values[0], .primitive(.object(object)))
     }
 
     func testRelationshipScopeAndIncidentSelectionDoNotMergeNamedGraphs() throws {
@@ -77,7 +80,7 @@ final class ResultPresentationTests: XCTestCase {
         state.relationship?.selectNode("urn:subject")
         state.selectRelationshipNode("urn:subject")
         XCTAssertEqual(state.selectedIDs, [1])
-        XCTAssertEqual(state.originalRows[1].values[3], .rdfTerm(graph.term))
+        XCTAssertEqual(state.originalRows[1].values[3], .primitive(.rdfTerm(graph.term)))
         state.selectedIDs = [0]
         state.synchronizeGraphSelection()
         XCTAssertNil(state.relationship?.selectedNodeID)
@@ -87,7 +90,7 @@ final class ResultPresentationTests: XCTestCase {
 
     func testNumericModesShareOriginalRowIdentityAfterSorting() async throws {
         var input: [DatabaseWire.QueryRow] = []
-        for index in 0..<2000 { input.append(.init(values: [.int64(Int64(index + 1)), .string(index < 1000 ? "A" : "B")])) }
+        for index in 0..<2000 { input.append(.init(values: [.int64(Int64(index + 1)), .string(index < 1000 ? "A" : "B")].map(DatabaseKit.QueryValue.primitive))) }
         let state = try ResultPageState(columns: columns, rows: input, hasNextPage: false)
         state.selectedIDs = [1500]
         state.sortOrder = [.init(column: 0, order: .reverse)]
@@ -99,19 +102,19 @@ final class ResultPresentationTests: XCTestCase {
         state.selectAnalysisNode("page-row:100")
         state.mode = .table
         XCTAssertEqual(state.selectedRows.first?.id, 100)
-        XCTAssertEqual(state.selectedRows.first?.canonical?.values[0], .int64(101))
+        XCTAssertEqual(state.selectedRows.first?.canonical?.values[0], .primitive(.int64(101)))
         XCTAssertEqual(state.orderedRows.first?.id, 1999)
         state.selectAnalysisNode("page-row:999999")
         XCTAssertTrue(state.selectedIDs.isEmpty)
     }
 
     func testAnalysisFailureAndCancelledPreparationPublishNoSyntheticSuccess() async throws {
-        let state = try ResultPageState(columns: columns, rows: [.init(values: [.null, .string("A")])], hasNextPage: false)
+        let state = try ResultPageState(columns: columns, rows: [.init(values: [.null, .string("A")].map(DatabaseKit.QueryValue.primitive))], hasNextPage: false)
         await state.prepareAnalysis()
         XCTAssertNotNil(state.analysisFailure)
         XCTAssertNil(state.analysis)
         XCTAssertEqual(state.originalRows.count, 1)
-        let pending = try ResultPageState(columns: columns, rows: [.init(values: [.int64(1), .string("A")])], hasNextPage: false)
+        let pending = try ResultPageState(columns: columns, rows: [.init(values: [.int64(1), .string("A")].map(DatabaseKit.QueryValue.primitive))], hasNextPage: false)
         let task = Task { await pending.prepareAnalysis() }
         task.cancel()
         await task.value
@@ -122,7 +125,7 @@ final class ResultPresentationTests: XCTestCase {
     }
 
     func testClusterSelectionHighlightsExactMembersWithoutChangingPopulation() async throws {
-        let input = (0..<20).map { DatabaseWire.QueryRow(values: [.int64(Int64($0 * $0 + 1)), .string($0 < 10 ? "A" : "B")]) }
+        let input = (0..<20).map { DatabaseWire.QueryRow(values: [.int64(Int64($0 * $0 + 1)), .string($0 < 10 ? "A" : "B")].map(DatabaseKit.QueryValue.primitive)) }
         let state = try ResultPageState(columns: columns, rows: input, hasNextPage: false)
         state.mode = .analysis
         await state.prepareAnalysis()

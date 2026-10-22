@@ -17,6 +17,7 @@ final class ResultPageState {
     let sourceRows: [DatabaseWire.QueryRow]
     let quads: [RDFQuad]
     let originalRows: [ResultPageRow]
+    let sortableColumns: Set<Int>
     let hasNextPage: Bool
     let isRDF: Bool
     var mode = Mode.table
@@ -52,6 +53,9 @@ final class ResultPageState {
         // One identity wrapper per row shares the existing canonical field backing.
         originalRows = rows.enumerated().map { ResultPageRow(index: $0.offset, row: $0.element) }
         orderedRows = originalRows
+        sortableColumns = Set(columns.indices.filter { index in
+            rows.allSatisfy { ResultSortComparator.field($0.values[index]) != nil }
+        })
         visibleColumns = Set(columns.indices)
     }
 
@@ -64,6 +68,7 @@ final class ResultPageState {
         self.hasNextPage = hasNextPage
         originalRows = quads.enumerated().map { ResultPageRow(index: $0.offset, quad: $0.element) }
         orderedRows = originalRows
+        sortableColumns = Set(0..<4)
         visibleColumns = Set(0..<4)
         graphName = quads.first?.graph
     }
@@ -80,7 +85,7 @@ final class ResultPageState {
 
     private func reorder() {
         orderedRows.sort { left, right in
-            for comparator in sortOrder {
+            for comparator in sortOrder where comparator.column < 0 || sortableColumns.contains(comparator.column) {
                 let result = comparator.compare(left, right)
                 if result != .orderedSame { return result == .orderedAscending }
             }

@@ -4,7 +4,7 @@ import DatabaseWire
 /// Retains canonical field backing while keeping identity independent of display order.
 struct ResultPageRow: Identifiable {
     let id: Int
-    let values: [FieldValue]
+    let values: [DatabaseKit.QueryValue]
     let canonical: DatabaseWire.QueryRow?
 
     init(index: Int, row: DatabaseWire.QueryRow) {
@@ -16,8 +16,8 @@ struct ResultPageRow: Identifiable {
     init(index: Int, quad: RDFQuad) {
         id = index
         // RDF cells materialize once at this presentation boundary, never during sorting.
-        values = [.rdfTerm(quad.subject.term), .rdfTerm(.iri(quad.predicate.iri)),
-                  .rdfTerm(quad.object), quad.graph.map { .rdfTerm($0.term) } ?? .null]
+        values = [.primitive(.rdfTerm(quad.subject.term)), .primitive(.rdfTerm(.iri(quad.predicate.iri))),
+                  .primitive(.rdfTerm(quad.object)), quad.graph.map { .primitive(.rdfTerm($0.term)) } ?? .primitive(.null)]
         canonical = nil
     }
 }

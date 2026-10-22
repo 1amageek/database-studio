@@ -29,6 +29,7 @@ if not compiler_path.is_file() or 'swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-09-04-a
 (args.results / 'compiler-version.log').write_text(subprocess.check_output([compiler, '--version'], env=env, text=True))
 base = ['xcodebuild', '-project', str(root / 'Database Studio/Database Studio.xcodeproj'),
         '-scheme', 'Database Studio', '-destination', 'platform=macOS,arch=arm64',
+        '-enableCodeCoverage', 'NO',
         '-derivedDataPath', str(args.derived_data), 'SWIFT_EXEC=' + compiler,
         'CODE_SIGN_IDENTITY=-', 'CODE_SIGN_STYLE=Manual', 'DEVELOPMENT_TEAM=']
 
@@ -98,14 +99,17 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
                 raise RuntimeError('Listener did not start')
             # Socket reachability is not protocol readiness: the first XCTest
             # requires a real authenticated capabilities + schema handshake.
-            files = list((args.derived_data / 'Build/Products').glob('*.xctestrun'))
-            assert files, 'Missing test configuration'
-            original = max(files, key=lambda path: path.stat().st_mtime)
+            files = list((args.derived_data / 'Build/Products').glob('Database Studio_Database Studio_*.xctestrun'))
+            assert len(files) == 1, 'Expected one unmodified Xcode-generated test configuration'
+            original = files[0]
             settings = plistlib.loads(original.read_bytes())
             for configuration in settings['TestConfigurations']:
                 for target in configuration['TestTargets']:
                     for key in ('EnvironmentVariables', 'TestingEnvironmentVariables'):
                         target.setdefault(key, {})['STUDIO_RUNTIME_TEST_CREDENTIAL'] = str(credential)
+                        previous = target[key].get('DYLD_LIBRARY_PATH', '')
+                        testing = str(compiler_path.parents[1] / 'lib/swift/macosx/testing')
+                        target[key]['DYLD_LIBRARY_PATH'] = testing + (':' + previous if previous else '')
                     target.setdefault('CommandLineArguments', []).extend(['-ConnectionHistory', '', '-RuntimeConnectionHistory', ''])
             generated = original.with_name('StudioRuntimeIntegration.xctestrun')
             generated.write_bytes(plistlib.dumps(settings))
@@ -121,6 +125,7 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
                      '-only-testing:Database StudioTests/RuntimeServerTests',
                      '-only-testing:Database StudioTests/RuntimeConnectionTests',
                      '-only-testing:Database StudioTests/RuntimeConnectionPersistenceTests',
+                     '-only-testing:Database StudioTests/StudioReleaseCompatibilityTests',
                      '-resultBundlePath', str(args.results / 'Tests.xcresult')], 'tests', 60)
             finally:
                 generated.unlink(missing_ok=True)
@@ -133,7 +138,7 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
                                                '--path', str(args.results / 'Tests.xcresult')], env=env)
             (args.results / 'summary.json').write_bytes(summary)
             result = json.loads(summary)
-            assert result['passedTests'] == 8 and result['totalTestCount'] == 8
+            assert result['passedTests'] == 10 and result['totalTestCount'] == 10
             assert all(result[key] == 0 for key in ('failedTests', 'skippedTests', 'expectedFailures'))
             assert not result['runtimeWarnings']
         finally:

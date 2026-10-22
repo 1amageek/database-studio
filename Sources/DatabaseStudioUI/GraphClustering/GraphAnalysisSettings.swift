@@ -110,8 +110,9 @@ struct GraphAnalysisSettings: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("1. Build the feature space").font(.headline)
             if draft.numericFeatures.isEmpty { Text("Select measurements on the left, or create a ratio below.").foregroundStyle(.secondary).font(.callout) }
-            ForEach($draft.numericFeatures) { $feature in
-                GraphNumericFeatureRow(feature: $feature) { draft.numericFeatures.removeAll { $0.id == feature.id } }
+            // Use the Binding directly to avoid the pinned compiler's wrapper-parameter crash.
+            ForEach($draft.numericFeatures) { feature in
+                GraphNumericFeatureRow(feature: feature) { draft.numericFeatures.removeAll { $0.id == feature.wrappedValue.id } }
             }
             ratioEditor
             Text("Linear keeps signed values. Log10 requires positive values. Asinh keeps zero and negative values while compressing extremes. Each column is centered by its median and scaled by its IQR; zero IQR uses one transformed unit.")

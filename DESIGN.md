@@ -152,3 +152,42 @@ session tests. Changes to `StorageEngine` shutdown semantics require the
 in Studio.
 
 Sample application design: [Maintenance Studio](Examples/MaintenanceStudio/DESIGN.md).
+
+## Dependency Compatibility
+
+Studio consumes Framework 26.1022.1 with DatabaseKit, DatabaseClient, and
+StorageKit 26.1021.0 through URL dependencies. The package, application project,
+and workspace resolution files must agree on the released revisions. Studio
+uses the ordinary target-free DatabaseWire contract; MultiBase is not enabled.
+Runtime calls use DatabaseClient.execute directly. Server 26.1022.1 is the native
+integration peer, not a linked Studio dependency. Query authorization, resource
+budgets, transactions, and rollback remain owned by that server and Framework.
+
+Dependency updates require the package lifecycle and result tests, the native app
+build, and real authenticated server tests for handshake, typed results and
+failures, paging, cancellation, and transport shutdown. Direct storage remains
+catalog-only and must preserve authoritative engine shutdown.
+
+### Native test runtime ownership
+
+The harness uses exactly one Xcode-generated application test configuration,
+selected by its scheme name. It creates a separate temporary configuration and
+never uses that generated derivative as the input to another run. Ambiguous or
+missing original configurations fail explicitly. This prevents stale test-host,
+credential and runtime search paths from accumulating across diagnostic runs.
+The identity-checked compiler's testing directory is prepended once to the test
+process environment; production loading and application entitlements are unchanged.
+The harness owns the derived configuration, isolated server and test host until
+completion, removes its configuration and requires negative readiness after shutdown.
+
+The package regression lane uses the same clean-configuration rule. A clean
+Framework 26.1022.1 build passed all 118 package tests after prior diagnostic
+configurations had accumulated stale runtime paths and host substitutions.
+
+The release-update regression evidence is 118 package tests and 10 native app
+integration tests against Server 26.1022.1, with zero failures, skips, expected
+failures or runtime warnings. Both lanes use the same 22 URL pins. The app lane
+also ignores a deliberately newer invalid derivative configuration. Native UI
+verification covers Table, Document and Inspector for exact numeric scale, SQL
+array bounds, JSONB null/string distinction, the time endpoint and date infinity.
+Pending chart and split-pane edits are a separate uncommitted workstream.
