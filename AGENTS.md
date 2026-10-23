@@ -482,12 +482,12 @@ extension Schema {
 }
 ```
 
-### IndexDescriptorMetadata との類似性
+### IndexDescriptor との類似性
 
-| 観点 | IndexDescriptorMetadata | Schema.Ontology |
+| 観点 | IndexDescriptor | Schema.Ontology |
 |------|-------------------|-----------------|
-| 配置 | Core | Core |
-| 具象型 | IndexDescriptor | OWLOntology (Graph) |
+| 配置 | DatabaseKit | Core |
+| 論理型 | IndexDefinition | OWLOntology (Graph) |
 | 永続化 | `_schema/[name]` | `_schema_ontology` |
 | 転送 | SchemaResponse.entities[].indexes | SchemaResponse.ontology |
 

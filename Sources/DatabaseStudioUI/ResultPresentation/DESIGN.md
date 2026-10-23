@@ -19,6 +19,7 @@ and standalone GraphView retain their original sidebars. No new window or sideba
 | [RuntimeQuery](../RuntimeQuery/DESIGN.md) | depends on | Canonical page/revision and named RDF graph projection | Data/Query source | Mode changes never execute a request |
 | [Result Page Projection](../AnalysisWorkspace/DESIGN.md) | depends on | Bounded typed measurements and fixed row identities | Numeric input | Exact values remain canonical; explicit projection failures |
 | [GraphClustering](../GraphClustering/DESIGN.md) | depends on | Configuration/session/result and native settings | 2D analysis | XY projection is separate from clustering |
+| [AnalysisCharts](../AnalysisCharts/DESIGN.md) | depends on | Validated immutable chart projection and picking callbacks | Swift Charts for 2D analysis | Retain exact page identities and original-value profiles |
 | [SpatialGraph](../SpatialGraph/DESIGN.md) | depends on | Relationship network or shared-XY category layers | Conditional 3D | Preserve identity and category semantics |
 
 ## Architecture
@@ -28,6 +29,8 @@ Data / Query -> immutable canonical page + revision -> ResultPageView
     content: native Table / structured values / linked Table + relationship or analysis viewport
     selection: fixed original page indices <-> Inspector / viewport
     supplemental actions: Columns / Raw / Coverage / Inspector
+    2D Analysis: Swift Charts scatter / cluster counts / selected-feature quartiles
+    3D Analysis: existing shared-XY category layers
 Parent sidebar, title, source filter, pagination and request execution remain intact.
 ```
 
@@ -48,7 +51,7 @@ additional records or claims full-collection coverage from a missing continuatio
 Mode, source coverage, projection, fit and Inspector actions live in the enclosing
 SwiftUI toolbar. Display modes use primaryAction so the native TabView navigation
 can retain its own placement. Query settings/history/save share a native menu,
-and the editor is bounded to leave room for results. Content has no custom title/control header. Native analysis setup and cluster selection belong to the enclosing toolbar, not
+and the editor starts at its existing 180-point height and is user-resizable. Content has no custom title/control header. Native analysis setup and cluster selection belong to the enclosing toolbar, not
 an overlay content header. The Inspector shows cluster profiles and original row
 values. Selecting a cluster highlights all member rows without filtering the source;
 selecting a point or Table row highlights that exact row. Programmatic graph-selection
@@ -59,7 +62,7 @@ or mutation authority is inferred from an aggregate result or a page-local index
 ## Runtime Flows
 Page publication -> one row-wrapper array retaining canonical backing -> Table.
 Mode switch retains selection/order and sends no request. Analysis and Relationships
-keep the same Table beside the viewport in one SwiftUI horizontal composition,
+keep the same Table beside the viewport in a MacComponent HSplitPane,
 so selected values remain visible without a representation round trip. Analysis selection maps
 via page-row identity. Returning to Table highlights the original selected row.
 Replacing the page destroys presentation state via page revision, cancels pending
@@ -91,11 +94,29 @@ Document/Raw/Analysis selection, source coverage and original sidebar preservati
 A temporary result-only host is insufficient evidence of application composition.
 
 Query passes its source editor as view content. ResultPageView composes that editor
-below the viewport before applying the native Inspector; the Inspector belongs to
-the complete screen rather than an embedded lower split pane. This keeps native
-scroll-view safe areas aligned with the enclosing toolbar. Data passes no editor.
+below the viewport through ResultSourcePane before applying the native Inspector;
+the Inspector belongs to the complete screen. ResultSourcePane creates a
+MacComponent VSplitPane only when source content exists; Data therefore has no
+empty lower pane. The top pane has a 200-point minimum; the editor starts at 180
+points with an 80-point minimum and fills its resized pane. Linked analysis uses
+a 340-point initial Table width, a 260-point Table minimum and a 200-point viewport
+minimum. These are presentation defaults, not data or execution bounds. MacComponent
+owns divider dragging and pane sizing; Studio owns canonical selection and content.
+Native verification must establish visible, clickable Table headers, both divider
+directions, original-value Inspector, retained selection and lower editor margins.
 
 Editor placement is owned by [Runtime Query](../RuntimeQuery/DESIGN.md#query-pane-placement).
+
+## Chart Composition
+ResultPageState owns the chart kind, selected feature, session-revision-bound cache
+and point selection. AnalysisChartProjecting is injected and awaited concurrently;
+publication checks both session revision and preparation generation. Numeric setup,
+analysis errors and cancellation do not publish fabricated chart results. A Chart
+menu and optional feature picker belong to the enclosing native toolbar. Selecting
+a chart row clears cluster selection and highlights that exact original row;
+cluster bars/profiles use the existing exact-member selection action. 2D/3D and
+Table switches retain ready computation and chart preferences. Chart source and
+quartile semantics are owned by [AnalysisCharts](../AnalysisCharts/DESIGN.md).
 
 ## Shared Analysis Lifetime
 ResultPageState owns the analysis operation for its immutable page. 2D and 3D

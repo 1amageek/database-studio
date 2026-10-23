@@ -75,11 +75,24 @@ History decode errors and Keychain OSStatus failures remain visible and do not
 reset history silently. Recording history before saving a token means a failed
 Keychain write leaves a usable history entry requiring manual credentials.
 
-The connected workspace composes Data and Query with a persistent database
-browser, connection status and native Database Info inspection using
-[Runtime Query](../RuntimeQuery/DESIGN.md). Operation request metadata is forwarded
-unchanged to DatabaseClient; explicit mutations own one idempotency key per
-submission. Authentication and authorization remain with their existing owners.
+Operation request metadata is forwarded unchanged to DatabaseClient. Mutation
+callers own one idempotency key per submitted operation; read callers use empty
+metadata. Forwarding metadata does not change authentication or authorization.
+
+## Schema Inspection
+
+The selected entity exposes every returned field number/type/nullability,
+reference target/cardinality/delete rule, and index name/type/ordered field
+numbers/options. The UI preserves unresolved field numbers rather than dropping
+an index member. Schema version is the server-returned version. Identifier type,
+Directory/Partition and complete constraints are absent from the current describe
+contract; the UI states this limitation rather than deriving them from names.
+
+Schema refresh reissues schema.describe on the current authenticated connection.
+The latest refresh alone may publish; connection replacement or disconnection
+invalidates publication. A failure retains the last successful catalog and is
+shown by the caller. The UI serializes its refresh action and clears selection
+when the selected entity is absent from the new catalog.
 
 ## Recent Access and Restoration
 [Connection Access](../ConnectionAccess/DESIGN.md) owns the native recent menu and

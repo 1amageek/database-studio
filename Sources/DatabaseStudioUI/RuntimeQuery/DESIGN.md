@@ -135,15 +135,16 @@ Language, Mutation, History, Save, Run/Cancel and Next Page use native toolbar i
 There are no custom entity or Results title bars inside the result content.
 
 Query language, mutation mode, history and Save are grouped in the native Query Options
-menu. Run remains a primary action. The editor height is bounded to retain an
-initially usable result area. SwiftUI vertical composition prevents nested AppKit
-split-view safe-area overlays from covering native table/list headers.
+menu. Run remains a primary action. ResultSourcePane owns the resizable split
+contract in [Result Presentation](../ResultPresentation/DESIGN.md). The editor fills
+the lower pane without an outer height or padding. Native Table headers must remain
+visible and clickable beneath the enclosing toolbar.
 
 ## Query Pane Placement
 
-The result or execution status occupies the upper content area. The bounded query
+The result or execution status occupies the upper content area. The resizable query
 editor remains at the bottom for empty, row, RDF, boolean and mutation responses.
-A divider separates the result from the editor. Switching display modes preserves
+MacComponent VSplitPane separates the result from the editor, including empty, boolean and mutation status paths. Switching display modes preserves
 this placement, the original sidebar and the native execution toolbar. Native
 verification executes a query and compares both positions before and after a mode
 change; layout changes do not alter request, cancellation or pagination ownership.

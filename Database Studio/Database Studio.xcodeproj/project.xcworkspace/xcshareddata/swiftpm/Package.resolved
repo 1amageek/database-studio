@@ -1,5 +1,5 @@
 {
-  "originHash" : "fea584226ab5504f240758dce3631eb8cf5c0a6a7c4d368f8a15a661b33fc605",
+  "originHash" : "a7e69329c221d129441837430bea1b7e93a5ac269260c1f554ded2f23da396f9",
   "pins" : [
     {
       "identity" : "database-client",
@@ -56,6 +56,15 @@
       }
     },
     {
+      "identity" : "mac-component",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/1amageek/mac-component.git",
+      "state" : {
+        "revision" : "af751b82e4daf1f3aa53ed41ed9f599bdbb52898",
+        "version" : "0.2.0"
+      }
+    },
+    {
       "identity" : "postgres-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/postgres-nio.git",
@@ -105,8 +114,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "35a1edcb8ebd2bfe251d587f0b69e62af28f508c",
-        "version" : "1.7.3"
+        "revision" : "844289ac455816e193f1dbbe014f3c4dbe429410",
+        "version" : "1.7.4"
       }
     },
     {

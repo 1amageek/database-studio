@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "DatabaseStudioUI", targets: ["DatabaseStudioUI"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/1amageek/mac-component.git", from: "0.2.0"),
         .package(url: "https://github.com/1amageek/database-client.git", from: "26.1021.0"),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
@@ -29,6 +30,7 @@ let package = Package(
         .target(
             name: "DatabaseStudioUI",
             dependencies: [
+                .product(name: "MacComponent", package: "mac-component"),
                 .product(name: "DatabaseClient", package: "database-client"),
                 .product(name: "DatabaseClientHTTP", package: "database-client"),
                 .product(name: "DatabaseWire", package: "database-kit"),

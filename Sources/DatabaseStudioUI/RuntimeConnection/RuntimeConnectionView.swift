@@ -20,6 +20,7 @@ public struct RuntimeConnectionView: View {
     @State private var queryWorkspace = RuntimeQueryWorkspace()
     @State private var recordsWorkspace = RuntimeRecordsWorkspace()
     @State private var showsDatabaseInfo = false
+    @State private var isRefreshingSchema = false
 
     public init(connectionID: Binding<UUID?> = .constant(nil)) { _connectionID = connectionID }
 
@@ -91,6 +92,23 @@ public struct RuntimeConnectionView: View {
                 Button("Database Info", systemImage: "info.circle") { showsDatabaseInfo = true }
                     .contentShape(Rectangle()).accessibilityIdentifier("workspace.databaseInfo")
                     .popover(isPresented: $showsDatabaseInfo) { catalog.frame(width: 460, height: 560) }
+                Button("Refresh Schema", systemImage: "arrow.clockwise") {
+                    isRefreshingSchema = true
+                    operation = Task {
+                        defer { isRefreshingSchema = false }
+                        do {
+                            try await connection.refreshSchema()
+                            failure = nil
+                            if !((connection.schema?.entities ?? []).contains { $0.name == selectedEntity }) {
+                                selectedEntity = nil
+                            }
+                        } catch is CancellationError {
+                            return
+                        } catch {
+                            failure = error.localizedDescription
+                        }
+                    }
+                }.disabled(isRefreshingSchema)
                 Button("Disconnect", systemImage: "network.slash") { disconnect() }
             }
         }
@@ -178,12 +196,46 @@ public struct RuntimeConnectionView: View {
                 if !tenantID.isEmpty { LabeledContent("Tenant", value: tenantID) }
                 if !workspaceID.isEmpty { LabeledContent("Workspace", value: workspaceID) }
                 LabeledContent("Runtime", value: connection.capabilities?.runtimeVersion ?? "")
+                if let schema = connection.schema {
+                    LabeledContent("Schema version", value: String(describing: schema.version))
+                }
             }
             if let entity = connection.schema?.entities.first(where: { $0.name == selectedEntity }) {
                 Section(entity.name) {
                     ForEach(entity.fields, id: \.number) { field in
-                        LabeledContent(field.name, value: String(describing: field.type) + (field.nullable ? " · nullable" : ""))
+                        DisclosureGroup(field.name) {
+                            LabeledContent("Field number", value: String(field.number))
+                            LabeledContent("Type", value: String(describing: field.type))
+                            LabeledContent("Nullable", value: field.nullable ? "Yes" : "No")
+                            if let reference = field.reference {
+                                LabeledContent("Target entity", value: reference.targetEntity)
+                                LabeledContent("Cardinality", value: String(describing: reference.cardinality))
+                                LabeledContent("Delete rule", value: String(describing: reference.deleteRule))
+                            }
+                        }
                     }
+                }
+                Section("Indexes") {
+                    if entity.indexes.isEmpty {
+                        Text("No indexes declared.").foregroundStyle(.secondary)
+                    }
+                    ForEach(entity.indexes, id: \.name) { index in
+                        DisclosureGroup(index.name) {
+                            LabeledContent("Type", value: String(describing: index.type))
+                            ForEach(Array(index.fields.enumerated()), id: \.offset) { position, number in
+                                LabeledContent("Field \(position + 1)", value:
+                                    entity.fields.first(where: { $0.number == number }).map { "#\(number) · \($0.name)" }
+                                        ?? "#\(number) · unresolved")
+                            }
+                            Text(String(reflecting: index.options))
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                Section("Schema availability") {
+                    Text("This server response does not include identifier types, Directory/Partition definitions, or complete field constraints.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("Advertised Features") {

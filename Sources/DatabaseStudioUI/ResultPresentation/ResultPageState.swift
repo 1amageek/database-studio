@@ -31,6 +31,14 @@ final class ResultPageState {
     var analysisDataset: AnalysisDataset?
     var analysisFailure: String?
     var isPreparingAnalysis = false
+    var chartKind = AnalysisChartKind.scatter
+    var chartFeatureID: String?
+    private(set) var chartData: AnalysisChartData?
+    private(set) var chartFailure: String?
+    private(set) var isPreparingCharts = false
+    private var chartRevision: UInt64?
+    private var chartPreparationGeneration: UInt64 = 0
+    private let chartProjector: any AnalysisChartProjecting
     var relationship: GraphViewState?
     var relationshipFailure: String?
     var graphName: RDFGraphName? {
@@ -42,9 +50,10 @@ final class ResultPageState {
     private var synchronizedAnalysisID: String?
     private var hasAnalysisSelectionEcho = false
 
-    init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool) throws {
+    init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, chartProjector: any AnalysisChartProjecting = AnalysisChartProjection()) throws {
         guard rows.allSatisfy({ $0.values.count == columns.count }) else { throw Failure.invalidRow }
         self.columns = columns.map(\.name)
+        self.chartProjector = chartProjector
         sourceColumns = columns
         sourceRows = rows
         quads = []
@@ -60,6 +69,7 @@ final class ResultPageState {
     }
 
     init(quads: [RDFQuad], hasNextPage: Bool) {
+        chartProjector = AnalysisChartProjection()
         columns = ["Subject", "Predicate", "Object", "Graph"]
         sourceColumns = []
         sourceRows = []
@@ -81,6 +91,10 @@ final class ResultPageState {
         }
     }
     var activeGraph: GraphViewState? { mode == .analysis ? analysis : mode == .relationships ? relationship : nil }
+    var currentChartData: AnalysisChartData? {
+        guard let session = analysis?.clusterSession, session.result != nil, chartRevision == session.revision else { return nil }
+        return chartData
+    }
     var coverage: String { "\(originalRows.count) loaded rows" + (hasNextPage ? " · More available" : " · Current result") }
 
     private func reorder() {
@@ -100,6 +114,11 @@ final class ResultPageState {
         hasAnalysisSelectionEcho = false
         synchronizedAnalysisID = nil
         selectedIDs = id.flatMap(RecordAnalysisSource.rowIndex).map { originalRows.indices.contains($0) ? Set([$0]) : [] } ?? []
+    }
+
+    func selectChartRow(_ rowID: Int?) {
+        analysis?.clusterSession.selectedCluster = nil
+        selectedIDs = rowID.map { originalRows.indices.contains($0) ? Set([$0]) : [] } ?? []
     }
 
     /// Selecting a cluster highlights its original rows without filtering the source.
@@ -189,5 +208,36 @@ final class ResultPageState {
         analysis?.cancelSpatialLayout()
         relationship?.stopSimulation()
         relationship?.cancelSpatialLayout()
+        chartPreparationGeneration &+= 1
+        isPreparingCharts = false
+    }
+
+    func prepareCharts() async {
+        guard let graph = analysis else { return }
+        let session = graph.clusterSession, revision = session.revision
+        if currentChartData != nil { return }
+        chartPreparationGeneration &+= 1
+        let generation = chartPreparationGeneration
+        chartData = nil; chartRevision = nil; chartFailure = nil
+        isPreparingCharts = false
+        guard session.configuration.mode != .numeric || !session.configuration.numericFeatures.isEmpty else { return }
+        isPreparingCharts = true
+        defer { if chartPreparationGeneration == generation { isPreparingCharts = false } }
+        do {
+            await session.prepare(document: graph.document)
+            try Task.checkCancellation()
+            guard analysis === graph, session.revision == revision, chartPreparationGeneration == generation,
+                  let result = session.result else { return }
+            let data = try await chartProjector.project(result, rowCount: originalRows.count)
+            try Task.checkCancellation()
+            guard analysis === graph, session.revision == revision, chartPreparationGeneration == generation else { return }
+            chartData = data; chartRevision = revision
+            if !data.features.contains(where: { $0.id == chartFeatureID }) { chartFeatureID = data.features.first?.id }
+        } catch is CancellationError { }
+        catch {
+            if analysis === graph, session.revision == revision, chartPreparationGeneration == generation {
+                chartFailure = error.localizedDescription
+            }
+        }
     }
 }

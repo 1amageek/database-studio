@@ -1,4 +1,5 @@
 import SwiftUI
+import MacComponent
 import DatabaseKit
 import DatabaseWire
 
@@ -6,19 +7,19 @@ import DatabaseWire
 struct ResultPageView: View {
     @State private var state: ResultPageState?
     private let failure: String?
-    private let sourceContent: AnyView
+    private let sourceContent: AnyView?
     @State private var showInspector = false
     @State private var showRaw = false
     @State private var showCoverage = false
     @State private var showAnalysisSettings = false
 
-    init(state: ResultPageState, sourceContent: AnyView = AnyView(EmptyView())) {
+    init(state: ResultPageState, sourceContent: AnyView? = nil) {
         _state = State(initialValue: state)
         self.sourceContent = sourceContent
         failure = nil
     }
 
-    init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, sourceContent: AnyView = AnyView(EmptyView())) {
+    init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, sourceContent: AnyView? = nil) {
         self.sourceContent = sourceContent
         do {
             _state = State(initialValue: try ResultPageState(columns: columns, rows: rows, hasNextPage: hasNextPage))
@@ -29,7 +30,7 @@ struct ResultPageView: View {
         }
     }
 
-    init(quads: [RDFQuad], hasNextPage: Bool, sourceContent: AnyView = AnyView(EmptyView())) {
+    init(quads: [RDFQuad], hasNextPage: Bool, sourceContent: AnyView? = nil) {
         self.sourceContent = sourceContent
         _state = State(initialValue: ResultPageState(quads: quads, hasNextPage: hasNextPage))
         failure = nil
@@ -38,9 +39,8 @@ struct ResultPageView: View {
     var body: some View {
         if let state {
             @Bindable var state = state
-            VStack(spacing: 0) {
+            ResultSourcePane(sourceContent: sourceContent) {
                 content(state).frame(maxWidth: .infinity, maxHeight: .infinity)
-                sourceContent
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationSubtitle(state.coverage)
@@ -67,18 +67,33 @@ struct ResultPageView: View {
                             if graph.clusterSession.isLoading {
                                 Button("Cancel Analysis", systemImage: "stop.fill") { graph.clusterSession.cancel() }.contentShape(Rectangle())
                             }
+                            if !graph.isSpatial {
+                                Menu("Chart", systemImage: "chart.xyaxis.line") {
+                                    Picker("Chart", selection: $state.chartKind) {
+                                        ForEach(AnalysisChartKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                                    }.contentShape(Rectangle())
+                                }.contentShape(Rectangle()).accessibilityIdentifier("analysis.chart.kind")
+                                if state.chartKind == .profiles, let data = state.currentChartData, !data.features.isEmpty {
+                                    Picker("Profile Feature", selection: $state.chartFeatureID) {
+                                        ForEach(data.features) { feature in Text(feature.title).tag(Optional(feature.id)) }
+                                    }.pickerStyle(.menu).contentShape(Rectangle())
+                                        .accessibilityIdentifier("analysis.chart.feature")
+                                }
+                            }
                         }
                         if let graph = state.activeGraph {
                             Picker("Projection", selection: Binding(get: { graph.isSpatial }, set: { graph.isSpatial = $0 })) {
-                                Text("2D").tag(false)
+                                Text(state.mode == .analysis ? "Chart" : "2D").tag(false)
                                 Text("3D").tag(true).disabled(graph.spatialUnavailableReason != nil)
-                            }.pickerStyle(.segmented).frame(width: 90).contentShape(Rectangle())
+                            }.pickerStyle(.segmented).frame(width: 110).contentShape(Rectangle())
                                 .accessibilityIdentifier("result.projection")
-                            Button("Fit", systemImage: "arrow.up.left.and.arrow.down.right") {
+                            if state.mode != .analysis || graph.isSpatial {
+                              Button("Fit", systemImage: "arrow.up.left.and.arrow.down.right") {
                                 if graph.isSpatial { graph.zoomToFit() }
                                 else if graph.usesFeatureClusters { graph.clusterSession.cameraScale = 1; graph.clusterSession.cameraOffset = .zero }
                                 else { graph.zoomToFit() }
                             }.contentShape(Rectangle())
+                            }
                         }
                         if state.mode == .relationships && state.graphNames.count > 1 {
                             Picker("Graph", selection: $state.graphName) {
@@ -130,7 +145,10 @@ struct ResultPageView: View {
                 .onChange(of: state.graphName) { _, _ in state.prepareRelationship() }
                 .onDisappear { state.cancel() }
         } else {
-            ContentUnavailableView("Unable to Display Result", systemImage: "exclamationmark.triangle", description: Text(failure ?? "The result is invalid."))
+            ResultSourcePane(sourceContent: sourceContent) {
+                ContentUnavailableView("Unable to Display Result", systemImage: "exclamationmark.triangle", description: Text(failure ?? "The result is invalid."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -143,7 +161,10 @@ struct ResultPageView: View {
             case .document: ResultDocumentView(state: state)
             case .analysis:
                 linkedTable(state) {
-                    if let graph = state.analysis { ResultGraphViewport(graph: graph, onSelect: state.selectAnalysisNode) }
+                    if let graph = state.analysis {
+                        if graph.isSpatial { ResultGraphViewport(graph: graph, onSelect: state.selectAnalysisNode) }
+                        else { ResultChartViewport(state: state) }
+                    }
                     else if let failure = state.analysisFailure { ContentUnavailableView("Analysis Unavailable", systemImage: "chart.xyaxis.line", description: Text(failure)) }
                     else { ProgressView("Preparing measurements…") }
                 }
@@ -158,11 +179,13 @@ struct ResultPageView: View {
     }
 
     private func linkedTable<Viewport: View>(_ state: ResultPageState, @ViewBuilder viewport: () -> Viewport) -> some View {
-        HStack(spacing: 0) {
-            ResultTableView(state: state).frame(minWidth: 260, idealWidth: 340, maxWidth: 380)
-            Divider()
+        HSplitPane {
+            ResultTableView(state: state)
             viewport().frame(maxWidth: .infinity, maxHeight: .infinity)
-        }.accessibilityIdentifier("result.linkedAnalysis")
+        }
+        .leadingPaneWidth(340, minimum: 260)
+        .trailingPaneWidth(minimum: 200)
+        .accessibilityIdentifier("result.linkedAnalysis")
     }
 
     @ViewBuilder private func inspector(_ state: ResultPageState) -> some View {

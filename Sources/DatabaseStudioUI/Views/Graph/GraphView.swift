@@ -1,4 +1,5 @@
 import SwiftUI
+import MacComponent
 
 /// RDF グラフとオントロジー構造をフォースレイアウトで可視化する View
 public struct GraphView: View {
@@ -72,11 +73,12 @@ public struct GraphView: View {
     @ViewBuilder
     private var detailContent: some View {
         if state.showQueryPanel {
-            VSplitView {
+            VSplitPane {
                 canvasWithMinimap
                 QueryPanelView(state: state)
-                    .frame(minHeight: 100, maxHeight: .infinity)
             }
+            .topPaneHeight(minimum: 200)
+            .bottomPaneHeight(200, minimum: 100)
         } else {
             canvasWithMinimap
         }

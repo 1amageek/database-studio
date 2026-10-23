@@ -10,6 +10,7 @@ Parent: [Database Studio](../../DESIGN.md).
 Children: [Workspace](Workspace/DESIGN.md),
 [ConnectionAccess](ConnectionAccess/DESIGN.md),
 [ResultPresentation](ResultPresentation/DESIGN.md),
+[AnalysisCharts](AnalysisCharts/DESIGN.md),
 [AnalysisWorkspace](AnalysisWorkspace/DESIGN.md),
 [SpatialGraph](SpatialGraph/DESIGN.md),
 [GraphClustering](GraphClustering/DESIGN.md),
@@ -89,8 +90,8 @@ Graph window
 │   ├── Toolbar: [2D | 3D network, when applicable] + independent source controls
 │   ├── ONE graph viewport: GraphCanvas OR perspective Canvas presentation
 │   │   └── in-viewport orbit / pan / zoom / fit / focus controls
-│   └── Existing optional VSplitView lower pane
-│       └── HSplitView: SPARQL editor | results [Table | Raw]
+│   └── MacComponent VSplitPane lower pane
+│       └── MacComponent HSplitPane: SPARQL editor | results [Table | Raw]
 └── Existing inspector: Detail / Events / People / Places
 ```
 

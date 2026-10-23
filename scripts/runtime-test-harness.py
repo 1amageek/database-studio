@@ -17,7 +17,19 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--server', required=True, type=Path)
 parser.add_argument('--derived-data', required=True, type=Path)
 parser.add_argument('--results', required=True, type=Path)
+parser.add_argument('--only-testing', action='append')
+parser.add_argument('--expected-test-count', type=int)
 args = parser.parse_args()
+if bool(args.only_testing) != (args.expected_test_count is not None):
+    parser.error('Focused selectors require an explicit expected test count')
+selectors = args.only_testing or [
+    'Database StudioTests/RuntimeServerTests',
+    'Database StudioTests/RuntimeConnectionTests',
+    'Database StudioTests/RuntimeQueryHistoryTests',
+    'Database StudioTests/RuntimeConnectionPersistenceTests',
+    'Database StudioTests/StudioReleaseCompatibilityTests',
+]
+expected_count = args.expected_test_count if args.only_testing else 19
 root = Path(__file__).resolve().parents[1]
 args.results.mkdir(parents=True, exist_ok=False)
 env = {k: v for k, v in os.environ.items() if not any(word in k.upper() for word in ('TOKEN', 'PASSWORD', 'SECRET', 'API_KEY'))}
@@ -84,6 +96,12 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
             if process.poll() is None:
                 process.kill()
                 process.wait()
+    # The server denies entity data to every role, including admin, unless the
+    # launch document names the entity; only the persisted CRUD fixture needs it.
+    launch = json.loads(config.read_text())
+    launch['entityPolicies'] = [{'entity': 'StudioQueryItem', 'roles': {
+        operation: ['admin'] for operation in ('list', 'get', 'create', 'update', 'delete')}}]
+    config.write_text(json.dumps(launch))
     with (args.results / 'server.log').open('w') as log:
         server = subprocess.Popen([str(args.server), 'serve', '--config', str(config)],
                                   stdout=log, stderr=subprocess.STDOUT, env=env)
@@ -122,10 +140,7 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
             try:
                 run(['xcodebuild', 'test-without-building', '-xctestrun', str(generated),
                      '-destination', 'platform=macOS,arch=arm64', '-parallel-testing-enabled', 'NO',
-                     '-only-testing:Database StudioTests/RuntimeServerTests',
-                     '-only-testing:Database StudioTests/RuntimeConnectionTests',
-                     '-only-testing:Database StudioTests/RuntimeConnectionPersistenceTests',
-                     '-only-testing:Database StudioTests/StudioReleaseCompatibilityTests',
+                     *['-only-testing:' + selector for selector in selectors],
                      '-resultBundlePath', str(args.results / 'Tests.xcresult')], 'tests', 60)
             finally:
                 generated.unlink(missing_ok=True)
@@ -138,7 +153,7 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
                                                '--path', str(args.results / 'Tests.xcresult')], env=env)
             (args.results / 'summary.json').write_bytes(summary)
             result = json.loads(summary)
-            assert result['passedTests'] == 10 and result['totalTestCount'] == 10
+            assert result['passedTests'] == expected_count and result['totalTestCount'] == expected_count
             assert all(result[key] == 0 for key in ('failedTests', 'skippedTests', 'expectedFailures'))
             assert not result['runtimeWarnings']
         finally:

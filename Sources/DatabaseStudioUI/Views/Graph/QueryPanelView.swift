@@ -1,11 +1,12 @@
 import SwiftUI
+import MacComponent
 
 /// SPARQL クエリエディタ + 結果表示パネル
 struct QueryPanelView: View {
     @Bindable var state: GraphViewState
 
     var body: some View {
-        HSplitView {
+        HSplitPane {
             // SPARQL エディタ
             VStack(spacing: 0) {
                 editorToolbar
@@ -25,6 +26,8 @@ struct QueryPanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .leadingPaneWidth(340, minimum: 200)
+        .trailingPaneWidth(minimum: 200)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
     }

@@ -13,6 +13,7 @@ final class RuntimeConnection {
     var isConnected: Bool { capabilities != nil && schema != nil }
 
     @ObservationIgnored private var generation: UInt64 = 0
+    @ObservationIgnored private var schemaRefreshGeneration: UInt64 = 0
     @ObservationIgnored private var transport: HTTPDatabaseTransport?
     @ObservationIgnored private var client: DatabaseClient<HTTPDatabaseTransport>?
 
@@ -72,6 +73,16 @@ final class RuntimeConnection {
             if Task.isCancelled || generation != current { throw CancellationError() }
             throw error
         }
+    }
+
+    func refreshSchema() async throws {
+        schemaRefreshGeneration &+= 1
+        let refresh = schemaRefreshGeneration
+        let current = generation
+        let result = try await execute(DatabaseOperationCatalog.schemaDescribe, request: EmptyOperationPayload())
+        try Task.checkCancellation()
+        guard current == generation, refresh == schemaRefreshGeneration else { throw CancellationError() }
+        schema = result
     }
 
     func disconnect() async {

@@ -4,7 +4,7 @@ import DatabaseWire
 /// Data and Query compose the same canonical result-page presentation.
 struct RuntimeQueryResultsView: View {
     let query: RuntimeQuery
-    var sourceContent: AnyView = AnyView(EmptyView())
+    var sourceContent: AnyView?
 
     var body: some View {
         Group {
@@ -14,16 +14,14 @@ struct RuntimeQueryResultsView: View {
                     ResultPageView(state: presentation, sourceContent: sourceContent)
                 }
             case .boolean(let value):
-                VStack(spacing: 0) {
+                ResultSourcePane(sourceContent: sourceContent) {
                     Text(value ? "true" : "false").font(.system(.title, design: .monospaced))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    sourceContent
                 }
             case nil:
-                VStack(spacing: 0) {
+                ResultSourcePane(sourceContent: sourceContent) {
                     ContentUnavailableView("Run a Query", systemImage: "terminal", description: Text("Results come from the connected server."))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    sourceContent
                 }
             }
         }.id(query.pageRevision)

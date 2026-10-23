@@ -36,6 +36,7 @@ Those contracts remain with `storage-kit`, `database-framework`, and
 | [DatabaseStudioUI](Sources/DatabaseStudioUI/DESIGN.md) | child | Graph presentation and shared 2D/3D interaction contract | Owns the proposed spatial graph presentation. | Spatial rendering grants no additional database access; provenance and platform gates remain explicit. |
 | [Workspace ownership contract](../AGENTS.md) | parent contract | Package ownership and dependency direction | The workspace assigns storage semantics to `storage-kit` and in-process execution to `database-framework`. | A local Studio change must not move those responsibilities into the UI. |
 | [Architecture](ARCHITECTURE.md) | package companion | UI boundary and `IndexDescriptor` presentation contract | Studio consumes typed schema metadata and exposes catalog inspection only. | Physical index details must not be reconstructed in Studio. |
+| [MacComponent](https://github.com/1amageek/mac-component) | depends on | HSplitPane and VSplitPane | URL dependency from 0.2.0 supplies resizable internal content panes. | Native navigation and Inspector remain SwiftUI-owned; no local dependency override. |
 | `storage-kit` `StorageEngine` | depends on | `requestShutdown()` plus `waitUntilShutdown()` | Requesting shutdown closes admission; waiting proves backend cleanup is complete. | `requestShutdown()` alone is not a disconnected state. |
 | `database-framework` `SchemaRegistry` | used by | `loadAll()` and catalog validation | The registry loads typed schema metadata through the selected engine. | Results from a superseded generation must not be published. |
 
@@ -179,15 +180,24 @@ The identity-checked compiler's testing directory is prepended once to the test
 process environment; production loading and application entitlements are unchanged.
 The harness owns the derived configuration, isolated server and test host until
 completion, removes its configuration and requires negative readiness after shutdown.
+The server denies entity data to every role without a configured rule, so the
+harness adds an `entityPolicies` rule for the persisted CRUD fixture entity only.
+The launchd-hosted test runner and its failure symbolication open the testing
+directory and build products with the host's own folder privacy; when they live
+in a privacy-protected folder such as Desktop, the runner waits for approval and
+the run hangs instead of failing. Keep them outside protected folders.
 
 The package regression lane uses the same clean-configuration rule. A clean
 Framework 26.1022.1 build passed all 118 package tests after prior diagnostic
 configurations had accumulated stale runtime paths and host substitutions.
 
-The release-update regression evidence is 118 package tests and 10 native app
-integration tests against Server 26.1022.1, with zero failures, skips, expected
-failures or runtime warnings. Both lanes use the same 22 URL pins. The app lane
-also ignores a deliberately newer invalid derivative configuration. Native UI
-verification covers Table, Document and Inspector for exact numeric scale, SQL
-array bounds, JSONB null/string distinction, the time endpoint and date infinity.
-Pending chart and split-pane edits are a separate uncommitted workstream.
+The chart, split-pane and schema-inspection integration evidence is 125 package
+tests and 19 native app integration tests against Server 26.1022.1, with zero
+failures, skips, expected failures or runtime warnings, on the same URL pins.
+Native UI verification in the real base window covers Table default with visible
+headers, the lower Query editor, all three Swift Charts with point and cluster
+selection, the original-value Inspector, both MacComponent divider directions,
+Table/Document/3D round trips that retain chart kind and selection, and schema
+refresh publishing a newly created entity. The earlier release-update evidence
+covers Table, Document and Inspector for exact numeric scale, SQL array bounds,
+JSONB null/string distinction, the time endpoint and date infinity.
