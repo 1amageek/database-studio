@@ -158,7 +158,8 @@ Sample application design: [Maintenance Studio](Examples/MaintenanceStudio/DESIG
 
 Studio consumes the canonical QueryStatement/SQLBlock execution contract through
 revision-pinned Framework, Kit and Client URL dependencies; StorageKit remains
-26.1021.0. Package and application/workspace locks must agree. The ordinary
+26.1021.0. Package and application/workspace locks must agree on the Database contract
+revisions while retaining their existing unrelated dependency pins. The ordinary
 DatabaseWire graph remains target-free. Server 26.1022.1 with the matching query
 contract is the native integration peer, not a linked Studio dependency.
 Authorization, execution budgets and rollback stay in Framework/Server; Studio
