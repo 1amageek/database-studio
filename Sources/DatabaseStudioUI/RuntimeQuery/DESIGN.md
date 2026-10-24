@@ -190,3 +190,24 @@ is supplied as VALUES and does not claim persisted entity access. The existing
 financial analysis test uses `ANALYSIS_FINANCIAL_FIXTURE` for the same JSON file.
 Run these as headless package tests with an external timeout and a unique result
 bundle; native verification uses the actual app, not a UI XCTest host.
+
+
+## Canonical Query Outcomes
+
+The query editor submits QueryInput using QueryLanguage and accepts complete
+QueryResult by default. Entity browsing retains explicit read-only pages.
+A block preserves its ordered outcomes and independent schemas; the result pane
+selects one statement outcome and materializes only its selected row/graph page.
+Commands, affected counts and COPY bytes have explicit presentations and are not
+converted into empty row results. Complete responses have no continuation.
+Changing the selected outcome cancels the previous presentation and preserves
+the immutable original response. The existing request generation, cancellation,
+collection budgets and connection lifecycle remain authoritative.
+
+```text
+editor -> canonical query.execute -> ordered result outcomes
+                                  -> selected outcome -> existing result pane
+```
+
+State tests verify selection, exact rich values and command/COPY retention;
+existing collection tests preserve pagination, budgets and cancellation.

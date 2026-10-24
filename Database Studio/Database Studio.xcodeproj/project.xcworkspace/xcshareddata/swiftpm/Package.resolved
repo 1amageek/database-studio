@@ -1,13 +1,12 @@
 {
-  "originHash" : "a7e69329c221d129441837430bea1b7e93a5ac269260c1f554ded2f23da396f9",
+  "originHash" : "fea584226ab5504f240758dce3631eb8cf5c0a6a7c4d368f8a15a661b33fc605",
   "pins" : [
     {
       "identity" : "database-client",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/1amageek/database-client.git",
       "state" : {
-        "revision" : "f9f7fcd64903f48d6c94fc7b6313d1f1967c1842",
-        "version" : "26.1021.0"
+        "revision" : "cd81942c063e4d26ac9fd5ffb002b312dbf6580b"
       }
     },
     {
@@ -15,8 +14,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/1amageek/database-framework.git",
       "state" : {
-        "revision" : "5ed3795ae7213fb06b5a37f32bc53335fb1240e5",
-        "version" : "26.1022.1"
+        "revision" : "4fe236dc47d7d7ded0921caafb3d7e317d81b504"
       }
     },
     {
@@ -24,8 +22,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/1amageek/database-kit.git",
       "state" : {
-        "revision" : "9ba081a10f16473e5846672ab8727cc394e56db5",
-        "version" : "26.1021.0"
+        "revision" : "b325109676a4b9b3431e2e306ca8c0dcf1d9a7bf"
       }
     },
     {
@@ -114,8 +111,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "844289ac455816e193f1dbbe014f3c4dbe429410",
-        "version" : "1.7.4"
+        "revision" : "35a1edcb8ebd2bfe251d587f0b69e62af28f508c",
+        "version" : "1.7.3"
       }
     },
     {

@@ -14,7 +14,7 @@ final class ResultPageState {
 
     let columns: [String]
     let sourceColumns: [QueryColumn]
-    let sourceRows: [DatabaseWire.QueryRow]
+    let sourceRows: [DatabaseKit.QueryRow]
     let quads: [RDFQuad]
     let originalRows: [ResultPageRow]
     let sortableColumns: Set<Int>
@@ -50,7 +50,7 @@ final class ResultPageState {
     private var synchronizedAnalysisID: String?
     private var hasAnalysisSelectionEcho = false
 
-    init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, chartProjector: any AnalysisChartProjecting = AnalysisChartProjection()) throws {
+    init(columns: [QueryColumn], rows: [DatabaseKit.QueryRow], hasNextPage: Bool, chartProjector: any AnalysisChartProjecting = AnalysisChartProjection()) throws {
         guard rows.allSatisfy({ $0.values.count == columns.count }) else { throw Failure.invalidRow }
         self.columns = columns.map(\.name)
         self.chartProjector = chartProjector

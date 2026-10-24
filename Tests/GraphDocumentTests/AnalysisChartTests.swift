@@ -8,7 +8,7 @@ final class AnalysisChartTests: XCTestCase {
     private func state(projector: any AnalysisChartProjecting = AnalysisChartProjection()) async throws -> ResultPageState {
         let columns: [QueryColumn] = try [.init(number: 1, name: "sales", type: .primitive(.int64), isNullable: true),
                                           .init(number: 2, name: "profit", type: .primitive(.int64), isNullable: true)]
-        var rows: [DatabaseWire.QueryRow] = []
+        var rows: [DatabaseKit.QueryRow] = []
         for index in 0..<20 {
             let profit: FieldValue = index == 19 ? .null : .int64(Int64(index - 8))
             rows.append(.init(values: [.int64(Int64(index * index + 1)), profit].map(DatabaseKit.QueryValue.primitive)))

@@ -1,3 +1,4 @@
+import DatabaseKit
 import Observation
 import DatabaseWire
 
@@ -7,6 +8,6 @@ final class RuntimeQueryWorkspace {
     let query = RuntimeQuery()
     let mutation = RuntimeMutation()
     var statement = ""
-    var language = QueryExecuteOperation.Language.sql
+    var language = QueryLanguage.sql
     var isMutation = false
 }

@@ -156,13 +156,14 @@ Sample application design: [Maintenance Studio](Examples/MaintenanceStudio/DESIG
 
 ## Dependency Compatibility
 
-Studio consumes Framework 26.1022.1 with DatabaseKit, DatabaseClient, and
-StorageKit 26.1021.0 through URL dependencies. The package, application project,
-and workspace resolution files must agree on the released revisions. Studio
-uses the ordinary target-free DatabaseWire contract; MultiBase is not enabled.
-Runtime calls use DatabaseClient.execute directly. Server 26.1022.1 is the native
-integration peer, not a linked Studio dependency. Query authorization, resource
-budgets, transactions, and rollback remain owned by that server and Framework.
+Studio consumes the canonical QueryStatement/SQLBlock execution contract through
+revision-pinned Framework, Kit and Client URL dependencies; StorageKit remains
+26.1021.0. Package and application/workspace locks must agree. The ordinary
+DatabaseWire graph remains target-free. Server 26.1022.1 with the matching query
+contract is the native integration peer, not a linked Studio dependency.
+Authorization, execution budgets and rollback stay in Framework/Server; Studio
+owns bounded presentation and ordered result selection. See
+[RuntimeQuery](Sources/DatabaseStudioUI/RuntimeQuery/DESIGN.md).
 
 Dependency updates require the package lifecycle and result tests, the native app
 build, and real authenticated server tests for handshake, typed results and
@@ -201,3 +202,10 @@ Table/Document/3D round trips that retain chart kind and selection, and schema
 refresh publishing a newly created entity. The earlier release-update evidence
 covers Table, Document and Inspector for exact numeric scale, SQL array bounds,
 JSONB null/string distinction, the time endpoint and date infinity.
+
+The canonical execution integration adds one ordered-result collection regression
+for 126 package tests. The 19 native app tests additionally compare SQL and IR
+columns/values, select SQLBlock outcomes independently, and retain COPY bytes.
+Both lanes run against an isolated authenticated SQLite server and require zero
+failures, skips, expected failures and runtime warnings plus negative readiness
+after authoritative shutdown.

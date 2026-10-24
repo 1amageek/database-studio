@@ -11,7 +11,7 @@ final class ResultPresentationTests: XCTestCase {
     }
 
     func testNativePageOrderingPreservesExactValuesAndSelection() throws {
-        let input: [DatabaseWire.QueryRow] = [
+        let input: [DatabaseKit.QueryRow] = [
             .init(values: [.uint64(UInt64.max), .string("A")].map(DatabaseKit.QueryValue.primitive)),
             .init(values: [.uint64(UInt64.max - 1), .string("B")].map(DatabaseKit.QueryValue.primitive)),
             .init(values: [.uint64(2), .string("C")].map(DatabaseKit.QueryValue.primitive)),
@@ -32,7 +32,7 @@ final class ResultPresentationTests: XCTestCase {
     }
 
     func testNewPageDefaultsToTableAndDoesNotReuseDuplicateSelection() throws {
-        let row = DatabaseWire.QueryRow(values: [.int64(42), .string("A")].map(DatabaseKit.QueryValue.primitive))
+        let row = DatabaseKit.QueryRow(values: [.int64(42), .string("A")].map(DatabaseKit.QueryValue.primitive))
         let first = try ResultPageState(columns: columns, rows: [row, row], hasNextPage: true)
         first.mode = .analysis; first.selectedIDs = [1]
         let next = try ResultPageState(columns: columns, rows: [row, row], hasNextPage: false)
@@ -89,7 +89,7 @@ final class ResultPresentationTests: XCTestCase {
     }
 
     func testNumericModesShareOriginalRowIdentityAfterSorting() async throws {
-        var input: [DatabaseWire.QueryRow] = []
+        var input: [DatabaseKit.QueryRow] = []
         for index in 0..<2000 { input.append(.init(values: [.int64(Int64(index + 1)), .string(index < 1000 ? "A" : "B")].map(DatabaseKit.QueryValue.primitive))) }
         let state = try ResultPageState(columns: columns, rows: input, hasNextPage: false)
         state.selectedIDs = [1500]
@@ -125,7 +125,7 @@ final class ResultPresentationTests: XCTestCase {
     }
 
     func testClusterSelectionHighlightsExactMembersWithoutChangingPopulation() async throws {
-        let input = (0..<20).map { DatabaseWire.QueryRow(values: [.int64(Int64($0 * $0 + 1)), .string($0 < 10 ? "A" : "B")].map(DatabaseKit.QueryValue.primitive)) }
+        let input = (0..<20).map { DatabaseKit.QueryRow(values: [.int64(Int64($0 * $0 + 1)), .string($0 < 10 ? "A" : "B")].map(DatabaseKit.QueryValue.primitive)) }
         let state = try ResultPageState(columns: columns, rows: input, hasNextPage: false)
         state.mode = .analysis
         await state.prepareAnalysis()

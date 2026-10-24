@@ -1,3 +1,4 @@
+import DatabaseKit
 import SwiftUI
 import DatabaseWire
 
@@ -31,15 +32,15 @@ struct RuntimeQueryView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu("Query Options", systemImage: "ellipsis.circle") {
                     Picker("Language", selection: $workspace.language) {
-                        Text("SQL").tag(QueryExecuteOperation.Language.sql)
-                        Text("SPARQL").tag(QueryExecuteOperation.Language.sparql)
+                        Text("SQL").tag(QueryLanguage.sql)
+                        Text("SPARQL").tag(QueryLanguage.sparql)
                     }.contentShape(Rectangle())
                     Toggle("Mutation", isOn: $workspace.isMutation)
                         .contentShape(Rectangle()).disabled(query.isRunning || mutation.isRunning)
                     Menu("History") {
                         ForEach(history.entries.filter { $0.scope == historyScope }) { entry in
                             Button(entry.statement) {
-                                if let restored = QueryExecuteOperation.Language(rawValue: entry.language) {
+                                if let restored = QueryLanguage(rawValue: entry.language) {
                                     workspace.statement = entry.statement
                                     workspace.language = restored
                                 }

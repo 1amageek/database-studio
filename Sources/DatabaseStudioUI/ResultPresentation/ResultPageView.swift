@@ -19,7 +19,7 @@ struct ResultPageView: View {
         failure = nil
     }
 
-    init(columns: [QueryColumn], rows: [DatabaseWire.QueryRow], hasNextPage: Bool, sourceContent: AnyView? = nil) {
+    init(columns: [QueryColumn], rows: [DatabaseKit.QueryRow], hasNextPage: Bool, sourceContent: AnyView? = nil) {
         self.sourceContent = sourceContent
         do {
             _state = State(initialValue: try ResultPageState(columns: columns, rows: rows, hasNextPage: hasNextPage))

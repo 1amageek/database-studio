@@ -22,6 +22,32 @@ final class RuntimeQueryCollectionTests: XCTestCase {
             rows: values.map { .init(values: [.int32($0)].map(DatabaseKit.QueryValue.primitive)) }, continuation: token.map { ByteString([$0]) }))
     }
 
+    func testCompleteOutcomesKeepOrderKindsAndIndependentSelection() async throws {
+        let source = Source()
+        let copied = ByteString([0, 255, 10])
+        source.pages = [try .init(results: [.command(.createTable, affectedRows: nil),
+            page([7, 7]), .copy(bytes: copied, affectedRows: 2), .boolean(true)])]
+        let query = RuntimeQuery()
+        await query.run(.init(input: .sql("complete block")), connection: source)
+        XCTAssertNil(query.failure)
+        XCTAssertEqual(query.response?.results.count, 4)
+        XCTAssertEqual(query.selectedResult?.command, .createTable)
+        XCTAssertTrue(query.rows.isEmpty)
+        query.selectResult(1)
+        XCTAssertEqual(query.rows.count, 2)
+        XCTAssertNotNil(query.presentation)
+        query.selectResult(2)
+        XCTAssertTrue(query.rows.isEmpty)
+        XCTAssertNil(query.presentation)
+        guard case .copy(let bytes, let count) = query.selectedResult else { return XCTFail("Expected retained COPY") }
+        XCTAssertEqual(bytes, copied)
+        XCTAssertEqual(count, 2)
+        query.selectResult(3)
+        guard case .boolean(true) = query.selectedResult else { return XCTFail("Expected retained Boolean") }
+        XCTAssertFalse(query.hasNextPage)
+        XCTAssertFalse(query.canCollectRows)
+    }
+
     func testCollectionPreservesAppliedRequestDuplicatesAndPresentation() async throws {
         let source = Source()
         source.pages = try [page([1, 1], token: 1), page([2, 3], token: 2), page([4])]
@@ -45,8 +71,8 @@ final class RuntimeQueryCollectionTests: XCTestCase {
             XCTAssertEqual(followup.graphPartitions, request.graphPartitions)
             XCTAssertEqual(followup.budget, request.budget)
         }
-        XCTAssertEqual(source.requests[1].page.continuation, ByteString([1]))
-        XCTAssertEqual(source.requests[2].page.continuation, ByteString([2]))
+        XCTAssertEqual(source.requests[1].page?.continuation, ByteString([1]))
+        XCTAssertEqual(source.requests[2].page?.continuation, ByteString([2]))
     }
 
     func testInvalidOrExcessiveCollectionRetainsPriorPageAndToken() async throws {

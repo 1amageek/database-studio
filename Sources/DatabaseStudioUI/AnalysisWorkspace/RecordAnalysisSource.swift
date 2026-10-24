@@ -18,7 +18,7 @@ struct RecordAnalysisSource: Sendable {
         }
     }
     let columns: [QueryColumn]
-    let rows: [DatabaseWire.QueryRow]
+    let rows: [DatabaseKit.QueryRow]
     let hasNextPage: Bool
 
     @concurrent func dataset() async throws -> AnalysisDataset {

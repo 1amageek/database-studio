@@ -8,7 +8,7 @@ final class RecordAnalysisSourceTests: XCTestCase {
     func testTypedDocumentsPathsMissingnessAndRowReturn() async throws {
         let columns = try [QueryColumn(number: 1, name: "doc", type: .primitive(.object), isNullable: true), QueryColumn(number: 2, name: "group", type: .primitive(.string), isNullable: true)]
         let object = try FieldObject([("a/b", .float64(-2)), ("a~b", .int32(4)), ("flag", .bool(true)), ("nil", .null)])
-        let rows = [DatabaseWire.QueryRow(values: [.object(object), .string("West")].map(DatabaseKit.QueryValue.primitive)), DatabaseWire.QueryRow(values: [.null, .string("East")].map(DatabaseKit.QueryValue.primitive))]
+        let rows = [DatabaseKit.QueryRow(values: [.object(object), .string("West")].map(DatabaseKit.QueryValue.primitive)), DatabaseKit.QueryRow(values: [.null, .string("East")].map(DatabaseKit.QueryValue.primitive))]
         let dataset = try await RecordAnalysisSource(columns: columns, rows: rows, hasNextPage: true).dataset()
         XCTAssertEqual(dataset.document.nodes[0].metrics["/doc/a~1b"], -2)
         XCTAssertEqual(dataset.document.nodes[0].metrics["/doc/a~0b"], 4)
@@ -24,7 +24,7 @@ final class RecordAnalysisSourceTests: XCTestCase {
         let names = ["exact", "inexact", "decimal", "array"]
         let types: [QueryColumnType] = [.primitive(.int64), .primitive(.uint64), .primitive(.decimal), .primitive(.int32, isArray: true)]
         let columns = try names.enumerated().map { try QueryColumn(number: UInt32($0.offset + 1), name: $0.element, type: types[$0.offset], isNullable: true) }
-        let row = DatabaseWire.QueryRow(values: [.int64(42), .uint64(UInt64.max), .decimal(.init(coefficient: 125, scale: 2)), .array([.int32(2)])].map(DatabaseKit.QueryValue.primitive))
+        let row = DatabaseKit.QueryRow(values: [.int64(42), .uint64(UInt64.max), .decimal(.init(coefficient: 125, scale: 2)), .array([.int32(2)])].map(DatabaseKit.QueryValue.primitive))
         let dataset = try await RecordAnalysisSource(columns: columns, rows: [row], hasNextPage: false).dataset()
         XCTAssertEqual(dataset.document.nodes[0].metrics["/exact"], 42)
         XCTAssertEqual(dataset.document.nodes[0].metrics["/decimal"], 1.25)
@@ -54,7 +54,7 @@ final class RecordAnalysisSourceTests: XCTestCase {
 
     func testCanonical2000RowPageRunsNumericAnalysis() async throws {
         let columns = try [QueryColumn(number: 1, name: "sales", type: .primitive(.float64), isNullable: true), QueryColumn(number: 2, name: "profit", type: .primitive(.float64), isNullable: true), QueryColumn(number: 3, name: "sector", type: .primitive(.string), isNullable: true)]
-        var rows: [DatabaseWire.QueryRow] = []
+        var rows: [DatabaseKit.QueryRow] = []
         for index in 0..<2000 {
             rows.append(.init(values: [.float64(Double(index + 1)), .float64(Double(index - 1000)), .string(index < 1000 ? "A" : "B")].map(DatabaseKit.QueryValue.primitive)))
         }
@@ -78,7 +78,7 @@ final class RecordAnalysisSourceTests: XCTestCase {
             .rdfTerm(.literal(try RDFLiteral(lexicalForm: "Banking", datatype: xsd + "string")))
         ]
         let columns = try values.indices.map { try QueryColumn(number: UInt32($0 + 1), name: "c\($0)", type: .primitive(.rdfTerm), isNullable: true) }
-        let row = DatabaseWire.QueryRow(values: values.map(DatabaseKit.QueryValue.primitive))
+        let row = DatabaseKit.QueryRow(values: values.map(DatabaseKit.QueryValue.primitive))
         let dataset = try await RecordAnalysisSource(columns: columns, rows: [row], hasNextPage: false).dataset()
         XCTAssertEqual(dataset.document.nodes[0].metrics["/c0"], -42)
         XCTAssertEqual(dataset.document.nodes[0].metrics["/c1"], 0)

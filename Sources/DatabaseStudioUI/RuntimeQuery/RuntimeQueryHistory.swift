@@ -1,3 +1,4 @@
+import DatabaseKit
 import Foundation
 import Observation
 import DatabaseWire
@@ -21,14 +22,14 @@ final class RuntimeQueryHistory {
     func load() throws {
         if let data = defaults.data(forKey: key) {
             let decoded = try JSONDecoder().decode([Entry].self, from: data)
-            guard decoded.allSatisfy({ QueryExecuteOperation.Language(rawValue: $0.language) != nil }) else {
+            guard decoded.allSatisfy({ QueryLanguage(rawValue: $0.language) != nil }) else {
                 throw CocoaError(.coderReadCorrupt)
             }
             entries = decoded
         } else { entries = [] }
     }
 
-    func save(scope: [String], language: QueryExecuteOperation.Language, statement: String) throws {
+    func save(scope: [String], language: QueryLanguage, statement: String) throws {
         // Read before writing so a corrupt or concurrently updated history is never silently replaced.
         try load()
         var updated = entries.filter { $0.scope != scope || $0.language != language.rawValue || $0.statement != statement }

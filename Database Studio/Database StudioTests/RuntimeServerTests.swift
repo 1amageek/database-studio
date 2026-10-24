@@ -95,6 +95,32 @@ final class RuntimeServerTests: XCTestCase {
                 XCTAssertEqual(rows.first?.values, [.primitive(.int32(1))])
             } catch { XCTFail(String(describing: error)) }
         } else { XCTFail("Expected typed query rows") }
+        await query.run(.init(input: .sql("SELECT CAST(1 AS bigint) AS value")), connection: connection)
+        XCTAssertNil(query.failure)
+        let textColumns = query.presentation?.columns
+        let textRows = query.rows.map(\.values)
+        let statement = QueryStatement.select(SelectQuery(projection: [.expression(.literal(.int(1)), alias: "value")], source: .values([[]])))
+        await query.run(.init(input: .statement(statement)), connection: connection)
+        XCTAssertNil(query.failure)
+        XCTAssertEqual(query.presentation?.columns, textColumns)
+        XCTAssertEqual(query.rows.map(\.values), textRows)
+        let block = try SQLBlock(steps: [.statement(statement), .statement(statement)])
+        await query.run(.init(input: .block(block)), connection: connection)
+        XCTAssertNil(query.failure)
+        XCTAssertEqual(query.response?.results.count, 2)
+        query.selectResult(1)
+        XCTAssertEqual(query.rows.map(\.values), textRows)
+        await query.run(.init(input: .sql("BEGIN; SELECT 1 AS value; COPY (SELECT 1 AS value) TO STDOUT WITH (FORMAT CSV); COMMIT")), connection: connection)
+        XCTAssertNil(query.failure)
+        XCTAssertEqual(query.response?.results.count, 4)
+        XCTAssertEqual(query.selectedResult?.command, .begin)
+        query.selectResult(1)
+        XCTAssertEqual(query.rows.first?.values, [.primitive(.int32(1))])
+        query.selectResult(2)
+        guard case .copy(let payload, 1) = query.selectedResult else { return XCTFail("Expected complete COPY outcome") }
+        XCTAssertEqual(payload, ByteString(Array("1\n".utf8)))
+        query.selectResult(3)
+        XCTAssertEqual(query.selectedResult?.command, .commit)
         await query.run(.init(input: .text(language: .sql, statement: "invalid SQL")), connection: connection)
         XCTAssertNotNil(query.failure)
         XCTAssertNil(query.response)
@@ -112,7 +138,7 @@ final class RuntimeServerTests: XCTestCase {
         let statement = SelectQuery(projection: [.wildcard()],
             source: .aliased(.values([[.int(2)], [.int(3)], [.int(1)]]), name: "input", columns: ["score"]),
             orderBy: [SortKey(.column(ColumnRef("score")))])
-        let request = QueryExecuteOperation.Request(input: .ir(.select(statement)), page: .init(limit: 1))
+        let request = QueryExecuteOperation.Request(input: .statement(.select(statement)), page: .init(limit: 1))
         await query.run(request, connection: connection)
         for score in 1...3 {
             XCTAssertNil(query.failure)
@@ -138,7 +164,7 @@ final class RuntimeServerTests: XCTestCase {
             let statement = SelectQuery(projection: [.wildcard()],
                 source: .aliased(.values([[.int(1)], [.int(3)], [.int(2)]]), name: "input", columns: ["score"]),
                 filter: try filter.expression(), orderBy: [SortKey(.column(ColumnRef("score")))])
-            await query.run(.init(input: .ir(.select(statement)), page: .init(limit: 1)), connection: connection)
+            await query.run(.init(input: .statement(.select(statement)), page: .init(limit: 1)), connection: connection)
             XCTAssertNil(query.failure)
             XCTAssertEqual(query.rows.map(\.values), [[.primitive(.int64(2))]])
             XCTAssertTrue(query.hasNextPage)
@@ -170,7 +196,7 @@ final class RuntimeServerTests: XCTestCase {
         let query = RuntimeQuery()
         let statement = SelectQuery(projection: [.wildcard()],
             source: .aliased(.values([[.int(7)], [.int(7)], [.int(7)]]), name: "input", columns: ["score"]))
-        await query.run(.init(input: .ir(.select(statement)), page: .init(limit: 1)), connection: connection)
+        await query.run(.init(input: .statement(.select(statement)), page: .init(limit: 1)), connection: connection)
         XCTAssertNil(query.failure)
         let firstRevision = query.pageRevision
         let firstRows = query.rows

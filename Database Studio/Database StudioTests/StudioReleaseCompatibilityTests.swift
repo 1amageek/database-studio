@@ -53,12 +53,12 @@ final class StudioReleaseCompatibilityTests: XCTestCase {
 
         try await expectFailure("SELECT 1", budget: ExecutionBudget(maximumIntermediateBytes: 64),
             state: "54000", connection: connection)
-        _ = try await connection.execute(DatabaseOperationCatalog.sqlExecute,
-            request: .init(input: .text("CREATE TABLE studio_release_denied (id integer)")))
+        _ = try await connection.execute(DatabaseOperationCatalog.queryExecute,
+            request: .init(input: .sql("CREATE TABLE studio_release_denied (id integer)")))
         try await expectFailure("WITH c AS (SELECT id FROM studio_release_denied) SELECT id FROM c",
             state: "42501", connection: connection)
-        _ = try await connection.execute(DatabaseOperationCatalog.sqlExecute,
-            request: .init(input: .text("DROP TABLE studio_release_denied")))
+        _ = try await connection.execute(DatabaseOperationCatalog.queryExecute,
+            request: .init(input: .sql("DROP TABLE studio_release_denied")))
 
         let query = RuntimeQuery()
         await query.run(.init(input: .text(language: .sql, statement: "SELECT 7")), connection: connection)
@@ -69,8 +69,8 @@ final class StudioReleaseCompatibilityTests: XCTestCase {
     private func expectFailure(_ statement: String, budget: ExecutionBudget = ExecutionBudget(),
         state: String, connection: RuntimeConnection) async throws {
         do {
-            _ = try await connection.execute(DatabaseOperationCatalog.sqlExecute,
-                request: .init(input: .text(statement), budget: budget))
+            _ = try await connection.execute(DatabaseOperationCatalog.queryExecute,
+                request: .init(input: .sql(statement), budget: budget))
             XCTFail("Expected an explicit SQL failure")
         } catch let error as DatabaseClientError {
             guard case .call(.remote(let remote)) = error else { throw error }

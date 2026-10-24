@@ -5,9 +5,9 @@ import DatabaseWire
 struct ResultPageRow: Identifiable {
     let id: Int
     let values: [DatabaseKit.QueryValue]
-    let canonical: DatabaseWire.QueryRow?
+    let canonical: DatabaseKit.QueryRow?
 
-    init(index: Int, row: DatabaseWire.QueryRow) {
+    init(index: Int, row: DatabaseKit.QueryRow) {
         id = index
         values = row.values
         canonical = row
