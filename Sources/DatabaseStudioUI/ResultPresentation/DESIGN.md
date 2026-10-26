@@ -135,6 +135,20 @@ its original text only when expanded, and JSONB exposes its canonical tree.
 Numeric summaries use exact decimal text with explicit scale for large scales.
 Display strings never replace the canonical response or become sort keys.
 
+### Readable value and metadata text
+`ResultValueFormat` derives display text exhaustively from every primitive kind;
+a debug description is never shown. Civil dates/times use ISO 8601 fields,
+timestamps render their exact UTC instant with a `Z` suffix in the proleptic
+Gregorian calendar, spans and fractions keep exact nanoseconds, references show
+entity and identifier, vectors their element count and type, and opaque bytes
+lowercase hexadecimal. The Inspector's Metadata shows the row version as
+hexadecimal bytes ("Not provided" when absent) and annotations as named original
+values through the same field view ("None" when empty). Raw renders one typed line
+per column (`name = kind(text)`, nested arrays/objects/composites/JSONB kept
+structurally), followed by `version` and `annotations`. Tests cover temporal
+boundaries including pre-epoch and year-zero instants, references, vectors, hex,
+and Raw metadata without debug type names.
+
 Loaded-page header ordering remains available for primitive and SQL numeric
 columns. Columns containing other SQL-specific values have no local sort control
 because Studio does not own their SQL comparison or collation. The existing

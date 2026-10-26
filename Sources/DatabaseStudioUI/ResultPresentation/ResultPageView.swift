@@ -216,8 +216,14 @@ struct ResultPageView: View {
                 }
                 if let canonical = row.canonical {
                     Section("Metadata") {
-                        LabeledContent("Version", value: canonical.version.map { String(describing: $0) } ?? "Not provided")
-                        Text(String(describing: canonical.annotations)).textSelection(.enabled)
+                        LabeledContent("Version") {
+                            Text(canonical.version.map(ResultValueFormat.hex) ?? "Not provided").textSelection(.enabled)
+                        }
+                        if canonical.annotations.isEmpty {
+                            LabeledContent("Annotations", value: "None")
+                        } else {
+                            ResultFieldView(name: "Annotations", value: .primitive(.object(canonical.annotations)))
+                        }
                         Text("Result-page selection does not establish a persisted record identity.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -258,7 +264,7 @@ struct ResultPageView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(state.originalRows) { row in
-                        Text(row.canonical.map { String(reflecting: $0) } ?? String(reflecting: state.quads[row.id]))
+                        Text(row.canonical.map { ResultRawText.row($0, columns: state.columns) } ?? String(reflecting: state.quads[row.id]))
                             .textSelection(.enabled).accessibilityIdentifier("result.raw.\(row.id)")
                     }
                 }.font(.system(.body, design: .monospaced)).padding()

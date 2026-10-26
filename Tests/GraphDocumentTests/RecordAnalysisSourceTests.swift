@@ -100,4 +100,17 @@ final class RecordAnalysisSourceTests: XCTestCase {
             } catch { XCTAssertNotNil(error as? RecordAnalysisSource.Failure) }
         }
     }
+
+    func testTemporalPrimitivesAreOmittedMeasurementsNotCategories() async throws {
+        let columns = try [QueryColumn(number: 1, name: "amount", type: .primitive(.int32), isNullable: true),
+            QueryColumn(number: 2, name: "at", type: .primitive(.timestamp), isNullable: true),
+            QueryColumn(number: 3, name: "day", type: .primitive(.date), isNullable: true)]
+        let row = DatabaseKit.QueryRow(values: [.int32(5), .timestamp(.init(secondsSinceUnixEpoch: 0)),
+            .date(try CivilDate(year: 2026, month: 10, day: 26))].map(DatabaseKit.QueryValue.primitive))
+        let dataset = try await RecordAnalysisSource(columns: columns, rows: [row], hasNextPage: false).dataset()
+        XCTAssertEqual(dataset.document.nodes[0].metrics["/amount"], 5)
+        XCTAssertNil(dataset.document.nodes[0].metadata["/at"])
+        XCTAssertNil(dataset.document.nodes[0].metadata["/day"])
+        XCTAssertTrue(dataset.warnings.contains { $0.contains("/at") && $0.contains("/day") })
+    }
 }

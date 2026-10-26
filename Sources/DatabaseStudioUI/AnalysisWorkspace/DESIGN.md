@@ -62,8 +62,11 @@ Projection reads primitive fields from QueryValue. Primitive objects and SQL
 composites traverse the same bounded escaped-field-path stack. SQL numeric values
 use their exact decimal value for the existing explicitly approximate Double
 projection; display scale and every original value remain in the canonical row.
-SQL JSON, arrays and temporal values are unsupported measurements and appear in
-the existing omitted-field warnings. They never become zero or synthetic values.
+SQL JSON, arrays and temporal values (SQL time/interval values and the primitive
+date, time, date-time, timestamp, time-span and calendar-period kinds) are
+unsupported measurements and appear in the existing omitted-field warnings; they
+never become categories. Other non-numeric scalars become categories using the
+readable value text, never a debug description. They never become zero or synthetic values.
 The existing row, field, depth, text, cancellation and finite-number limits apply
 to every branch. Component tests cover primitive parity, SQL numeric/composite
 projection, unsupported warnings and canonical preservation.

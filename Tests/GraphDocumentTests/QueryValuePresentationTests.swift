@@ -66,4 +66,44 @@ final class QueryValuePresentationTests: XCTestCase {
         XCTAssertEqual(ResultValueFormat.jsonb(.null), "null")
         XCTAssertEqual(ResultValueFormat.jsonb(.string("null")), "\"null\"")
     }
+
+    func testEveryPrimitiveKindHasReadableNonDebugText() throws {
+        let date = try CivilDate(year: 2000, month: 2, day: 29)
+        let time = try CivilTime(hour: 1, minute: 2, second: 3, nanoseconds: 450_000_000)
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.date(date)), "2000-02-29")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.time(time)), "01:02:03.45")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.dateTime(.init(date: date, time: time))), "2000-02-29T01:02:03.45")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timestamp(.init(secondsSinceUnixEpoch: 0))), "1970-01-01T00:00:00Z")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timestamp(.init(secondsSinceUnixEpoch: 951_782_400))), "2000-02-29T00:00:00Z")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timestamp(.init(secondsSinceUnixEpoch: 1_761_440_523))), "2025-10-26T01:02:03Z")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timestamp(try .init(secondsSinceUnixEpoch: -1, nanoseconds: 500_000_000))),
+            "1969-12-31T23:59:59.5Z")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timestamp(.init(secondsSinceUnixEpoch: -62_135_596_800))), "0001-01-01T00:00:00Z")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timestamp(.init(secondsSinceUnixEpoch: -62_135_596_801))), "0000-12-31T23:59:59Z")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timeSpan(try .init(seconds: -1, nanoseconds: 500_000_000))), "-0.5 s")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.timeSpan(try .init(seconds: 90))), "90 s")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.calendarPeriod(.init(months: 14, days: -3))), "14 months -3 days")
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.vector(Vector(int8: [1, 2, 3]))), "3 × int8 vector")
+        let reference = try EntityReference(entity: "Order", id: .composite([.string("A"), .int64(7)]))
+        XCTAssertEqual(ResultValueFormat.text(FieldValue.reference(reference)), "Order · (A, 7)")
+        XCTAssertEqual(ResultValueFormat.hex(ByteString([0x00, 0xab, 0x10])), "00ab10")
+        XCTAssertEqual(ResultValueFormat.hex(ByteString()), "empty")
+    }
+
+    func testRawRowRetainsKindsVersionAndAnnotations() throws {
+        let annotations = try FieldObject([("source", .string("primary")), ("score", .int64(3))])
+        let row = QueryRow(values: [.primitive(.timestamp(.init(secondsSinceUnixEpoch: 0))), .primitive(.bytes(ByteString([1, 255]))),
+            .primitive(.null)], annotations: annotations, version: ByteString([0, 0, 0, 9]))
+        let text = ResultRawText.row(row, columns: ["at", "payload", "missing"])
+        XCTAssertEqual(text, """
+            at = timestamp(1970-01-01T00:00:00Z)
+            payload = bytes(01ff)
+            missing = null
+            version = bytes(00000009)
+            annotations = {score: int64(3), source: string("primary")}
+            """)
+        XCTAssertFalse(text.contains("FieldObject("))
+        XCTAssertFalse(text.contains("ByteString("))
+        XCTAssertEqual(ResultRawText.row(QueryRow(values: []), columns: []), "version = none\nannotations = {}")
+    }
 }

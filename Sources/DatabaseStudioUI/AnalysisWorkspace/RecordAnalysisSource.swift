@@ -64,7 +64,8 @@ struct RecordAnalysisSource: Sendable {
                     let converted = Double(value.coefficient) * pow(10, -Double(value.scale))
                     guard converted.isFinite, value.coefficient == 0 || converted != 0 else { throw Failure.nonfinite(path) }
                     metrics[path] = converted; approximate.insert(path)
-                case .array, .bytes, .vector: omitted.insert(path)
+                case .array, .bytes, .vector, .date, .time, .dateTime, .timestamp, .timeSpan, .calendarPeriod:
+                    omitted.insert(path)
                 case .rdfTerm(.literal(let literal)):
                     textBytes += literal.lexicalForm.utf8.count + literal.datatypeIRI.rawValue.utf8.count
                     let datatype = literal.datatypeIRI.rawValue
@@ -92,7 +93,7 @@ struct RecordAnalysisSource: Sendable {
                         metadata[path] = literal.lexicalForm
                     } else { metadata[path] = literal.description }
                 default:
-                    let text = String(describing: field); metadata[path] = text; textBytes += text.utf8.count
+                    let text = ResultValueFormat.text(field); metadata[path] = text; textBytes += text.utf8.count
                 }
                 case .numeric(let value):
                     let converted = Double(value.value.coefficient) * pow(10, -Double(value.value.scale))
