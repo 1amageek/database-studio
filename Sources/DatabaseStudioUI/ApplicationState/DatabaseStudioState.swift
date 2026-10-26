@@ -9,7 +9,7 @@ public final class DatabaseStudioState {
     // MARK: - Database Dependencies
 
     @ObservationIgnored
-    public let databaseSession = StudioDatabaseSession()
+    public let databaseSession: StudioDatabaseSession
 
     @ObservationIgnored
     public let metricsRecorder: DatabaseMetricsRecorder = DatabaseMetricsRecorder()
@@ -57,6 +57,10 @@ public final class DatabaseStudioState {
     @ObservationIgnored
     private var currentItemsLoadID: UUID?
 
+    /// Advances on every connection reset; async work publishes only within the epoch that started it.
+    @ObservationIgnored
+    private var sessionEpoch: UInt64 = 0
+
     // MARK: - Computed Properties
 
     /// Selected Schema.Entity
@@ -80,7 +84,13 @@ public final class DatabaseStudioState {
         return currentItems.first { $0.id == id }
     }
 
-    public init() {}
+    public convenience init() {
+        self.init(databaseSession: StudioDatabaseSession())
+    }
+
+    init(databaseSession: StudioDatabaseSession) {
+        self.databaseSession = databaseSession
+    }
 
     // MARK: - Session State Management
 
@@ -89,6 +99,7 @@ public final class DatabaseStudioState {
     /// Called by both `connect()` and `disconnect()`. Any new session state
     /// property added to this class MUST be reset here.
     private func resetSessionState() {
+        sessionEpoch &+= 1
         selectedEntityName = nil
         selectedIndexName = nil
         selectedItemID = nil
@@ -184,19 +195,22 @@ public final class DatabaseStudioState {
     }
 
     public func refreshEntities() async {
+        let epoch = sessionEpoch
         isLoadingEntities = true
         databaseOperationFailureMessage = nil
-        defer { isLoadingEntities = false }
+        defer { if sessionEpoch == epoch { isLoadingEntities = false } }
 
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
             try await databaseSession.loadEntities()
+            guard sessionEpoch == epoch else { return }
             buildEntityTree()
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordSuccess(duration: duration, description: "Refresh entities", operationType: .read)
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordFailure(duration: duration, description: "Refresh entities", operationType: .read)
+            guard sessionEpoch == epoch else { return }
             databaseOperationFailureMessage = error.localizedDescription
         }
     }
@@ -308,6 +322,7 @@ public final class DatabaseStudioState {
         if let sampleRecordsProvider {
             return sampleRecordsProvider(entityName)
         }
+        let epoch = sessionEpoch
         let startTime = CFAbsoluteTimeGetCurrent()
         databaseOperationFailureMessage = nil
         do {
@@ -318,7 +333,7 @@ public final class DatabaseStudioState {
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordFailure(duration: duration, description: "Load all items: \(entityName)", typeName: entityName, operationType: .scan)
-            databaseOperationFailureMessage = error.localizedDescription
+            if sessionEpoch == epoch { databaseOperationFailureMessage = error.localizedDescription }
             throw error
         }
     }
@@ -326,6 +341,7 @@ public final class DatabaseStudioState {
     /// Load OWL ontology from the OntologyStore.
     public func loadOntology() async throws -> OWLOntology? {
         if sampleRecordsProvider != nil { return nil }
+        let epoch = sessionEpoch
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
             let ontology = try await databaseSession.loadOntology()
@@ -335,7 +351,7 @@ public final class DatabaseStudioState {
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordFailure(duration: duration, description: "Load ontology", operationType: .read)
-            databaseOperationFailureMessage = error.localizedDescription
+            if sessionEpoch == epoch { databaseOperationFailureMessage = error.localizedDescription }
             throw error
         }
     }
@@ -346,6 +362,7 @@ public final class DatabaseStudioState {
               let entityName = selectedEntityName else { return }
 
         let operationID = currentItemsLoadID
+        let epoch = sessionEpoch
         isLoadingMoreItems = true
         databaseOperationFailureMessage = nil
 
@@ -356,7 +373,7 @@ public final class DatabaseStudioState {
             let allItems = try await databaseSession.records(typeName: entityName, limit: newLimit + 1)
 
             // Staleness check: entity may have changed during await
-            guard currentItemsLoadID == operationID, selectedEntityName == entityName else { return }
+            guard sessionEpoch == epoch, currentItemsLoadID == operationID, selectedEntityName == entityName else { return }
 
             let hasMore = allItems.count > newLimit
             let pageRecords = allItems.prefix(newLimit)
@@ -376,6 +393,7 @@ public final class DatabaseStudioState {
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordFailure(duration: duration, description: "Load more items: \(entityName)", typeName: entityName, operationType: .read)
+            guard sessionEpoch == epoch else { return }
             databaseOperationFailureMessage = error.localizedDescription
         }
 
@@ -409,17 +427,21 @@ public final class DatabaseStudioState {
     // MARK: - Statistics
 
     public func loadCollectionStats(for entityName: String) async {
+        let epoch = sessionEpoch
         isLoadingStats = true
-        defer { isLoadingStats = false }
+        defer { if sessionEpoch == epoch { isLoadingStats = false } }
 
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
-            currentCollectionStats = try await databaseSession.collectionStatistics(typeName: entityName)
+            let statistics = try await databaseSession.collectionStatistics(typeName: entityName)
+            guard sessionEpoch == epoch else { return }
+            currentCollectionStats = statistics
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordSuccess(duration: duration, description: "Load stats: \(entityName)", typeName: entityName, operationType: .read)
         } catch {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             metricsRecorder.recordFailure(duration: duration, description: "Load stats: \(entityName)", typeName: entityName, operationType: .read)
+            guard sessionEpoch == epoch else { return }
             currentCollectionStats = nil
             databaseOperationFailureMessage = error.localizedDescription
         }
