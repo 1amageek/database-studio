@@ -47,7 +47,7 @@ final class RuntimeServerTests: XCTestCase {
         do {
             try await connection.connect(configuration: configuration())
             XCTAssertTrue(connection.isConnected)
-            XCTAssertEqual(connection.capabilities?.runtimeVersion, "26.1022.1")
+            XCTAssertEqual(connection.capabilities?.runtimeVersion, "26.1026.0")
             XCTAssertNotNil(connection.schema)
             XCTAssertTrue(connection.capabilities?.features.contains { $0.identifier == "schema.execute" } == true)
             let capabilities = try await connection.execute(DatabaseOperationCatalog.capabilitiesDescribe,

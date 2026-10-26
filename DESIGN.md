@@ -157,11 +157,13 @@ Sample application design: [Maintenance Studio](Examples/MaintenanceStudio/DESIG
 ## Dependency Compatibility
 
 Studio consumes the canonical QueryStatement/SQLBlock execution contract through
-revision-pinned Framework, Kit and Client URL dependencies; StorageKit remains
-26.1021.0. Package and application/workspace locks must agree on the Database contract
-revisions while retaining their existing unrelated dependency pins. The ordinary
-DatabaseWire graph remains target-free. Server 26.1022.1 with the matching query
-contract is the native integration peer, not a linked Studio dependency.
+published Framework, Kit, Client and StorageKit 26.1026.0 URL dependencies. Package
+and application/workspace locks must select those matching release revisions while
+retaining their existing unrelated dependency pins, including each graph's existing
+Swift Collections version. The ordinary DatabaseWire graph remains target-free.
+The released Server 26.1026.0 executable is the isolated native integration peer,
+not a linked Studio dependency. This dependency update preserves the application's
+versioning, signing, API, scene composition and connection ownership.
 Authorization, execution budgets and rollback stay in Framework/Server; Studio
 owns bounded presentation and ordered result selection. See
 [RuntimeQuery](Sources/DatabaseStudioUI/RuntimeQuery/DESIGN.md).
@@ -189,6 +191,8 @@ directory and build products with the host's own folder privacy; when they live
 in a privacy-protected folder such as Desktop, the runner waits for approval and
 the run hangs instead of failing. Keep them outside protected folders.
 
+### Prior verification scope
+
 The package regression lane uses the same clean-configuration rule. A clean
 Framework 26.1022.1 build passed all 118 package tests after prior diagnostic
 configurations had accumulated stale runtime paths and host substitutions.
@@ -210,3 +214,32 @@ columns/values, select SQLBlock outcomes independently, and retain COPY bytes.
 Both lanes run against an isolated authenticated SQLite server and require zero
 failures, skips, expected failures and runtime warnings plus negative readiness
 after authoritative shutdown.
+
+### 26.1026.0 verification contract
+
+```text
+Studio UI -> canonical query operation -> released Server 26.1026.0
+    -> Framework execution -> isolated SQLite storage
+```
+
+The URL-resolved package graph must pass all 126 tests, including its real-server
+2,000-row collection and retained numeric dataset tests without skips. The app
+must compile and pass all 19 runtime integration tests, including SQL/IR value
+and column equality, ordered SQLBlock/COPY outcomes, authorization rejection,
+resource-limit failure, transaction rollback, pagination, cancellation and
+transport shutdown. The harness owns a private SQLite file, credentials, listener,
+test host and authoritative server teardown with negative readiness. Build and
+testing libraries remain outside privacy-protected folders; staging identical
+testing-library bytes changes only their test-process search path. Raw logs,
+unique result bundles, source hashes and resolved graphs retain compiler and
+runtime provenance. No backend or execution contract moves into Studio.
+
+The 2026-10-26 update passed the URL-resolved package focused 8 and consolidated
+126 tests, and app focused 4 and consolidated 19 tests, against the exact released
+Server 26.1026.0 executable on macOS 27.0.1 arm64 with the existing September 4
+compiler. All runs reported zero failures, skips, expected failures and runtime
+warnings. Both service harnesses proved negative readiness after authoritative
+shutdown. The package retains the pre-existing duplicate `/usr/local/lib` rpath
+linker warning; no compiler, macro-plugin or testing-runtime internal error was
+reported. Workspace selection and fresh test-configuration generation were
+corrected only in the isolated verification workspace, without product changes.
