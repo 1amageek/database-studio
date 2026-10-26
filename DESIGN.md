@@ -222,9 +222,10 @@ Studio UI -> canonical query operation -> released Server 26.1026.0
     -> Framework execution -> isolated SQLite storage
 ```
 
-The URL-resolved package graph must pass all 126 tests, including its real-server
+The URL-resolved package graph must pass all 135 tests, including its real-server
 2,000-row collection and retained numeric dataset tests without skips. The app
-must compile and pass all 19 runtime integration tests, including SQL/IR value
+must compile and pass all 20 runtime integration tests, including SQL-relation
+catalog browsing of a SQL-created table, SQL/IR value
 and column equality, ordered SQLBlock/COPY outcomes, authorization rejection,
 resource-limit failure, transaction rollback, pagination, cancellation and
 transport shutdown. The harness owns a private SQLite file, credentials, listener,
@@ -243,3 +244,14 @@ shutdown. The package retains the pre-existing duplicate `/usr/local/lib` rpath
 linker warning; no compiler, macro-plugin or testing-runtime internal error was
 reported. Workspace selection and fresh test-configuration generation were
 corrected only in the isolated verification workspace, without product changes.
+
+The 2026-10-26 design-conformance change (connection-epoch publication, first-page
+complete collection, readable metadata/temporal text, SQL-relation Data browsing)
+passed package focused 23 and consolidated 135 tests and app consolidated 20 tests
+against the same released Server 26.1026.0 and compiler, with zero failures, skips,
+expected failures and runtime warnings and negative readiness after teardown. Native
+verification connected the real app to an isolated server: a SQL-created table is
+listed under Tables by its SQL schema/name while its physical entity appears only
+under Storage Entities; selecting the table loads its rows with ISO 8601 timestamps,
+the Inspector shows the version as hexadecimal bytes and empty annotations as None,
+and selecting the storage entity opens schema inspection rather than a Data query.
