@@ -159,7 +159,10 @@ Verification checks typing, query execution, internal margins and mode changes.
 ## Complete Query Result Collection
 
 The explicit Load Remaining action follows the current applied request and its
-continuation, never draft editor text. It collects row pages only, then publishes
+continuation, never draft editor text. It is available only while the published
+page is the first page of that request (the applied page has no continuation):
+after Next Page the retained rows no longer begin the population, so a complete
+result requires running the query again. It collects row pages only, then publishes
 one result revision. It preserves duplicates and order; page-local identities are
 rebuilt only after successful publication. The analysis row ceiling and applied
 ExecutionBudget.maximumRows bound the combined row count. The applied intermediate

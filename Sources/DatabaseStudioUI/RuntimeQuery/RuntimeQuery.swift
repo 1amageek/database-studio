@@ -69,9 +69,11 @@ final class RuntimeQuery {
         }
     }
 
+    /// Collection starts only from the first page of the applied request; after
+    /// Next Page the retained rows no longer begin the result population.
     var canCollectRows: Bool {
-        if case .rows = response { return hasNextPage && !isRunning }
-        return false
+        guard case .rows = response, request?.page?.continuation == nil else { return false }
+        return hasNextPage && !isRunning
     }
 
     /// Publishes the whole admitted row result once; failures retain the prior page.

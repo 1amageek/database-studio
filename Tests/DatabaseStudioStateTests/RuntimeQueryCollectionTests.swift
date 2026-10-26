@@ -48,6 +48,25 @@ final class RuntimeQueryCollectionTests: XCTestCase {
         XCTAssertFalse(query.canCollectRows)
     }
 
+    func testCollectionIsUnavailableAfterNextPage() async throws {
+        let source = Source()
+        source.pages = try [page([1, 2], token: 1), page([3, 4], token: 2)]
+        let query = RuntimeQuery()
+        await query.run(.init(input: .text(language: .sql, statement: "SELECT value FROM Items"),
+            page: .init(limit: 2)), connection: source)
+        XCTAssertTrue(query.canCollectRows)
+        await query.nextPage(connection: source)
+        XCTAssertEqual(query.rows.map(\.values), [[.primitive(.int32(3))], [.primitive(.int32(4))]])
+        XCTAssertTrue(query.hasNextPage)
+        XCTAssertFalse(query.canCollectRows, "Rows after Next Page do not start the result population")
+        let revision = query.pageRevision
+        await query.loadRemainingPages(connection: source)
+        XCTAssertEqual(source.requests.count, 2)
+        XCTAssertEqual(query.pageRevision, revision)
+        XCTAssertTrue(query.hasNextPage)
+        XCTAssertNil(query.failure)
+    }
+
     func testCollectionPreservesAppliedRequestDuplicatesAndPresentation() async throws {
         let source = Source()
         source.pages = try [page([1, 1], token: 1), page([2, 3], token: 2), page([4])]
