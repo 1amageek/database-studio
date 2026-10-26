@@ -155,6 +155,50 @@ final class RuntimeServerTests: XCTestCase {
         await connection.disconnect()
     }
 
+    func testRelationCatalogBrowsesSQLCreatedTableBySQLNames() async throws {
+        let connection = RuntimeConnection()
+        try await connection.connect(configuration: configuration())
+        let setup = RuntimeQuery()
+        func execute(_ statement: String) async throws {
+            await setup.run(.init(input: .sql(statement)), connection: connection)
+            if let failure = setup.failure { throw RuntimeRelationTestFailure.statement(statement, failure) }
+        }
+        do {
+            try await execute("CREATE TABLE public.studio_relation_items (label text, score bigint)")
+            try await execute("INSERT INTO public.studio_relation_items (label, score) VALUES ('a', 3), ('b', 1), ('c', 2)")
+            try await connection.refreshSchema()
+            XCTAssertNil(connection.relationCatalogFailure)
+            let relation = try XCTUnwrap(connection.relations.first { $0.schema == "public" && $0.name == "studio_relation_items" })
+            XCTAssertEqual(relation.columns.map(\.name), ["label", "score"])
+            XCTAssertEqual(relation.tableReference, TableRef(schema: "public", table: "studio_relation_items"))
+            XCTAssertFalse(connection.schema?.entities.contains { $0.name == relation.name } ?? true,
+                           "The storage entity of a SQL-created table is not named by its SQL name")
+
+            let workspace = RuntimeRecordsWorkspace()
+            workspace.sortField = "score"
+            workspace.pageLimit = 2
+            workspace.filter = RuntimeRecordFilter(field: "score", comparison: .greaterThanOrEqual, valueType: .int64, text: "1")
+            await workspace.query.run(try workspace.request(for: relation), connection: connection)
+            XCTAssertNil(workspace.query.failure)
+            XCTAssertEqual(workspace.query.rows.map(\.values), [[.primitive(.string("b")), .primitive(.int64(1))],
+                                                              [.primitive(.string("c")), .primitive(.int64(2))]])
+            XCTAssertTrue(workspace.query.hasNextPage)
+            await workspace.query.nextPage(connection: connection)
+            XCTAssertNil(workspace.query.failure)
+            XCTAssertEqual(workspace.query.rows.map(\.values), [[.primitive(.string("a")), .primitive(.int64(3))]])
+            XCTAssertFalse(workspace.query.hasNextPage)
+
+            try await execute("DROP TABLE public.studio_relation_items")
+            try await connection.refreshSchema()
+            XCTAssertFalse(connection.relations.contains { $0.id == relation.id })
+        } catch {
+            await setup.run(.init(input: .sql("DROP TABLE IF EXISTS public.studio_relation_items")), connection: connection)
+            await connection.disconnect()
+            throw error
+        }
+        await connection.disconnect()
+    }
+
     func testTypedServerFilterBeforePaging() async throws {
         var filter = RuntimeRecordFilter(field: "score", comparison: .greaterThan, valueType: .int64, text: "1")
         let connection = RuntimeConnection()
@@ -365,4 +409,8 @@ final class RuntimeServerTests: XCTestCase {
         XCTAssertNil(connection.schema)
         XCTAssertFalse(connection.isConnecting)
     }
+}
+
+private enum RuntimeRelationTestFailure: Error {
+    case statement(String, String)
 }

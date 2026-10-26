@@ -10,6 +10,10 @@ final class RuntimeConnection {
     private(set) var isConnecting = false
     private(set) var capabilities: CapabilitiesDescribeOperation.Response?
     private(set) var schema: SchemaDescribeOperation.Response?
+    /// SQL relations for Data browsing; storage entities in `schema` are inspection only.
+    private(set) var relations: [RuntimeRelation] = []
+    /// A catalog failure leaves the handshake, schema inspection and Query usable.
+    private(set) var relationCatalogFailure: String?
     var isConnected: Bool { capabilities != nil && schema != nil }
 
     @ObservationIgnored private var generation: UInt64 = 0
@@ -27,6 +31,8 @@ final class RuntimeConnection {
         client = nil
         capabilities = nil
         schema = nil
+        relations = []
+        relationCatalogFailure = nil
         isConnecting = true
         await previous?.shutdown()
         do {
@@ -40,9 +46,15 @@ final class RuntimeConnection {
                 DatabaseOperationCatalog.schemaDescribe, request: EmptyOperationPayload())
             try Task.checkCancellation()
             guard generation == current else { throw CancellationError() }
+            let catalog = await Self.loadRelationCatalog {
+                try await candidateClient.execute(DatabaseOperationCatalog.queryExecute, request: $0)
+            }
+            try Task.checkCancellation()
+            guard generation == current else { throw CancellationError() }
             self.client = candidateClient
             self.capabilities = capabilities
             self.schema = schema
+            publish(catalog)
             isConnecting = false
         } catch {
             await candidate.shutdown()
@@ -51,6 +63,8 @@ final class RuntimeConnection {
                 client = nil
                 capabilities = nil
                 schema = nil
+                relations = []
+                relationCatalogFailure = nil
                 isConnecting = false
             }
             if Task.isCancelled || generation != current { throw CancellationError() }
@@ -82,7 +96,32 @@ final class RuntimeConnection {
         let result = try await execute(DatabaseOperationCatalog.schemaDescribe, request: EmptyOperationPayload())
         try Task.checkCancellation()
         guard current == generation, refresh == schemaRefreshGeneration else { throw CancellationError() }
+        let catalog = await Self.loadRelationCatalog {
+            try await self.execute(DatabaseOperationCatalog.queryExecute, request: $0)
+        }
+        try Task.checkCancellation()
+        guard current == generation, refresh == schemaRefreshGeneration else { throw CancellationError() }
         schema = result
+        publish(catalog)
+    }
+
+    /// Callers re-check cancellation and generation; other failures become a published value.
+    private static func loadRelationCatalog(
+        _ execute: (QueryExecuteOperation.Request) async throws -> QueryExecuteOperation.Response
+    ) async -> Result<[RuntimeRelation], any Error> {
+        do { return .success(try await RuntimeRelationCatalog.load(execute)) }
+        catch { return .failure(error) }
+    }
+
+    /// A failed refresh retains the previous relations and reports the failure.
+    private func publish(_ catalog: Result<[RuntimeRelation], any Error>) {
+        switch catalog {
+        case .success(let loaded):
+            relations = loaded
+            relationCatalogFailure = nil
+        case .failure(let error):
+            relationCatalogFailure = error.localizedDescription
+        }
     }
 
     func disconnect() async {
@@ -92,6 +131,8 @@ final class RuntimeConnection {
         client = nil
         capabilities = nil
         schema = nil
+        relations = []
+        relationCatalogFailure = nil
         isConnecting = false
         await previous?.shutdown()
     }

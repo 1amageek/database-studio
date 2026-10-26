@@ -1,5 +1,6 @@
 import SwiftUI
 import DatabaseClientHTTP
+import DatabaseWire
 
 /// Authenticated server access within the base database workspace.
 public struct RuntimeConnectionView: View {
@@ -15,7 +16,7 @@ public struct RuntimeConnectionView: View {
     @State private var history = RuntimeConnectionHistory.shared
     @State private var rememberToken = false
     private let credentials = RuntimeCredentialStore()
-    @State private var selectedEntity: String?
+    @State private var selection: RuntimeBrowserSelection?
     @State private var showsQuery = false
     @State private var queryWorkspace = RuntimeQueryWorkspace()
     @State private var recordsWorkspace = RuntimeRecordsWorkspace()
@@ -27,8 +28,27 @@ public struct RuntimeConnectionView: View {
     public var body: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                List(selection: $selectedEntity) {
-                    Section("Entities") {
+                List(selection: $selection) {
+                    Section("Tables") {
+                        if let failure = connection.relationCatalogFailure {
+                            Label(failure, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.caption)
+                        }
+                        ForEach(connection.relations) { relation in
+                            DisclosureGroup {
+                                ForEach(relation.columns, id: \.name) { column in
+                                    LabeledContent(column.name, value: column.dataType)
+                                        .font(.caption).help(column.isNullable ? "Nullable" : "Not null")
+                                }
+                            } label: {
+                                HStack {
+                                    Label(relation.name, systemImage: "tablecells")
+                                    Spacer()
+                                    Text(relation.schema).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }.tag(RuntimeBrowserSelection.relation(relation.id))
+                        }
+                    }
+                    Section("Storage Entities") {
                         ForEach(connection.schema?.entities ?? [], id: \.name) { entity in
                             DisclosureGroup {
                                 Section("Fields") {
@@ -48,7 +68,7 @@ public struct RuntimeConnectionView: View {
                                     Spacer()
                                     Text("\(entity.fields.count) fields").font(.caption).foregroundStyle(.secondary)
                                 }
-                            }.tag(entity.name)
+                            }.tag(RuntimeBrowserSelection.entity(entity.name))
                         }
                     }
                 }.listStyle(.sidebar).navigationTitle("Browser")
@@ -66,10 +86,13 @@ public struct RuntimeConnectionView: View {
                 Group {
                     if showsQuery {
                         RuntimeQueryView(connection: connection, historyScope: [endpoint, databaseID, tenantID, workspaceID], workspace: queryWorkspace)
-                    } else if let selectedEntity {
-                        RuntimeRecordsView(connection: connection, entityName: selectedEntity, workspace: recordsWorkspace).id(selectedEntity)
+                    } else if let relation = selectedRelation {
+                        RuntimeRecordsView(connection: connection, relation: relation, workspace: recordsWorkspace).id(relation.id)
+                    } else if let entity = selectedStorageEntity {
+                        Form { RuntimeEntityInspection(entity: entity) }.formStyle(.grouped)
+                            .navigationTitle(entity.name)
                     } else {
-                        ContentUnavailableView("Select an Entity", systemImage: "tablecells", description: Text("Select a database entity in the browser, or open Query."))
+                        ContentUnavailableView("Select a Table", systemImage: "tablecells", description: Text("Select a table to browse its data, a storage entity to inspect it, or open Query."))
                     }
                 }
                 .toolbar {
@@ -86,7 +109,7 @@ public struct RuntimeConnectionView: View {
             }
         }
         .navigationTitle(connection.isConnected ? databaseID : "Database Studio")
-        .navigationSubtitle(connection.isConnected ? ([selectedEntity, tenantID.isEmpty ? nil : tenantID, workspaceID.isEmpty ? nil : workspaceID].compactMap { $0 }.joined(separator: " / ")) : "Connect to Server")
+        .navigationSubtitle(connection.isConnected ? ([selectionTitle, tenantID.isEmpty ? nil : tenantID, workspaceID.isEmpty ? nil : workspaceID].compactMap { $0 }.joined(separator: " / ")) : "Connect to Server")
         .toolbar {
             if connection.isConnected {
                 Button("Database Info", systemImage: "info.circle") { showsDatabaseInfo = true }
@@ -99,8 +122,8 @@ public struct RuntimeConnectionView: View {
                         do {
                             try await connection.refreshSchema()
                             failure = nil
-                            if !((connection.schema?.entities ?? []).contains { $0.name == selectedEntity }) {
-                                selectedEntity = nil
+                            if selection != nil, selectedRelation == nil, selectedStorageEntity == nil {
+                                selection = nil
                             }
                         } catch is CancellationError {
                             return
@@ -124,13 +147,31 @@ public struct RuntimeConnectionView: View {
                 }
             } catch { failure = error.localizedDescription }
         }
-        .onChange(of: selectedEntity) { _, _ in
+        .onChange(of: selection) { _, _ in
             recordsWorkspace.query.cancel()
             recordsWorkspace.query.presentation?.cancel()
             recordsWorkspace = RuntimeRecordsWorkspace()
             showsQuery = false
         }
         .onDisappear { disconnect() }
+    }
+
+    private var selectedRelation: RuntimeRelation? {
+        guard case .relation(let id) = selection else { return nil }
+        return connection.relations.first { $0.id == id }
+    }
+
+    private var selectedStorageEntity: SchemaDescribeOperation.Entity? {
+        guard case .entity(let name) = selection else { return nil }
+        return connection.schema?.entities.first { $0.name == name }
+    }
+
+    private var selectionTitle: String? {
+        switch selection {
+        case .relation(let id): id.schema + "." + id.name
+        case .entity(let name): name
+        case nil: nil
+        }
     }
 
     private var connectionForm: some View {
@@ -200,43 +241,8 @@ public struct RuntimeConnectionView: View {
                     LabeledContent("Schema version", value: String(describing: schema.version))
                 }
             }
-            if let entity = connection.schema?.entities.first(where: { $0.name == selectedEntity }) {
-                Section(entity.name) {
-                    ForEach(entity.fields, id: \.number) { field in
-                        DisclosureGroup(field.name) {
-                            LabeledContent("Field number", value: String(field.number))
-                            LabeledContent("Type", value: String(describing: field.type))
-                            LabeledContent("Nullable", value: field.nullable ? "Yes" : "No")
-                            if let reference = field.reference {
-                                LabeledContent("Target entity", value: reference.targetEntity)
-                                LabeledContent("Cardinality", value: String(describing: reference.cardinality))
-                                LabeledContent("Delete rule", value: String(describing: reference.deleteRule))
-                            }
-                        }
-                    }
-                }
-                Section("Indexes") {
-                    if entity.indexes.isEmpty {
-                        Text("No indexes declared.").foregroundStyle(.secondary)
-                    }
-                    ForEach(entity.indexes, id: \.name) { index in
-                        DisclosureGroup(index.name) {
-                            LabeledContent("Type", value: String(describing: index.type))
-                            ForEach(Array(index.fields.enumerated()), id: \.offset) { position, number in
-                                LabeledContent("Field \(position + 1)", value:
-                                    entity.fields.first(where: { $0.number == number }).map { "#\(number) · \($0.name)" }
-                                        ?? "#\(number) · unresolved")
-                            }
-                            Text(String(reflecting: index.options))
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                Section("Schema availability") {
-                    Text("This server response does not include identifier types, Directory/Partition definitions, or complete field constraints.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+            if let entity = selectedStorageEntity {
+                RuntimeEntityInspection(entity: entity)
             }
             Section("Advertised Features") {
                 ForEach(connection.capabilities?.features ?? [], id: \.identifier) { feature in
@@ -311,7 +317,7 @@ public struct RuntimeConnectionView: View {
         recordsWorkspace = RuntimeRecordsWorkspace()
         operation?.cancel()
         operation = nil
-        selectedEntity = nil
+        selection = nil
         accessToken = ""
         Task { await connection.disconnect() }
     }

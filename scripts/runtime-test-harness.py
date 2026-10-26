@@ -29,7 +29,7 @@ selectors = args.only_testing or [
     'Database StudioTests/RuntimeConnectionPersistenceTests',
     'Database StudioTests/StudioReleaseCompatibilityTests',
 ]
-expected_count = args.expected_test_count if args.only_testing else 19
+expected_count = args.expected_test_count if args.only_testing else 20
 root = Path(__file__).resolve().parents[1]
 args.results.mkdir(parents=True, exist_ok=False)
 env = {k: v for k, v in os.environ.items() if not any(word in k.upper() for word in ('TOKEN', 'PASSWORD', 'SECRET', 'API_KEY'))}
@@ -97,10 +97,12 @@ with tempfile.TemporaryDirectory(prefix='studio-runtime-test-') as directory:
                 process.kill()
                 process.wait()
     # The server denies entity data to every role, including admin, unless the
-    # launch document names the entity; only the persisted CRUD fixture needs it.
+    # launch document names the entity or SQL table; only the fixtures need it.
     launch = json.loads(config.read_text())
-    launch['entityPolicies'] = [{'entity': 'StudioQueryItem', 'roles': {
-        operation: ['admin'] for operation in ('list', 'get', 'create', 'update', 'delete')}}]
+    admin = {operation: ['admin'] for operation in ('list', 'get', 'create', 'update', 'delete')}
+    launch['entityPolicies'] = [{'entity': 'StudioQueryItem', 'roles': admin}]
+    # SQL-owned tables are authorized only by their exact logical SQL name.
+    launch['sqlTablePolicies'] = [{'schema': 'public', 'table': 'studio_relation_items', 'roles': admin}]
     config.write_text(json.dumps(launch))
     with (args.results / 'server.log').open('w') as log:
         server = subprocess.Popen([str(args.server), 'serve', '--config', str(config)],

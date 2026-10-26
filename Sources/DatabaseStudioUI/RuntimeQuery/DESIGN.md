@@ -71,18 +71,29 @@ before retrying. A cancelled or superseded request cannot publish a later succes
 Each explicit mutation submission creates one UUID idempotency key in canonical
 request metadata. No automatic retry generates additional keys.
 
-## Entity Browsing
+## Relation Browsing
 
-The Data tab constructs a typed SELECT over the selected schema entity. Entity
-names are values in TableRef, never interpolated SQL. Selecting a different entity
-creates a fresh view/query lifetime and cancels the previous task. It reuses the
-query result renderer and continuation owner. Loading, denied, empty and failed
-states remain distinct. Schema/partition metadata unavailable in schema.describe
-must not be inferred from entity names; partition editing remains a FULL-03 gap.
+The Data tab browses SQL relations named by the SQL catalog, not storage entities.
+schema.describe reports the physical storage schema, whose entity and field names
+can differ from SQL names: SQL-created tables use opaque physical entity names and
+numbered physical fields, and SQL renames never change physical names. A storage
+entity name is therefore never used as a TableRef and is never translated into a
+SQL name. [RuntimeConnection](../RuntimeConnection/DESIGN.md) supplies the relation
+catalog; selecting a relation constructs a typed SELECT whose TableRef carries the
+catalog schema and relation name as values, never interpolated SQL, so resolution
+does not depend on the search path. Selecting a different relation creates a fresh
+view/query lifetime and cancels the previous task. It reuses the query result
+renderer and continuation owner. Loading, denied, empty and failed states remain
+distinct. Partition metadata unavailable in the catalog must not be inferred from
+names; partition editing remains a FULL-03 gap.
 
-Entity browsing accepts a declared field as a typed SortKey and a positive page
-size bounded by ExecutionBudget.maximumRows. Apply starts a new query; continuation
-uses the previous request unchanged even if draft controls are edited.
+Relation browsing accepts one of the relation's catalog column names as a typed
+SortKey and a positive page size bounded by ExecutionBudget.maximumRows.
+RuntimeRecordsWorkspace owns request construction from the applied options; Apply
+starts a new query; continuation uses the previous request unchanged even if draft
+controls are edited. A real-server test creates a SQL table, finds it in the
+catalog by its SQL schema/name/columns, browses it through the same request
+construction with ordering, filtering and paging, and drops it.
 
 ## Result Inspection
 
@@ -94,7 +105,7 @@ an unrelated row after continuation. The query owner advances a page revision on
 
 ### Server Filter
 
-The Data tab owns a draft field/comparison/typed scalar condition. Apply validates
+The Data tab owns a draft catalog-column/comparison/typed scalar condition. Apply validates
 its scalar text and supplies an Expression to SelectQuery.filter before paging.
 It never filters the current page locally. Strings are literal values, not SQL.
 Signed and unsigned integers preserve their full 64-bit range; malformed,
@@ -198,7 +209,7 @@ bundle; native verification uses the actual app, not a UI XCTest host.
 ## Canonical Query Outcomes
 
 The query editor submits QueryInput using QueryLanguage and accepts complete
-QueryResult by default. Entity browsing retains explicit read-only pages.
+QueryResult by default. Relation browsing retains explicit read-only pages.
 A block preserves its ordered outcomes and independent schemas; the result pane
 selects one statement outcome and materializes only its selected row/graph page.
 Commands, affected counts and COPY bytes have explicit presentations and are not

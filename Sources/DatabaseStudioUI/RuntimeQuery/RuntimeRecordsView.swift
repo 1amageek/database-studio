@@ -2,10 +2,10 @@ import SwiftUI
 import DatabaseKit
 import DatabaseWire
 
-/// Browses the selected entity through the canonical server query operation.
+/// Browses the selected SQL relation through the canonical server query operation.
 struct RuntimeRecordsView: View {
     let connection: RuntimeConnection
-    let entityName: String
+    let relation: RuntimeRelation
     @Bindable var workspace: RuntimeRecordsWorkspace
     private var query: RuntimeQuery { workspace.query }
     @State private var operation: Task<Void, Never>?
@@ -24,7 +24,7 @@ struct RuntimeRecordsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(entityName)
+        .navigationTitle(relation.name)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button("Data Options", systemImage: "line.3.horizontal.decrease.circle") { showOptions = true }
@@ -44,7 +44,7 @@ struct RuntimeRecordsView: View {
             }
         }
         .sheet(isPresented: $showOptions) {
-            RuntimeDataOptions(fields: connection.schema?.entities.first(where: { $0.name == entityName })?.fields.map(\.name) ?? [],
+            RuntimeDataOptions(fields: relation.columns.map(\.name),
                                sortField: workspace.sortField, descending: workspace.descending, pageLimit: workspace.pageLimit, filter: workspace.filter) { field, descending, limit, filter in
                 workspace.sortField = field
                 workspace.descending = descending
@@ -59,21 +59,15 @@ struct RuntimeRecordsView: View {
     }
 
     private func reload() {
-        let expression: DatabaseKit.Expression?
+        let request: QueryExecuteOperation.Request
         do {
-            expression = try workspace.filter.expression()
+            request = try workspace.request(for: relation)
             inputFailure = nil
         } catch {
             inputFailure = error.localizedDescription
             return
         }
         operation?.cancel()
-        let request = QueryExecuteOperation.Request(input: .statement(.select(
-            SelectQuery(projection: [.wildcard()], source: .table(TableRef(entityName)),
-                        filter: expression,
-                        orderBy: workspace.sortField.isEmpty ? nil : [SortKey(.column(ColumnRef(workspace.sortField)),
-                            direction: workspace.descending ? .descending : .ascending)]))),
-            page: .init(limit: UInt32(workspace.pageLimit)))
         operation = Task { await query.run(request, connection: connection) }
     }
 

@@ -63,8 +63,8 @@ verification. Test transport responses alone are not server integration evidence
 File > Connect to Server (Command-K) selects server access in the base database
 window, through [Workspace](../Workspace/DESIGN.md). The connected view owns its
 connection independently from the local catalog-inspection session. Connect validates the endpoint,
-performs the authenticated handshake, then displays the returned entity and
-feature catalogs. Cancel/window disappearance clears the token, cancels connection
+performs the authenticated handshake, then displays the returned relation, storage
+entity and feature catalogs. Cancel/window disappearance clears the token, cancels connection
 work and disconnects. Successful connections record endpoint/database/tenant/workspace/last-used metadata in a separate
 UserDefaults history. The opt-in Remember Token control stores a generic-password
 item in the device-local unlocked Keychain keyed by the history UUID. Unchecking
@@ -91,8 +91,34 @@ contract; the UI states this limitation rather than deriving them from names.
 Schema refresh reissues schema.describe on the current authenticated connection.
 The latest refresh alone may publish; connection replacement or disconnection
 invalidates publication. A failure retains the last successful catalog and is
-shown by the caller. The UI serializes its refresh action and clears selection
-when the selected entity is absent from the new catalog.
+shown by the caller. The UI serializes its refresh action; the Relation Catalog
+section owns selection clearing.
+
+## Relation Catalog
+
+After the handshake and after every schema refresh, the connection reads
+`information_schema.tables` and `information_schema.columns` through canonical
+query.execute on the same candidate or current connection, as two constant,
+complete SQL statements ordered by schema, relation and ordinal position. Rows are
+decoded by result column name into relations: SQL schema, relation name, table type
+and ordered columns with SQL data type and nullability. Server metadata visibility
+decides which relations appear; Studio never adds storage entities to this list.
+
+```text
+handshake/refresh -> schema.describe        -> Storage Entities (inspection only)
+                  -> information_schema.*   -> Tables (Data browsing)
+```
+
+A relation-catalog failure (SQL unavailable, budget exhaustion, malformed rows)
+does not fail the handshake. The connection publishes the failure, keeps schema
+inspection and Query usable, and Data browsing stays unavailable until a refresh
+succeeds; refresh failure retains the previous catalog and reports the failure.
+Catalog publication follows the same generation rules as the schema. The sidebar
+lists Tables and Storage Entities as separate sections; selecting a storage
+entity opens its schema inspection, never a Data query. Selection is cleared when
+the selected relation or entity is absent after a refresh. A complete metadata
+result is bounded by the default ExecutionBudget; a larger catalog fails
+explicitly rather than showing a partial list.
 
 ## Recent Access and Restoration
 [Connection Access](../ConnectionAccess/DESIGN.md) owns the native recent menu and
